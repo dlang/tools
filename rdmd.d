@@ -1,7 +1,7 @@
 // Written in the D programming language.
 
 /*
- *  Copyright (C) 2004-2006 by Digital Mars, www.digitalmars.com
+ *  Copyright (C) 2008 by Andrei Alexandrescu
  *  Written by Andrei Alexandrescu, www.erdani.org
  *
  *  This software is provided 'as-is', without any express or implied
