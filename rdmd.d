@@ -31,8 +31,13 @@ private string exe, compiler = "dmd";
 
 int main(string[] args)
 {
-    // Parse the command line; first get rdmd's own arguments
+    //writeln("Invoked with: ", map!(q{a ~ ", "})(args));
+    
+    // Parse the #! line of the root module
+    // Not used yet; not sure whether it's a good idea
+    // completeFlagsFromShebang(root, args);
 
+    // Continue parsing the command line; now get rdmd's own arguments
     // parse the -o option
     void dashOh(string key, string value)
     {
@@ -48,21 +53,21 @@ int main(string[] args)
             exe = std.path.join(value[1 .. $], "");
             assert(exe.endsWith(std.path.sep));
         }
+        else if (value[0] == '-')
+        {
+            // -o- passed
+            enforce(false, "Option -o- currently not supported by rdmd");
+        }
         else
         {
             enforce(false, "Unrecognized option: "~key~value);
         }
     }
     
-    // set by functions called in getopt if program should exit
-    bool bailout;
-
     // start the web browser on documentation page
-    void man(string)
+    void man()
     {
-        bailout = true;
-        auto browser = std.process.getenv("BROWSER");
-        foreach (b; [ browser, "firefox",
+        foreach (b; [ std.process.getenv("BROWSER"), "firefox",
                         "sensible-browser", "x-www-browser" ]) {
             if (!b.length) continue;
             if (!system(b~" http://www.digitalmars.com/d/2.0/rdmd.html"))
@@ -70,6 +75,8 @@ int main(string[] args)
         }
     }
 
+    // set by functions called in getopt if program should exit
+    bool bailout;
     getopt(args,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
@@ -79,13 +86,13 @@ int main(string[] args)
             "dry-run", &dryRun,
             "force", &force,
             "help", (string) { writeln(helpString); bailout = true; },
-            "man", &man,
+            "man", (string) { man; bailout = true; },
             "o", &dashOh,
             "compiler", &compiler);
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
 
-    // Continue parsing the program line - find the program to run
+    // Parse the program line - first find the program to run
     invariant programPos = find!("a.length && a[0] != '-'")(args[1 .. $])
         - begin(args);
     if (programPos == args.length)
@@ -96,9 +103,10 @@ int main(string[] args)
     const
         root = /*rel2abs*/(chomp(args[programPos], ".d") ~ ".d"),
         exeBasename = basename(root, ".d"),
-        programArgs = args[programPos + 1 .. $],
-        compilerFlags = args[1 .. programPos];
-  
+        programArgs = args[programPos + 1 .. $];
+    args = args[0 .. programPos];
+    const compilerFlags = args[1 .. programPos];
+
     // Compute the object directory and ensure it exists
     invariant objDir = getObjPath(root, compilerFlags);
     if (!dryRun)        // only make a fuss about objDir on a real run
@@ -142,7 +150,7 @@ int main(string[] args)
 bool inALibrary(in string source, in string object)
 {
     // Heuristics: if source starts with "std.", it's in a library
-    return startsWith(source, "std.")
+    return startsWith(source, "std.") || startsWith(source, "core.")
         || source == "object" || source == "gcstats";
     // another crude heuristic: if a module's path is absolute, it's
     // considered to be compiled in a separate library. Otherwise,
@@ -187,7 +195,7 @@ private string hash(in string root, in string[] compilerFlags)
 
 private string getObjPath(in string root, in string[] compilerFlags)
 {
-    auto tmpRoot = tmpDir;
+    const tmpRoot = tmpDir;
     return std.path.join(tmpRoot,
             "rdmd-" ~ basename(root) ~ '-' ~ hash(root, compilerFlags));
 }
@@ -218,6 +226,32 @@ private int rebuild(string root, string fullExe,
     return 0;
 }
 
+void completeFlagsFromShebang(string root, ref string[] args)
+{
+    auto f = File(root);
+    auto sheBang = f.readln;
+    auto cmd = std.regexp.split(strip(sheBang), r"\s+");
+    if (cmd.length <= 1 || !cmd[0].startsWith("#!")) return;
+    invariant prog = cmd[0][2 .. $];
+
+    // Allowed shebangs:
+    // #!/path/to/rdmd --stuff
+    // or
+    // #!/usr/bin/env rdmd --stuff
+    // or
+    // #!/bin/env rdmd --stuff
+    if (basename(prog) != "rdmd")
+    {
+        if (prog != "/bin/env" && prog != "/usr/bin/env" || cmd[1] != "rdmd")
+            return;
+        // Discard the "[/usr]/bin/env" thing
+        cmd = cmd[1 .. $];
+    }
+    // Ok, found a command with maybe some parms. Put those in front so
+    // they are overridden by the true command-line arguments
+    args = args[0] ~ cmd[1 .. $] ~ args[1 .. $];
+}
+
 // Run a program optionally writing the command line first
 
 private int run(string todo)
@@ -241,13 +275,13 @@ private string[string] getDependencies(string rootModule, string objDir,
     
     // myModules maps module source paths to corresponding .o names
     string[string] myModules;// = [ rootModule : d2obj(rootModule) ];
-    FILE* depsReader;
     // Must collect dependencies
     invariant depsGetter = compiler~" "~join(compilerFlags, " ")
         ~" -v -o- "~shellQuote(rootModule);
     if (chatty) writeln(depsGetter);
-    depsReader = enforce(popen(depsGetter), "Error getting dependencies");
-    scope(exit) fclose(depsReader);
+    File depsReader;
+    depsReader.popen(depsGetter);
+    scope(exit) collectException(depsReader.close); // we don't care for errors
 
     // Fetch all dependent modules and append them to myModules
     auto pattern = new RegExp(r"^import\s+(\S+)\s+\((\S+)\)\s*$");
@@ -256,7 +290,7 @@ private string[string] getDependencies(string rootModule, string objDir,
         if (!pattern.test(line)) continue;
         invariant moduleName = pattern[1], moduleSrc = pattern[2];
         if (inALibrary(moduleName, moduleSrc)) continue;
-        auto moduleObj = d2obj(moduleSrc);
+        invariant moduleObj = d2obj(moduleSrc);
         myModules[/*rel2abs*/(moduleSrc)] = moduleObj;
     }
 
