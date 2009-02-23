@@ -29,14 +29,31 @@ import std.getopt, std.string, std.process, std.stdio, std.contracts, std.file,
 private bool chatty, buildOnly, dryRun, force;
 private string exe, compiler = "dmd";
 
+// For --eval
+immutable string importWorld = "
+import std.stdio, std.algorithm, std.array, std.atomics, std.base64, 
+    std.bigint, std.bind, /*std.bitarray,*/ std.bitmanip, std.boxer, 
+    std.compiler, std.complex, std.contracts, std.conv, std.cpuid, std.cstream,
+    std.ctype, std.date, std.dateparse, std.demangle, std.encoding, std.file, 
+    std.format, std.functional, std.getopt, std.intrinsic, std.iterator, 
+    /*std.loader,*/ std.math, std.md5, std.metastrings, std.mmfile, 
+    std.numeric, std.openrj, std.outbuffer, std.path, std.perf, std.process, 
+    std.random, std.range, std.regex, std.regexp, std.signals, std.socket, 
+    std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream, 
+    std.string, std.syserror, std.system, std.traits, std.typecons, 
+    std.typetuple, std.uni, std.uri, std.utf, std.variant, std.xml, std.zip,
+    std.zlib;";
+
 int main(string[] args)
 {
     //writeln("Invoked with: ", map!(q{a ~ ", "})(args));
+    if (args.length > 1 && std.string.startsWith(args[1], "--shebang "))
+    {
+        // multiple options wrapped in one
+        auto a = args[1]["--shebang ".length .. $];
+        args = args[0 .. 1] ~ split(a) ~ args[2 .. $];
+    }
     
-    // Parse the #! line of the root module
-    // Not used yet; not sure whether it's a good idea
-    // completeFlagsFromShebang(root, args);
-
     // Continue parsing the command line; now get rdmd's own arguments
     // parse the -o option
     void dashOh(string key, string value)
@@ -51,7 +68,7 @@ int main(string[] args)
             // -odmydir passed
             // add a trailing path separator to clarify it's a dir
             exe = std.path.join(value[1 .. $], "");
-            assert(exe.endsWith(std.path.sep));
+            assert(std.string.endsWith(exe, std.path.sep));
         }
         else if (value[0] == '-')
         {
@@ -76,7 +93,8 @@ int main(string[] args)
     }
 
     // set by functions called in getopt if program should exit
-    bool bailout;
+    bool bailout, loop;
+    string eval;
     getopt(args,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
@@ -87,18 +105,38 @@ int main(string[] args)
             "force", &force,
             "help", (string) { writeln(helpString); bailout = true; },
             "man", (string) { man; bailout = true; },
+            "eval", &eval,
+            "loop", &loop,
             "o", &dashOh,
             "compiler", &compiler);
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
 
-    // Parse the program line - first find the program to run
-    invariant programPos = find!("a.length && a[0] != '-'")(args[1 .. $])
-        - begin(args);
-    if (programPos == args.length)
+    if (eval)
     {
-        write(helpString);
-        return 1;
+        // Just evaluate this program!
+        if (loop)
+        {
+            return .eval(importWorld ~ "void main(string[] args) { "
+                ~ "foreach (line; stdin.byLine()) { " ~ eval ~ "; } }");
+        }
+        else
+        {
+            return .eval(importWorld ~ "void main(string[] args) { "
+                    ~ eval ~ "; }");
+        }
+    }
+    
+    // Parse the program line - first find the program to run
+    uint programPos = 1;
+    for (;; ++programPos)
+    {
+        if (programPos == args.length)
+        {
+            write(helpString);
+            return 1;
+        }
+        if (args[programPos].length && args[programPos][0] != '-') break;
     }
     const
         root = /*rel2abs*/(chomp(args[programPos], ".d") ~ ".d"),
@@ -124,7 +162,7 @@ int main(string[] args)
     if (exe)
     {
         // user-specified exe name
-        if (endsWith(exe, std.path.sep))
+        if (std.string.endsWith(exe, std.path.sep))
         {
             // user specified a directory, complete it to a file
             exe = std.path.join(exe, exeBasename);
@@ -150,7 +188,8 @@ int main(string[] args)
 bool inALibrary(in string source, in string object)
 {
     // Heuristics: if source starts with "std.", it's in a library
-    return startsWith(source, "std.") || startsWith(source, "core.")
+    return std.string.startsWith(source, "std.")
+        || std.string.startsWith(source, "core.")
         || source == "object" || source == "gcstats";
     // another crude heuristic: if a module's path is absolute, it's
     // considered to be compiled in a separate library. Otherwise,
@@ -208,11 +247,13 @@ private int rebuild(string root, string fullExe,
         string objDir, in string[string] myModules,
         in string[] compilerFlags)
 {
-    invariant todo = compiler~" "~join(compilerFlags, " ")
+    auto todo = compiler~" "~join(compilerFlags, " ")
         ~" -of"~shellQuote(fullExe)
         ~" -od"~shellQuote(objDir)
-        ~" "~shellQuote(root)~" "
-        ~join(map!(shellQuote)(myModules.keys), " ");
+        ~" "~shellQuote(root)~" ";
+    foreach (k; map!(shellQuote)(myModules.keys)) {
+        todo ~= k ~ " ";
+    }
     invariant result = run(todo);
     if (result) 
     {
@@ -224,32 +265,6 @@ private int rebuild(string root, string fullExe,
     // clean up the dir containing the object file
     rmdirRecurse(objDir);
     return 0;
-}
-
-void completeFlagsFromShebang(string root, ref string[] args)
-{
-    auto f = File(root);
-    auto sheBang = f.readln;
-    auto cmd = std.regexp.split(strip(sheBang), r"\s+");
-    if (cmd.length <= 1 || !cmd[0].startsWith("#!")) return;
-    invariant prog = cmd[0][2 .. $];
-
-    // Allowed shebangs:
-    // #!/path/to/rdmd --stuff
-    // or
-    // #!/usr/bin/env rdmd --stuff
-    // or
-    // #!/bin/env rdmd --stuff
-    if (basename(prog) != "rdmd")
-    {
-        if (prog != "/bin/env" && prog != "/usr/bin/env" || cmd[1] != "rdmd")
-            return;
-        // Discard the "[/usr]/bin/env" thing
-        cmd = cmd[1 .. $];
-    }
-    // Ok, found a command with maybe some parms. Put those in front so
-    // they are overridden by the true command-line arguments
-    args = args[0] ~ cmd[1 .. $] ~ args[1 .. $];
 }
 
 // Run a program optionally writing the command line first
@@ -325,7 +340,19 @@ to dmd options, rdmd recognizes the following options:
   --dry-run         do not compile, just show what commands would be run
                       (implies --chatty)
   --force           force a rebuild even if apparently not necessary
+  --eval=code       evaluate program a la perl -e
+  --loop            assume \"foreach (line; stdin.byLine()) { ... }\" for eval
   --help            this message
   --man             open web browser on manual page
+  --shebang         rdmd is in a shebang line (put as first argument)
 ";
+}
+
+int eval(string todo)
+{
+    auto progname = tmpDir~"/eval.d";
+    std.file.write(progname, todo);
+    scope(exit) std.file.remove(progname);
+    run("dmd -run " ~ progname);
+    return 0;
 }
