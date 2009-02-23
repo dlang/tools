@@ -340,7 +340,7 @@ to dmd options, rdmd recognizes the following options:
   --dry-run         do not compile, just show what commands would be run
                       (implies --chatty)
   --force           force a rebuild even if apparently not necessary
-  --eval=code       evaluate program a la perl -e
+  --eval=code       evaluate code a la perl -e
   --loop            assume \"foreach (line; stdin.byLine()) { ... }\" for eval
   --help            this message
   --man             open web browser on manual page
