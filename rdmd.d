@@ -32,8 +32,9 @@ private string exe, compiler = "dmd";
 
 // For --eval
 immutable string importWorld = "
+module temporary;
 import std.stdio, std.algorithm, std.array, std.atomics, std.base64, 
-    std.bigint, std.bind, /*std.bitarray,*/ std.bitmanip, std.boxer, 
+    std.bigint, /*std.bind, std.bitarray,*/ std.bitmanip, std.boxer, 
     std.compiler, std.complex, std.contracts, std.conv, std.cpuid, std.cstream,
     std.ctype, std.date, std.dateparse, std.demangle, std.encoding, std.file, 
     std.format, std.functional, std.getopt, std.intrinsic, std.iterator, 
@@ -43,7 +44,8 @@ import std.stdio, std.algorithm, std.array, std.atomics, std.base64,
     std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream, 
     std.string, std.syserror, std.system, std.traits, std.typecons, 
     std.typetuple, std.uni, std.uri, std.utf, std.variant, std.xml, std.zip,
-    std.zlib;";
+    std.zlib;
+";
 
 int main(string[] args)
 {
@@ -176,7 +178,7 @@ int main(string[] args)
 
     // Have at it
     if (isNewer(root, exe) ||
-            canFind!((string a) {return isNewer(a, exe);})(myModules.keys))
+            find!((string a) {return isNewer(a, exe);})(myModules.keys).length)
     {
         invariant result = rebuild(root, exe, objDir, myModules, compilerFlags);
         if (result) return result;
@@ -225,7 +227,7 @@ private string hash(in string root, in string[] compilerFlags)
     context.update(getcwd);
     context.update(root);
     foreach (flag; compilerFlags) {
-        if (canFind(irrelevantSwitches, flag)) continue;
+        if (find(irrelevantSwitches, flag).length) continue;
         context.update(flag);
     }
     ubyte digest[16];
@@ -351,7 +353,14 @@ to dmd options, rdmd recognizes the following options:
 
 int eval(string todo)
 {
-    auto progname = tmpDir~"/eval.d";
+    MD5_CTX context;
+    context.start();
+    context.update(todo);
+    ubyte digest[16];
+    context.finish(digest);
+    auto progname = std.path.join(tmpDir,
+            "rdmd_eval" ~ digestToString(digest) ~ ".d");
+
     std.file.write(progname, todo);
     scope(exit) std.file.remove(progname);
     run("dmd -run " ~ progname);
