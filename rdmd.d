@@ -23,9 +23,10 @@
  *     distribution.
  */
 
-import std.getopt, std.string, std.process, std.stdio, std.contracts, std.file,
+import std.date, std.getopt, std.string, std.process, std.stdio,
+    std.contracts, std.file,
     std.algorithm, std.iterator, std.md5, std.path, std.regexp, std.getopt,
-    std.c.stdlib, std.date, std.process;
+    std.c.stdlib, std.process;
 
 private bool chatty, buildOnly, dryRun, force;
 private string exe, compiler = "dmd";
@@ -358,11 +359,31 @@ int eval(string todo)
     context.update(todo);
     ubyte digest[16];
     context.finish(digest);
-    auto progname = std.path.join(tmpDir,
-            "rdmd_eval" ~ digestToString(digest) ~ ".d");
+    auto pathname = std.path.join(tmpDir, ".rdmd");
+    if (!exists(pathname)) mkdirRecurse(pathname);
+    auto progname = std.path.join(pathname,
+            "eval." ~ digestToString(digest));
 
-    std.file.write(progname, todo);
-    scope(exit) std.file.remove(progname);
-    run("dmd -run " ~ progname);
+    if (exists(progname) ||
+            // Compile it
+            (std.file.write(progname~".d", todo),
+                    run("dmd " ~ progname ~ ".d -of" ~ progname) == 0))
+    {
+        // It's there, just run it
+        run(progname);
+    }
+
+    // Clean pathname
+    enum lifetimeInHours = 24;
+    auto cutoff = getUTCtime - 60 * 60 * lifetimeInHours * TicksPerSecond;
+    foreach (DirEntry d; dirEntries(pathname, SpanMode.shallow))
+    {
+        if (d.lastWriteTime < cutoff)
+        {
+            std.file.remove(d.name);
+            //break; // only one per call so we don't waste time
+        }
+    }
+    
     return 0;
 }
