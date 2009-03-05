@@ -122,12 +122,12 @@ int main(string[] args)
         if (loop)
         {
             return .eval(importWorld ~ "void main(string[] args) { "
-                ~ "foreach (line; stdin.byLine()) { " ~ eval ~ "; } }");
+                ~ "foreach (line; stdin.byLine()) {\n" ~ eval ~ ";\n} }");
         }
         else
         {
-            return .eval(importWorld ~ "void main(string[] args) { "
-                    ~ eval ~ "; }");
+            return .eval(importWorld ~ "void main(string[] args) {\n"
+                    ~ eval ~ ";\n}");
         }
     }
     
