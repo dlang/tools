@@ -97,7 +97,7 @@ int main(string[] args)
     }
 
     // set by functions called in getopt if program should exit
-    bool bailout, loop;
+    bool bailout, loop, addStubMain;
     string eval;
     getopt(args,
             std.getopt.config.caseSensitive,
@@ -108,6 +108,7 @@ int main(string[] args)
             "dry-run", &dryRun,
             "force", &force,
             "help", (string) { writeln(helpString); bailout = true; },
+            "main", &addStubMain,
             "man", (string) { man; bailout = true; },
             "eval", &eval,
             "loop", &loop,
@@ -181,7 +182,8 @@ int main(string[] args)
     if (isNewer(root, exe) ||
             find!((string a) {return isNewer(a, exe);})(myModules.keys).length)
     {
-        invariant result = rebuild(root, exe, objDir, myModules, compilerFlags);
+        invariant result = rebuild(root, exe, objDir, myModules, compilerFlags,
+                                   addStubMain);
         if (result) return result;
     }
 
@@ -201,11 +203,11 @@ bool inALibrary(in string source, in string object)
     //return isabs(mod);
 }
 
-private string tmpDir()
+private string myOwnTmpDir()
 {
     version (linux)
     {
-        enum tmpRoot = "/tmp";
+        enum tmpRoot = "/tmp/.rdmd";
     }
     else version (Windows)
     {
@@ -213,9 +215,11 @@ private string tmpDir()
         if (!tmpRoot)
         {
             tmpRoot = std.process.getenv("TMP");
-            if (!tmpRoot) tmpRoot = ".";
         }
+        if (!tmpRoot) tmpRoot = "./.rdmd";
+        else tmpRoot ~= "/.rdmd";
     }
+    exists(tmpRoot) && isdir(tmpRoot) || mkdirRecurse(tmpRoot);
     return tmpRoot;
 }
 
@@ -238,7 +242,7 @@ private string hash(in string root, in string[] compilerFlags)
 
 private string getObjPath(in string root, in string[] compilerFlags)
 {
-    const tmpRoot = tmpDir;
+    const tmpRoot = myOwnTmpDir;
     return std.path.join(tmpRoot,
             "rdmd-" ~ basename(root) ~ '-' ~ hash(root, compilerFlags));
 }
@@ -249,7 +253,7 @@ private string getObjPath(in string root, in string[] compilerFlags)
 
 private int rebuild(string root, string fullExe,
         string objDir, in string[string] myModules,
-        in string[] compilerFlags)
+        in string[] compilerFlags, bool addStubMain)
 {
     auto todo = compiler~" "~join(compilerFlags, " ")
         ~" -of"~shellQuote(fullExe)
@@ -258,6 +262,15 @@ private int rebuild(string root, string fullExe,
     foreach (k; map!(shellQuote)(myModules.keys)) {
         todo ~= k ~ " ";
     }
+
+    // Need to add the pesky void main(){}?
+    if (addStubMain)
+    {
+        auto stubMain = std.path.join(myOwnTmpDir, "stubmain.d");
+        std.file.write(stubMain, "void main(){}");
+        todo ~= stubMain;
+    }
+    
     invariant result = run(todo);
     if (result) 
     {
@@ -343,10 +356,11 @@ to dmd options, rdmd recognizes the following options:
   --compiler=comp   use the specified compiler (e.g. gdmd) instead of dmd
   --dry-run         do not compile, just show what commands would be run
                       (implies --chatty)
-  --force           force a rebuild even if apparently not necessary
   --eval=code       evaluate code a la perl -e
-  --loop            assume \"foreach (line; stdin.byLine()) { ... }\" for eval
+  --force           force a rebuild even if apparently not necessary
   --help            this message
+  --loop            assume \"foreach (line; stdin.byLine()) { ... }\" for eval
+  --main            add a stub main program to the mix (e.g. for unittesting)
   --man             open web browser on manual page
   --shebang         rdmd is in a shebang line (put as first argument)
 ";
@@ -359,8 +373,7 @@ int eval(string todo)
     context.update(todo);
     ubyte digest[16];
     context.finish(digest);
-    auto pathname = std.path.join(tmpDir, ".rdmd");
-    if (!exists(pathname)) mkdirRecurse(pathname);
+    auto pathname = myOwnTmpDir;
     auto progname = std.path.join(pathname,
             "eval." ~ digestToString(digest));
 
