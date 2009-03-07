@@ -345,7 +345,8 @@ private bool isNewer(string source, string target)
 private string helpString()
 {
     return
-"Usage: rdmd [RDMD AND DMD OPTIONS]... program [PROGRAM OPTIONS]...
+"rdmd build "~thisVersion~"
+Usage: rdmd [RDMD AND DMD OPTIONS]... program [PROGRAM OPTIONS]...
 Builds (with dependents) and runs a D program.
 Example: rdmd -release myprog --myprogparm 5
 
@@ -399,4 +400,28 @@ int eval(string todo)
     }
     
     return 0;
+}
+
+string thisVersion()
+{
+    enum d = __DATE__;
+    enum month = d[0 .. 3],
+        day = d[4] == ' ' ? "0"~d[5] : d[4 .. 6],
+        year = d[7 .. $];
+    enum monthNum
+        = month == "Jan" ? "01"
+        : month == "Feb" ? "02"
+        : month == "Mar" ? "03"
+        : month == "Apr" ? "04"
+        : month == "May" ? "05"
+        : month == "Jun" ? "06"
+        : month == "Jul" ? "07"
+        : month == "Aug" ? "08"
+        : month == "Sep" ? "09"
+        : month == "Oct" ? "10"
+        : month == "Nov" ? "11"
+        : month == "Dec" ? "12"
+        : "";
+    static assert(month != "", "Unknown month "~month);
+    return year[0]~year[1 .. $]~monthNum~day;
 }
