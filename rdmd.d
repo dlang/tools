@@ -356,7 +356,7 @@ to dmd options, rdmd recognizes the following options:
   --compiler=comp   use the specified compiler (e.g. gdmd) instead of dmd
   --dry-run         do not compile, just show what commands would be run
                       (implies --chatty)
-  --eval=code       evaluate code a la perl -e
+  --eval=code       evaluate code \u00E0 la perl -e
   --force           force a rebuild even if apparently not necessary
   --help            this message
   --loop            assume \"foreach (line; stdin.byLine()) { ... }\" for eval
