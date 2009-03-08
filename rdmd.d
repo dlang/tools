@@ -1,28 +1,5 @@
 // Written in the D programming language.
 
-/*
- *  Copyright (C) 2008 by Andrei Alexandrescu
- *  Written by Andrei Alexandrescu, www.erdani.org
- *  Based on an idea by Georg Wrede
- *
- *  This software is provided 'as-is', without any express or implied
- *  warranty. In no event will the authors be held liable for any damages
- *  arising from the use of this software.
- *
- *  Permission is granted to anyone to use this software for any purpose,
- *  including commercial applications, and to alter it and redistribute it
- *  freely, subject to the following restrictions:
- *
- *  o  The origin of this software must not be misrepresented; you must not
- *     claim that you wrote the original software. If you use this software
- *     in a product, an acknowledgment in the product documentation would be
- *     appreciated but is not required.
- *  o  Altered source versions must be plainly marked as such, and must not
- *     be misrepresented as being the original software.
- *  o  This notice may not be removed or altered from any source
- *     distribution.
- */
-
 import std.date, std.getopt, std.string, std.process, std.stdio,
     std.contracts, std.file,
     std.algorithm, std.iterator, std.md5, std.path, std.regexp, std.getopt,
@@ -30,23 +7,6 @@ import std.date, std.getopt, std.string, std.process, std.stdio,
 
 private bool chatty, buildOnly, dryRun, force;
 private string exe, compiler = "dmd";
-
-// For --eval
-immutable string importWorld = "
-module temporary;
-import std.stdio, std.algorithm, std.array, std.atomics, std.base64, 
-    std.bigint, /*std.bind, std.bitarray,*/ std.bitmanip, std.boxer, 
-    std.compiler, std.complex, std.contracts, std.conv, std.cpuid, std.cstream,
-    std.ctype, std.date, std.dateparse, std.demangle, std.encoding, std.file, 
-    std.format, std.functional, std.getopt, std.intrinsic, std.iterator, 
-    /*std.loader,*/ std.math, std.md5, std.metastrings, std.mmfile, 
-    std.numeric, std.openrj, std.outbuffer, std.path, std.perf, std.process, 
-    std.random, std.range, std.regex, std.regexp, std.signals, std.socket, 
-    std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream, 
-    std.string, std.syserror, std.system, std.traits, std.typecons, 
-    std.typetuple, std.uni, std.uri, std.utf, std.variant, std.xml, std.zip,
-    std.zlib;
-";
 
 int main(string[] args)
 {
@@ -96,9 +56,11 @@ int main(string[] args)
         }
     }
 
-    // set by functions called in getopt if program should exit
-    bool bailout, loop, addStubMain;
-    string eval;
+    bool bailout;    // bailout set by functions called in getopt if
+                     // program should exit
+    bool loop;       // set by --loop
+    bool addStubMain;// set by --main
+    string[] eval;     // set by --eval
     getopt(args,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
@@ -122,13 +84,14 @@ int main(string[] args)
         // Just evaluate this program!
         if (loop)
         {
-            return .eval(importWorld ~ "void main(string[] args) { "
-                ~ "foreach (line; stdin.byLine()) {\n" ~ eval ~ ";\n} }");
+            return .eval(importWorld ~ "void main(char[][] args) { "
+                ~ "foreach (line; stdin.byLine()) {\n" ~ join(eval, "\n")
+                    ~ ";\n} }");
         }
         else
         {
-            return .eval(importWorld ~ "void main(string[] args) {\n"
-                    ~ eval ~ ";\n}");
+            return .eval(importWorld ~ "void main(char[][] args) {\n"
+                    ~ join(eval, "\n") ~ ";\n}");
         }
     }
     
@@ -175,7 +138,15 @@ int main(string[] args)
     }
     else
     {
-        exe = exeBasename ~ '.' ~ hash(root, compilerFlags);
+        //exe = exeBasename ~ '.' ~ hash(root, compilerFlags);
+        version (Posix)
+            exe = join(myOwnTmpDir, rel2abs(root)[1 .. $])
+                ~ '.' ~ hash(root, compilerFlags);
+        else version (Windows)
+            exe = join(myOwnTmpDir, root)
+                ~ '.' ~ hash(root, compilerFlags);
+        else
+            assert(0);
     }
 
     // Have at it
@@ -357,7 +328,7 @@ to dmd options, rdmd recognizes the following options:
   --compiler=comp   use the specified compiler (e.g. gdmd) instead of dmd
   --dry-run         do not compile, just show what commands would be run
                       (implies --chatty)
-  --eval=code       evaluate code \u00E0 la perl -e
+  --eval=code       evaluate code \u00E0 la perl -e (multiple --eval allowed)
   --force           force a rebuild even if apparently not necessary
   --help            this message
   --loop            assume \"foreach (line; stdin.byLine()) { ... }\" for eval
@@ -366,6 +337,23 @@ to dmd options, rdmd recognizes the following options:
   --shebang         rdmd is in a shebang line (put as first argument)
 ";
 }
+
+// For --eval
+immutable string importWorld = "
+module temporary;
+import std.stdio, std.algorithm, std.array, std.atomics, std.base64, 
+    std.bigint, /*std.bind, std.bitarray,*/ std.bitmanip, std.boxer, 
+    std.compiler, std.complex, std.contracts, std.conv, std.cpuid, std.cstream,
+    std.ctype, std.date, std.dateparse, std.demangle, std.encoding, std.file, 
+    std.format, std.functional, std.getopt, std.intrinsic, std.iterator, 
+    /*std.loader,*/ std.math, std.md5, std.metastrings, std.mmfile, 
+    std.numeric, std.openrj, std.outbuffer, std.path, std.perf, std.process, 
+    std.random, std.range, std.regex, std.regexp, std.signals, std.socket, 
+    std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream, 
+    std.string, std.syserror, std.system, std.traits, std.typecons, 
+    std.typetuple, std.uni, std.uri, std.utf, std.variant, std.xml, std.zip,
+    std.zlib;
+";
 
 int eval(string todo)
 {
@@ -425,3 +413,27 @@ string thisVersion()
     static assert(month != "", "Unknown month "~month);
     return year[0]~year[1 .. $]~monthNum~day;
 }
+
+/*
+ *  Copyright (C) 2008 by Andrei Alexandrescu
+ *  Written by Andrei Alexandrescu, www.erdani.org
+ *  Based on an idea by Georg Wrede
+ *  Featuring improvements suggested by Christopher Wright
+ *
+ *  This software is provided 'as-is', without any express or implied
+ *  warranty. In no event will the authors be held liable for any damages
+ *  arising from the use of this software.
+ *
+ *  Permission is granted to anyone to use this software for any purpose,
+ *  including commercial applications, and to alter it and redistribute it
+ *  freely, subject to the following restrictions:
+ *
+ *  o  The origin of this software must not be misrepresented; you must not
+ *     claim that you wrote the original software. If you use this software
+ *     in a product, an acknowledgment in the product documentation would be
+ *     appreciated but is not required.
+ *  o  Altered source versions must be plainly marked as such, and must not
+ *     be misrepresented as being the original software.
+ *  o  This notice may not be removed or altered from any source
+ *     distribution.
+ */
