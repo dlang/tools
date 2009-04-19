@@ -11,7 +11,8 @@ private string exe, compiler = "dmd";
 int main(string[] args)
 {
     //writeln("Invoked with: ", map!(q{a ~ ", "})(args));
-    if (args.length > 1 && std.string.startsWith(args[1], "--shebang "))
+    if (args.length > 1 && std.algorithm.startsWith(args[1],
+                    "--shebang ", "--shebang="))
     {
         // multiple options wrapped in one
         auto a = args[1]["--shebang ".length .. $];
