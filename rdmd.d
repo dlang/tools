@@ -348,7 +348,7 @@ import std.stdio, std.algorithm, std.array, std.atomics, std.base64,
     std.ctype, std.date, std.dateparse, std.demangle, std.encoding, std.file, 
     std.format, std.functional, std.getopt, std.intrinsic, std.iterator, 
     /*std.loader,*/ std.math, std.md5, std.metastrings, std.mmfile, 
-    std.numeric, std.openrj, std.outbuffer, std.path, std.perf, std.process, 
+    std.numeric, std.outbuffer, std.path, std.perf, std.process, 
     std.random, std.range, std.regex, std.regexp, std.signals, std.socket, 
     std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream, 
     std.string, std.syserror, std.system, std.traits, std.typecons, 
@@ -378,7 +378,7 @@ int eval(string todo)
 
     // Clean pathname
     enum lifetimeInHours = 24;
-    auto cutoff = getUTCtime - 60 * 60 * lifetimeInHours * TicksPerSecond;
+    auto cutoff = getUTCtime - 60 * 60 * lifetimeInHours * ticksPerSecond;
     foreach (DirEntry d; dirEntries(pathname, SpanMode.shallow))
     {
         if (d.lastWriteTime < cutoff)
