@@ -5,6 +5,21 @@ import std.date, std.getopt, std.string, std.process, std.stdio,
     std.algorithm, std.iterator, std.md5, std.path, std.regexp, std.getopt,
     std.c.stdlib, std.process;
 
+version (Posix)
+{
+    enum objExt = ".o";
+    enum binExt = "";
+}
+else version (Windows)
+{
+    enum objExt = ".obj";
+    enum binExt = ".exe";
+}
+else
+{
+    static assert(0);
+}
+
 private bool chatty, buildOnly, dryRun, force;
 private string exe, compiler = "dmd";
 
@@ -112,12 +127,6 @@ int main(string[] args)
     args = args[0 .. programPos];
     const compilerFlags = args[1 .. programPos];
 
-    // Change to the main module's directory; all searches will be
-    // relative to that directory
-    // auto initialDir = getcwd;
-    // chdir(exeDirname);
-    // scope(exit) chdir(initialDir);
-
     // Compute the object directory and ensure it exists
     invariant objDir = getObjPath(root, compilerFlags);
     if (!dryRun)        // only make a fuss about objDir on a real run
@@ -153,6 +162,8 @@ int main(string[] args)
         else
             assert(0);
     }
+    // Add an ".exe" for Windows
+    exe ~= binExt; 
 
     // Have at it
     if (isNewer(root, exe) ||
@@ -192,8 +203,8 @@ private string myOwnTmpDir()
         {
             tmpRoot = std.process.getenv("TMP");
         }
-        if (!tmpRoot) tmpRoot = "./.rdmd";
-        else tmpRoot ~= "/.rdmd";
+        if (!tmpRoot) tmpRoot = join(".", ".rdmd");
+        else tmpRoot ~= pathsep ~ ".rdmd";
     }
     exists(tmpRoot) && isdir(tmpRoot) || mkdirRecurse(tmpRoot);
     return tmpRoot;
@@ -253,8 +264,6 @@ private int rebuild(string root, string fullExe,
         // build failed
         return result;
     }
-    // clean up the object file, not needed anymore
-    //remove(std.path.join(objDir, basename(root, ".d")~".o"));
     // clean up the dir containing the object file
     rmdirRecurse(objDir);
     return 0;
@@ -278,7 +287,7 @@ private string[string] getDependencies(string rootModule, string objDir,
         in string[] compilerFlags)
 {
     string d2obj(string dfile) {
-        return std.path.join(objDir, chomp(basename(dfile), ".d")~".o");
+        return std.path.join(objDir, chomp(basename(dfile), ".d")~objExt);
     }
 
     immutable depsFilename = rootModule~".deps";
