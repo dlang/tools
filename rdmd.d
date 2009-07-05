@@ -33,7 +33,7 @@ int main(string[] args)
             // -odmydir passed
             // add a trailing path separator to clarify it's a dir
             exe = std.path.join(value[1 .. $], "");
-            assert(std.string.endsWith(exe, std.path.sep));
+            assert(std.algorithm.endsWith(exe, std.path.sep[]));
         }
         else if (value[0] == '-')
         {
@@ -89,11 +89,8 @@ int main(string[] args)
                 ~ "foreach (line; stdin.byLine()) {\n" ~ join(eval, "\n")
                     ~ ";\n} }");
         }
-        else
-        {
-            return .eval(importWorld ~ "void main(char[][] args) {\n"
-                    ~ join(eval, "\n") ~ ";\n}");
-        }
+        return .eval(importWorld ~ "void main(char[][] args) {\n"
+                ~ join(eval, "\n") ~ ";\n}");
     }
     
     // Parse the program line - first find the program to run
@@ -110,9 +107,16 @@ int main(string[] args)
     const
         root = /*rel2abs*/(chomp(args[programPos], ".d") ~ ".d"),
         exeBasename = basename(root, ".d"),
+        exeDirname = dirname(root),
         programArgs = args[programPos + 1 .. $];
     args = args[0 .. programPos];
     const compilerFlags = args[1 .. programPos];
+
+    // Change to the main module's directory; all searches will be
+    // relative to that directory
+    // auto initialDir = getcwd;
+    // chdir(exeDirname);
+    // scope(exit) chdir(initialDir);
 
     // Compute the object directory and ensure it exists
     invariant objDir = getObjPath(root, compilerFlags);
@@ -131,7 +135,7 @@ int main(string[] args)
     if (exe)
     {
         // user-specified exe name
-        if (std.string.endsWith(exe, std.path.sep))
+        if (std.algorithm.endsWith(exe, std.path.sep[]))
         {
             // user specified a directory, complete it to a file
             exe = std.path.join(exe, exeBasename);
@@ -276,15 +280,21 @@ private string[string] getDependencies(string rootModule, string objDir,
     string d2obj(string dfile) {
         return std.path.join(objDir, chomp(basename(dfile), ".d")~".o");
     }
+
+    immutable depsFilename = rootModule~".deps";
+    immutable rootDir = dirname(rootModule);
     
     // myModules maps module source paths to corresponding .o names
     string[string] myModules;// = [ rootModule : d2obj(rootModule) ];
     // Must collect dependencies
-    invariant depsGetter = compiler~" "~join(compilerFlags, " ")
-        ~" -v -o- "~shellQuote(rootModule);
+    invariant depsGetter = "chdir "~shellQuote(rootDir)~" && "
+        ~compiler~" "~join(compilerFlags, " ")
+        ~" -v -o- "~shellQuote(rootModule)
+        ~" >"~depsFilename;
     if (chatty) writeln(depsGetter);
-    File depsReader;
-    depsReader.popen(depsGetter);
+    immutable depsExitCode = system(depsGetter);
+    if (depsExitCode) exit(depsExitCode);
+    auto depsReader = File(depsFilename);
     scope(exit) collectException(depsReader.close); // we don't care for errors
 
     // Fetch all dependent modules and append them to myModules
@@ -295,7 +305,7 @@ private string[string] getDependencies(string rootModule, string objDir,
         invariant moduleName = pattern[1], moduleSrc = pattern[2];
         if (inALibrary(moduleName, moduleSrc)) continue;
         invariant moduleObj = d2obj(moduleSrc);
-        myModules[/*rel2abs*/(moduleSrc)] = moduleObj;
+        myModules[/*rel2abs*/join(rootDir, moduleSrc)] = moduleObj;
     }
 
     return myModules;
