@@ -157,8 +157,8 @@ int main(string[] args)
             exe = join(myOwnTmpDir, rel2abs(root)[1 .. $])
                 ~ '.' ~ hash(root, compilerFlags);
         else version (Windows)
-            exe = join(myOwnTmpDir, root)
-                ~ '.' ~ hash(root, compilerFlags);
+            exe = join(myOwnTmpDir, std.string.replace(root, ".", "-"))
+                ~ '-' ~ hash(root, compilerFlags);
         else
             assert(0);
     }
@@ -204,7 +204,7 @@ private string myOwnTmpDir()
             tmpRoot = std.process.getenv("TMP");
         }
         if (!tmpRoot) tmpRoot = join(".", ".rdmd");
-        else tmpRoot ~= pathsep ~ ".rdmd";
+        else tmpRoot ~= sep ~ ".rdmd";
     }
     exists(tmpRoot) && isdir(tmpRoot) || mkdirRecurse(tmpRoot);
     return tmpRoot;
@@ -302,7 +302,14 @@ private string[string] getDependencies(string rootModule, string objDir,
         ~" >"~depsFilename;
     if (chatty) writeln(depsGetter);
     immutable depsExitCode = system(depsGetter);
-    if (depsExitCode) exit(depsExitCode);
+    if (depsExitCode)
+    {
+        if (exists(depsFilename))
+        {
+            stderr.writeln(readText(depsFilename));
+        }
+        exit(depsExitCode);
+    }
     auto depsReader = File(depsFilename);
     scope(exit) collectException(depsReader.close); // we don't care for errors
 
