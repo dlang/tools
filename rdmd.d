@@ -446,7 +446,8 @@ string thisVersion()
  *  Written by Andrei Alexandrescu, www.erdani.org
  *  Based on an idea by Georg Wrede
  *  Featuring improvements suggested by Christopher Wright
- *
+ *  Windows port using bug fixes and suggestions by Adam Ruppe
+ *  
  *  This software is provided 'as-is', without any express or implied
  *  warranty. In no event will the authors be held liable for any damages
  *  arising from the use of this software.
