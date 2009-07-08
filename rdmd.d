@@ -74,7 +74,7 @@ int main(string[] args)
 
     bool bailout;    // bailout set by functions called in getopt if
                      // program should exit
-    bool loop;       // set by --loop
+    string[] loop;       // set by --loop
     bool addStubMain;// set by --main
     string[] eval;     // set by --eval
     getopt(args,
@@ -95,15 +95,15 @@ int main(string[] args)
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
 
+    // Just evaluate this program!
+    if (loop)
+    {
+        return .eval(importWorld ~ "void main(char[][] args) { "
+                ~ "foreach (line; stdin.byLine()) {\n" ~ join(loop, "\n")
+                ~ ";\n} }");
+    }
     if (eval)
     {
-        // Just evaluate this program!
-        if (loop)
-        {
-            return .eval(importWorld ~ "void main(char[][] args) { "
-                ~ "foreach (line; stdin.byLine()) {\n" ~ join(eval, "\n")
-                    ~ ";\n} }");
-        }
         return .eval(importWorld ~ "void main(char[][] args) {\n"
                 ~ join(eval, "\n") ~ ";\n}");
     }
@@ -304,10 +304,10 @@ private string[string] getDependencies(string rootModule, string objDir,
     immutable depsExitCode = system(depsGetter);
     if (depsExitCode)
     {
-        if (exists(depsFilename))
-        {
-            stderr.writeln(readText(depsFilename));
-        }
+        // if (exists(depsFilename))
+        // {
+        //     stderr.writeln(readText(depsFilename));
+        // }
         exit(depsExitCode);
     }
     auto depsReader = File(depsFilename);
