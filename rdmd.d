@@ -296,8 +296,8 @@ private string[string] getDependencies(string rootModule, string objDir,
     // myModules maps module source paths to corresponding .o names
     string[string] myModules;// = [ rootModule : d2obj(rootModule) ];
     // Must collect dependencies
-    invariant depsGetter = "chdir "~shellQuote(rootDir)~" && "
-        ~compiler~" "~join(compilerFlags, " ")
+    invariant depsGetter = /*"chdir "~shellQuote(rootDir)~" && "
+                             ~*/compiler~" "~join(compilerFlags, " ")
         ~" -v -o- "~shellQuote(rootModule)
         ~" >"~depsFilename;
     if (chatty) writeln(depsGetter);
