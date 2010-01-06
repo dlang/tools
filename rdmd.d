@@ -1,9 +1,9 @@
 // Written in the D programming language.
 
-import std.date, std.getopt, std.string, std.process, std.stdio,
-    std.contracts, std.file,
-    std.algorithm, std.iterator, std.md5, std.path, std.regexp, std.getopt,
-    std.c.stdlib, std.process;
+import std.algorithm, std.c.stdlib, std.contracts, std.date,
+    std.file, std.getopt,
+    std.md5, std.path, std.process, std.regexp,
+    std.stdio, std.string, std.typetuple;
 
 version (Posix)
 {
@@ -167,7 +167,9 @@ int main(string[] args)
 
     // Have at it
     if (isNewer(root, exe) ||
-            find!((string a) {return isNewer(a, exe);})(myModules.keys).length)
+            std.algorithm.find!
+                ((string a) {return isNewer(a, exe);})
+                (myModules.keys).length)
     {
         invariant result = rebuild(root, exe, objDir, myModules, compilerFlags,
                                    addStubMain);
@@ -192,7 +194,7 @@ bool inALibrary(in string source, in string object)
 
 private string myOwnTmpDir()
 {
-    version (linux)
+    version (Posix)
     {
         enum tmpRoot = "/tmp/.rdmd";
     }
@@ -296,7 +298,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     // myModules maps module source paths to corresponding .o names
     string[string] myModules;// = [ rootModule : d2obj(rootModule) ];
     // Must collect dependencies
-    invariant depsGetter = /*"chdir "~shellQuote(rootDir)~" && "
+    invariant depsGetter = /*"cd "~shellQuote(rootDir)~" && "
                              ~*/compiler~" "~join(compilerFlags, " ")
         ~" -v -o- "~shellQuote(rootModule)
         ~" >"~depsFilename;
