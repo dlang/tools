@@ -128,7 +128,7 @@ int main(string[] args)
     const compilerFlags = args[1 .. programPos];
 
     // Compute the object directory and ensure it exists
-    invariant objDir = getObjPath(root, compilerFlags);
+    immutable objDir = getObjPath(root, compilerFlags);
     if (!dryRun)        // only make a fuss about objDir on a real run
     {
         exists(objDir)
@@ -171,7 +171,7 @@ int main(string[] args)
                 ((string a) {return isNewer(a, exe);})
                 (myModules.keys).length)
     {
-        invariant result = rebuild(root, exe, objDir, myModules, compilerFlags,
+        immutable result = rebuild(root, exe, objDir, myModules, compilerFlags,
                                    addStubMain);
         if (result) return result;
     }
@@ -180,7 +180,7 @@ int main(string[] args)
     return buildOnly ? 0 : execv(exe, [ exe ] ~ programArgs);
 }
 
-bool inALibrary(in string source, in string object)
+bool inALibrary(string source, in string object)
 {
     // Heuristics: if source starts with "std.", it's in a library
     return std.string.startsWith(source, "std.")
@@ -220,7 +220,7 @@ private string hash(in string root, in string[] compilerFlags)
     context.start();
     context.update(getcwd);
     context.update(root);
-    foreach (flag; compilerFlags) {
+    foreach (string flag; compilerFlags) {
         if (find(irrelevantSwitches, flag).length) continue;
         context.update(flag);
     }
@@ -260,7 +260,7 @@ private int rebuild(string root, string fullExe,
         todo ~= stubMain;
     }
     
-    invariant result = run(todo);
+    immutable result = run(todo);
     if (result) 
     {
         // build failed
@@ -298,7 +298,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     // myModules maps module source paths to corresponding .o names
     string[string] myModules;// = [ rootModule : d2obj(rootModule) ];
     // Must collect dependencies
-    invariant depsGetter = /*"cd "~shellQuote(rootDir)~" && "
+    immutable depsGetter = /*"cd "~shellQuote(rootDir)~" && "
                              ~*/compiler~" "~join(compilerFlags, " ")
         ~" -v -o- "~shellQuote(rootModule)
         ~" >"~depsFilename;
@@ -320,9 +320,9 @@ private string[string] getDependencies(string rootModule, string objDir,
     foreach (string line; lines(depsReader))
     {
         if (!pattern.test(line)) continue;
-        invariant moduleName = pattern[1], moduleSrc = pattern[2];
+        immutable moduleName = pattern[1], moduleSrc = pattern[2];
         if (inALibrary(moduleName, moduleSrc)) continue;
-        invariant moduleObj = d2obj(moduleSrc);
+        immutable moduleObj = d2obj(moduleSrc);
         myModules[/*rel2abs*/join(rootDir, moduleSrc)] = moduleObj;
     }
 
