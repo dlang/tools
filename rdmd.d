@@ -1,6 +1,6 @@
 // Written in the D programming language.
 
-import std.algorithm, std.c.stdlib, std.contracts, std.date,
+import std.algorithm, std.c.stdlib, std.datetime, std.exception,
     std.file, std.getopt,
     std.md5, std.path, std.process, std.regexp,
     std.stdio, std.string, std.typetuple;
@@ -31,9 +31,9 @@ int main(string[] args)
     {
         // multiple options wrapped in one
         auto a = args[1]["--shebang ".length .. $];
-        args = args[0 .. 1] ~ split(a) ~ args[2 .. $];
+        args = args[0 .. 1] ~ std.string.split(a) ~ args[2 .. $];
     }
-    
+
     // Continue parsing the command line; now get rdmd's own arguments
     // parse the -o option
     void dashOh(string key, string value)
@@ -60,7 +60,7 @@ int main(string[] args)
             enforce(false, "Unrecognized option: "~key~value);
         }
     }
-    
+
     // start the web browser on documentation page
     void man()
     {
@@ -99,15 +99,15 @@ int main(string[] args)
     if (loop)
     {
         return .eval(importWorld ~ "void main(char[][] args) { "
-                ~ "foreach (line; stdin.byLine()) {\n" ~ join(loop, "\n")
+                ~ "foreach (line; stdin.byLine()) {\n" ~ std.string.join(loop, "\n")
                 ~ ";\n} }");
     }
     if (eval)
     {
         return .eval(importWorld ~ "void main(char[][] args) {\n"
-                ~ join(eval, "\n") ~ ";\n}");
+                ~ std.string.join(eval, "\n") ~ ";\n}");
     }
-    
+
     // Parse the program line - first find the program to run
     uint programPos = 1;
     for (;; ++programPos)
@@ -125,7 +125,7 @@ int main(string[] args)
         exeDirname = dirname(root),
         programArgs = args[programPos + 1 .. $];
     args = args[0 .. programPos];
-    const compilerFlags = args[1 .. programPos];
+    auto compilerFlags = args[1 .. programPos];
 
     // Compute the object directory and ensure it exists
     immutable objDir = getObjPath(root, compilerFlags);
@@ -136,7 +136,7 @@ int main(string[] args)
                     "Entry `"~objDir~"' exists but is not a directory.")
             : mkdir(objDir);
     }
-   
+
     // Fetch dependencies
     const myModules = getDependencies(root, objDir, compilerFlags);
 
@@ -154,16 +154,16 @@ int main(string[] args)
     {
         //exe = exeBasename ~ '.' ~ hash(root, compilerFlags);
         version (Posix)
-            exe = join(myOwnTmpDir, rel2abs(root)[1 .. $])
+            exe = std.path.join(myOwnTmpDir, rel2abs(root)[1 .. $])
                 ~ '.' ~ hash(root, compilerFlags);
         else version (Windows)
-            exe = join(myOwnTmpDir, std.string.replace(root, ".", "-"))
+            exe = std.path.join(myOwnTmpDir, std.string.replace(root, ".", "-"))
                 ~ '-' ~ hash(root, compilerFlags);
         else
             assert(0);
     }
     // Add an ".exe" for Windows
-    exe ~= binExt; 
+    exe ~= binExt;
 
     // Have at it
     if (isNewer(root, exe) ||
@@ -205,7 +205,7 @@ private string myOwnTmpDir()
         {
             tmpRoot = std.process.getenv("TMP");
         }
-        if (!tmpRoot) tmpRoot = join(".", ".rdmd");
+        if (!tmpRoot) tmpRoot = std.path.join(".", ".rdmd");
         else tmpRoot ~= sep ~ ".rdmd";
     }
     exists(tmpRoot) && isdir(tmpRoot) || mkdirRecurse(tmpRoot);
@@ -242,9 +242,9 @@ private string getObjPath(in string root, in string[] compilerFlags)
 
 private int rebuild(string root, string fullExe,
         string objDir, in string[string] myModules,
-        in string[] compilerFlags, bool addStubMain)
+        string[] compilerFlags, bool addStubMain)
 {
-    auto todo = compiler~" "~join(compilerFlags, " ")
+    auto todo = compiler~" "~std.string.join(compilerFlags, " ")
         ~" -of"~shellQuote(fullExe)
         ~" -od"~shellQuote(objDir)
         ~" "~shellQuote(root)~" ";
@@ -259,9 +259,9 @@ private int rebuild(string root, string fullExe,
         std.file.write(stubMain, "void main(){}");
         todo ~= stubMain;
     }
-    
+
     immutable result = run(todo);
-    if (result) 
+    if (result)
     {
         // build failed
         return result;
@@ -286,7 +286,7 @@ private int run(string todo)
 // rootModule.
 
 private string[string] getDependencies(string rootModule, string objDir,
-        in string[] compilerFlags)
+        string[] compilerFlags)
 {
     string d2obj(string dfile) {
         return std.path.join(objDir, chomp(basename(dfile), ".d")~objExt);
@@ -294,12 +294,12 @@ private string[string] getDependencies(string rootModule, string objDir,
 
     immutable depsFilename = rootModule~".deps";
     immutable rootDir = dirname(rootModule);
-    
+
     // myModules maps module source paths to corresponding .o names
     string[string] myModules;// = [ rootModule : d2obj(rootModule) ];
     // Must collect dependencies
     immutable depsGetter = /*"cd "~shellQuote(rootDir)~" && "
-                             ~*/compiler~" "~join(compilerFlags, " ")
+                             ~*/compiler~" "~std.string.join(compilerFlags, " ")
         ~" -v -o- "~shellQuote(rootModule)
         ~" >"~depsFilename;
     if (chatty) writeln(depsGetter);
@@ -323,7 +323,7 @@ private string[string] getDependencies(string rootModule, string objDir,
         immutable moduleName = pattern[1], moduleSrc = pattern[2];
         if (inALibrary(moduleName, moduleSrc)) continue;
         immutable moduleObj = d2obj(moduleSrc);
-        myModules[/*rel2abs*/join(rootDir, moduleSrc)] = moduleObj;
+        myModules[/*rel2abs*/std.path.join(rootDir, moduleSrc)] = moduleObj;
     }
 
     return myModules;
@@ -339,7 +339,8 @@ private string[string] getDependencies(string rootModule, string objDir,
 
 private bool isNewer(string source, string target)
 {
-    return force || lastModified(source) >= lastModified(target, d_time.min);
+    return force ||
+        timeLastModified(source) >= timeLastModified(target, SysTime(0));
 }
 
 private string helpString()
@@ -370,16 +371,16 @@ to dmd options, rdmd recognizes the following options:
 // For --eval
 immutable string importWorld = "
 module temporary;
-import std.stdio, std.algorithm, std.array, std.atomics, std.base64, 
-    std.bigint, /*std.bind, std.bitarray,*/ std.bitmanip, std.boxer, 
+import std.stdio, std.algorithm, std.array, std.atomics, std.base64,
+    std.bigint, /*std.bind, std.bitarray,*/ std.bitmanip, std.boxer,
     std.compiler, std.complex, std.contracts, std.conv, std.cpuid, std.cstream,
-    std.ctype, std.date, std.dateparse, std.demangle, std.encoding, std.file, 
-    std.format, std.functional, std.getopt, std.intrinsic, std.iterator, 
-    /*std.loader,*/ std.math, std.md5, std.metastrings, std.mmfile, 
-    std.numeric, std.outbuffer, std.path, std.perf, std.process, 
-    std.random, std.range, std.regex, std.regexp, std.signals, std.socket, 
-    std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream, 
-    std.string, std.syserror, std.system, std.traits, std.typecons, 
+    std.ctype, std.date, std.dateparse, std.demangle, std.encoding, std.file,
+    std.format, std.functional, std.getopt, std.intrinsic, std.iterator,
+    /*std.loader,*/ std.math, std.md5, std.metastrings, std.mmfile,
+    std.numeric, std.outbuffer, std.path, std.perf, std.process,
+    std.random, std.range, std.regex, std.regexp, std.signals, std.socket,
+    std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream,
+    std.string, std.syserror, std.system, std.traits, std.typecons,
     std.typetuple, std.uni, std.uri, std.utf, std.variant, std.xml, std.zip,
     std.zlib;
 ";
@@ -406,7 +407,7 @@ int eval(string todo)
 
     // Clean pathname
     enum lifetimeInHours = 24;
-    auto cutoff = getUTCtime - 60 * 60 * lifetimeInHours * ticksPerSecond;
+    auto cutoff = Clock.currTime.stdTime - 60 * 60 * lifetimeInHours * TickDuration.ticksPerSec;
     foreach (DirEntry d; dirEntries(pathname, SpanMode.shallow))
     {
         if (d.lastWriteTime < cutoff)
@@ -415,7 +416,7 @@ int eval(string todo)
             //break; // only one per call so we don't waste time
         }
     }
-    
+
     return 0;
 }
 
@@ -449,7 +450,7 @@ string thisVersion()
  *  Based on an idea by Georg Wrede
  *  Featuring improvements suggested by Christopher Wright
  *  Windows port using bug fixes and suggestions by Adam Ruppe
- *  
+ *
  *  This software is provided 'as-is', without any express or implied
  *  warranty. In no event will the authors be held liable for any damages
  *  arising from the use of this software.
