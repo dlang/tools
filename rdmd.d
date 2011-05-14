@@ -17,7 +17,7 @@ else version (Windows)
 }
 else
 {
-    static assert(0);
+    static assert(0, "Unsupported operating system.");
 }
 
 private bool chatty, buildOnly, dryRun, force;
@@ -46,9 +46,16 @@ int main(string[] args)
         else if (value[0] == 'd')
         {
             // -odmydir passed
-            // add a trailing path separator to clarify it's a dir
-            exe = std.path.join(value[1 .. $], "");
-            assert(std.algorithm.endsWith(exe, std.path.sep[]));
+            if(!exe) // Don't let -od override -of
+            {
+                // add a trailing path separator to clarify it's a dir
+                exe = value[1 .. $];
+                if (!std.algorithm.endsWith(exe, std.path.sep[]))
+                {
+                    exe ~= std.path.sep[];
+                }
+                assert(std.algorithm.endsWith(exe, std.path.sep[]));
+            }
         }
         else if (value[0] == '-')
         {
@@ -71,6 +78,10 @@ int main(string[] args)
                 return;
         }
     }
+
+	auto programPos = indexOfProgram(args);
+	// Insert "--" to tell getopts when to stop
+	args = args[0..programPos] ~ "--" ~ args[programPos .. $];
 
     bool bailout;    // bailout set by functions called in getopt if
                      // program should exit
@@ -99,7 +110,8 @@ int main(string[] args)
     if (loop)
     {
         return .eval(importWorld ~ "void main(char[][] args) { "
-                ~ "foreach (line; stdin.byLine()) {\n" ~ std.string.join(loop, "\n")
+                ~ "foreach (line; stdin.byLine()) {\n"
+                ~ std.string.join(loop, "\n")
                 ~ ";\n} }");
     }
     if (eval)
@@ -109,15 +121,11 @@ int main(string[] args)
     }
 
     // Parse the program line - first find the program to run
-    uint programPos = 1;
-    for (;; ++programPos)
+	programPos = indexOfProgram(args);
+    if (programPos == args.length)
     {
-        if (programPos == args.length)
-        {
-            write(helpString);
-            return 1;
-        }
-        if (args[programPos].length && args[programPos][0] != '-') break;
+        write(helpString);
+        return 1;
     }
     const
         root = /*rel2abs*/(chomp(args[programPos], ".d") ~ ".d"),
@@ -125,7 +133,7 @@ int main(string[] args)
         exeDirname = dirname(root),
         programArgs = args[programPos + 1 .. $];
     args = args[0 .. programPos];
-    auto compilerFlags = args[1 .. programPos];
+    auto compilerFlags = args[1 .. programPos - 1];
 
     // Compute the object directory and ensure it exists
     immutable objDir = getObjPath(root, compilerFlags);
@@ -160,7 +168,7 @@ int main(string[] args)
             exe = std.path.join(myOwnTmpDir, std.string.replace(root, ".", "-"))
                 ~ '-' ~ hash(root, compilerFlags);
         else
-            assert(0);
+            static assert(0);
     }
     // Add an ".exe" for Windows
     exe ~= binExt;
@@ -176,8 +184,38 @@ int main(string[] args)
         if (result) return result;
     }
 
+    if (buildOnly)
+    {
+        // Pretty much done!
+        return 0;
+    }
+
     // run
-    return buildOnly ? 0 : execv(exe, [ exe ] ~ programArgs);
+    version (Windows)
+    {
+        foreach(ref arg; programArgs)
+            arg = shellQuote(arg);
+        return system(std.string.join([ exe ] ~ programArgs, " "));
+    }
+    else
+    {
+        return execv(exe, [ exe ] ~ programArgs);
+    }
+}
+
+size_t indexOfProgram(string[] args)
+{
+	foreach(i, arg; args)
+	{
+		if (i > 0 &&
+                !arg.startsWith('-', '@') &&
+                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def"))
+        {
+            return i;
+        }
+	}
+	
+	return args.length;
 }
 
 bool inALibrary(string source, in string object)
@@ -220,7 +258,7 @@ private string hash(in string root, in string[] compilerFlags)
     context.start();
     context.update(getcwd);
     context.update(root);
-    foreach (string flag; compilerFlags) {
+    foreach (flag; compilerFlags) {
         if (find(irrelevantSwitches, flag).length) continue;
         context.update(flag);
     }
@@ -247,6 +285,7 @@ private int rebuild(string root, string fullExe,
     auto todo = compiler~" "~std.string.join(compilerFlags, " ")
         ~" -of"~shellQuote(fullExe)
         ~" -od"~shellQuote(objDir)
+        ~" -I"~shellQuote(dirname(root))
         ~" "~shellQuote(root)~" ";
     foreach (k; map!(shellQuote)(myModules.keys)) {
         todo ~= k ~ " ";
@@ -259,6 +298,31 @@ private int rebuild(string root, string fullExe,
         std.file.write(stubMain, "void main(){}");
         todo ~= stubMain;
     }
+
+	// Different shells and OS functions have different limits,
+	// but 1024 seems to be the smallest maximum outside of MS-DOS.
+	enum maxLength = 1024;
+ 	if (todo.length + compiler.length >= maxLength)
+	{
+		auto rspName = std.path.join(myOwnTmpDir,
+				"rdmd." ~ hash(root, compilerFlags) ~ ".rsp");
+
+		// On Posix, DMD can't handle shell quotes in its response files.
+		version(Posix)
+		{
+			todo = compiler~" "~std.string.join(compilerFlags.dup, " ")
+				~" -of"~fullExe
+				~" -od"~objDir
+				~" -I"~dirname(root)
+				~" "~root~" ";
+			foreach (k; myModules.keys) {
+				todo ~= k ~ " ";
+			}
+		}
+
+		std.file.write(rspName, todo);
+		todo = compiler ~ " " ~ shellQuote("@"~rspName);
+	}
 
     immutable result = run(todo);
     if (result)
@@ -288,7 +352,8 @@ private int run(string todo)
 private string[string] getDependencies(string rootModule, string objDir,
         string[] compilerFlags)
 {
-    string d2obj(string dfile) {
+    string d2obj(string dfile)
+    {
         return std.path.join(objDir, chomp(basename(dfile), ".d")~objExt);
     }
 
@@ -301,19 +366,20 @@ private string[string] getDependencies(string rootModule, string objDir,
     immutable depsGetter = /*"cd "~shellQuote(rootDir)~" && "
                              ~*/compiler~" "~std.string.join(compilerFlags, " ")
         ~" -v -o- "~shellQuote(rootModule)
+        ~" -I"~shellQuote(rootDir)
         ~" >"~depsFilename;
     if (chatty) writeln(depsGetter);
     immutable depsExitCode = system(depsGetter);
     if (depsExitCode)
     {
-        // if (exists(depsFilename))
-        // {
-        //     stderr.writeln(readText(depsFilename));
-        // }
+        stderr.writeln("Failed: ", depsGetter);
         exit(depsExitCode);
     }
     auto depsReader = File(depsFilename);
-    scope(exit) collectException(depsReader.close); // we don't care for errors
+    // Leave the deps file in place in case of failure, maybe the user
+    // wants to take a look at it
+    scope(success) collectException(std.file.remove(depsFilename));
+    scope(exit) collectException(depsReader.close); // don't care for errors
 
     // Fetch all dependent modules and append them to myModules
     auto pattern = new RegExp(r"^import\s+(\S+)\s+\((\S+)\)\s*$");
@@ -329,12 +395,20 @@ private string[string] getDependencies(string rootModule, string objDir,
     return myModules;
 }
 
-/*private*/ string shellQuote(string filename)
+/*private*/ string shellQuote(string arg)
 {
     // This may have to change under windows
     version (Windows) enum quotechar = '"';
     else enum quotechar = '\'';
-    return quotechar ~ filename ~ quotechar;
+    version (Windows)
+    {
+        // Escape trailing backslash, so it doesn't escape the ending quote.
+        // Backslashes elsewhere should NOT be escaped.
+        if(arg.length > 0 && arg[$-1] == '\\')
+            arg ~= '\\';
+        arg = std.array.replace(arg, `"`, `\"`);
+}
+    return quotechar ~ arg ~ quotechar;
 }
 
 private bool isNewer(string source, string target)
@@ -371,13 +445,14 @@ to dmd options, rdmd recognizes the following options:
 // For --eval
 immutable string importWorld = "
 module temporary;
-import std.stdio, std.algorithm, std.array, std.atomics, std.base64,
-    std.bigint, /*std.bind, std.bitarray,*/ std.bitmanip, std.boxer,
-    std.compiler, std.complex, std.contracts, std.conv, std.cpuid, std.cstream,
-    std.ctype, std.date, std.dateparse, std.demangle, std.encoding, std.file,
-    std.format, std.functional, std.getopt, std.intrinsic, std.iterator,
-    /*std.loader,*/ std.math, std.md5, std.metastrings, std.mmfile,
-    std.numeric, std.outbuffer, std.path, std.perf, std.process,
+import std.stdio, std.algorithm, std.array, std.base64,
+    std.bigint, std.bitmanip, 
+    std.compiler, std.complex, std.conv, std.cpuid, std.cstream,
+    std.ctype, std.datetime, std.demangle, std.encoding, std.exception, 
+    std.file, 
+    std.format, std.functional, std.getopt, 
+    std.math, std.md5, std.metastrings, std.mmfile,
+    std.numeric, std.outbuffer, std.path, std.process, 
     std.random, std.range, std.regex, std.regexp, std.signals, std.socket,
     std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream,
     std.string, std.syserror, std.system, std.traits, std.typecons,
@@ -395,22 +470,23 @@ int eval(string todo)
     auto pathname = myOwnTmpDir;
     auto progname = std.path.join(pathname,
             "eval." ~ digestToString(digest));
+    auto binName = progname ~ binExt;
 
-    if (exists(progname) ||
+    if (exists(binName) ||
             // Compile it
             (std.file.write(progname~".d", todo),
-                    run("dmd " ~ progname ~ ".d -of" ~ progname) == 0))
+                    run(compiler ~ " " ~ progname ~ ".d -of" ~ binName) == 0))
     {
         // It's there, just run it
-        run(progname);
+        run(binName);
     }
 
     // Clean pathname
     enum lifetimeInHours = 24;
-    auto cutoff = Clock.currTime.stdTime - 60 * 60 * lifetimeInHours * TickDuration.ticksPerSec;
+    auto cutoff = Clock.currTime() - dur!"hours"(lifetimeInHours);
     foreach (DirEntry d; dirEntries(pathname, SpanMode.shallow))
     {
-        if (d.lastWriteTime < cutoff)
+        if (d.timeLastModified < cutoff)
         {
             std.file.remove(d.name);
             //break; // only one per call so we don't waste time
