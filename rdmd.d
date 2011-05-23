@@ -1,7 +1,7 @@
 // Written in the D programming language.
 
-import std.algorithm, std.c.stdlib, std.datetime, std.exception,
-    std.file, std.getopt,
+import std.algorithm, std.array, std.c.stdlib, std.datetime,
+    std.exception, std.file, std.getopt,
     std.md5, std.path, std.process, std.regexp,
     std.stdio, std.string, std.typetuple;
 
@@ -12,6 +12,8 @@ version (Posix)
 }
 else version (Windows)
 {
+    import std.c.windows.windows;
+    extern(Windows) HINSTANCE ShellExecuteA(HWND, LPCSTR, LPCSTR, LPCSTR, LPCSTR, INT);
     enum objExt = ".obj";
     enum binExt = ".exe";
 }
@@ -71,11 +73,20 @@ int main(string[] args)
     // start the web browser on documentation page
     void man()
     {
-        foreach (b; [ std.process.getenv("BROWSER"), "firefox",
-                        "sensible-browser", "x-www-browser" ]) {
-            if (!b.length) continue;
-            if (!system(b~" http://www.digitalmars.com/d/2.0/rdmd.html"))
-                return;
+        version(Windows)
+        {
+            // invoke browser that is associated with the http protocol
+            ShellExecuteA(null, "open", "http://www.digitalmars.com/d/2.0/rdmd.html", null, null, SW_SHOWNORMAL);
+        }
+        else
+        {        
+            foreach (b; [ std.process.getenv("BROWSER"), "firefox",
+                            "sensible-browser", "x-www-browser" ]) {
+                if (!b.length) continue;
+
+                if (!system(b~" http://www.digitalmars.com/d/2.0/rdmd.html"))
+                    return;
+            }
         }
     }
 
@@ -127,7 +138,7 @@ int main(string[] args)
         write(helpString);
         return 1;
     }
-    const
+    auto
         root = /*rel2abs*/(chomp(args[programPos], ".d") ~ ".d"),
         exeBasename = basename(root, ".d"),
         exeDirname = dirname(root),
@@ -165,7 +176,7 @@ int main(string[] args)
             exe = std.path.join(myOwnTmpDir, rel2abs(root)[1 .. $])
                 ~ '.' ~ hash(root, compilerFlags);
         else version (Windows)
-            exe = std.path.join(myOwnTmpDir, std.string.replace(root, ".", "-"))
+            exe = std.path.join(myOwnTmpDir, replace(root, ".", "-"))
                 ~ '-' ~ hash(root, compilerFlags);
         else
             static assert(0);
@@ -291,7 +302,7 @@ private int rebuild(string root, string fullExe,
         todo ~= k ~ " ";
     }
 
-    // Need to add the pesky void main(){}?
+    // Need to add void main(){}?
     if (addStubMain)
     {
         auto stubMain = std.path.join(myOwnTmpDir, "stubmain.d");
