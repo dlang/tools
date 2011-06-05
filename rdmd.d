@@ -165,10 +165,10 @@ int main(string[] args)
         return 0;
     }
 
-    if (!dryRun)        // only make a fuss about objDir on a real run
+    if (!dryRun)        
     {
         exists(objDir)
-            ? enforce(isdir(objDir),
+            ? enforce(dryRun || isdir(objDir),
                     "Entry `"~objDir~"' exists but is not a directory.")
             : mkdir(objDir);
     }
@@ -355,8 +355,11 @@ private int rebuild(string root, string fullExe,
         // build failed
         return result;
     }
-    // clean up the dir containing the object file
-    rmdirRecurse(objDir);
+    // clean up the dir containing the object file, just not in dry
+    // run mode because we haven't created any!
+    if (!dryRun) {
+        rmdirRecurse(objDir);
+    }
     return 0;
 }
 
