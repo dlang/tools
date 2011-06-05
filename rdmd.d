@@ -88,21 +88,23 @@ int main(string[] args)
     string[] loop;       // set by --loop
     bool addStubMain;// set by --main
     string[] eval;     // set by --eval
+    bool makeDepend;
     getopt(args,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
             std.getopt.config.stopOnFirstNonOption,
             "build-only", &buildOnly,
             "chatty", &chatty,
+            "compiler", &compiler,
             "dry-run", &dryRun,
+            "eval", &eval,
+            "loop", &loop,
             "force", &force,
             "help", (string) { writeln(helpString); bailout = true; },
             "main", &addStubMain,
+            "makedepend", &makeDepend,
             "man", (string) { man; bailout = true; },
-            "eval", &eval,
-            "loop", &loop,
-            "o", &dashOh,
-            "compiler", &compiler);
+            "o", &dashOh);
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
 
@@ -137,6 +139,21 @@ int main(string[] args)
 
     // Compute the object directory and ensure it exists
     immutable objDir = getObjPath(root, compilerFlags);
+    // Fetch dependencies
+    const myModules = getDependencies(root, objDir, compilerFlags);
+
+    // --makedepend mode. Just print dependencies and exit.
+    if (makeDepend)
+    {
+        stdout.write(root, " :");
+        foreach (mod, _; myModules)
+        {
+            stdout.write(' ', mod);
+        }
+        stdout.writeln();
+        return 0;
+    }
+
     if (!dryRun)        // only make a fuss about objDir on a real run
     {
         exists(objDir)
@@ -144,9 +161,6 @@ int main(string[] args)
                     "Entry `"~objDir~"' exists but is not a directory.")
             : mkdir(objDir);
     }
-
-    // Fetch dependencies
-    const myModules = getDependencies(root, objDir, compilerFlags);
 
     // Compute executable name, check for freshness, rebuild
     if (exe)
@@ -437,6 +451,7 @@ to dmd options, rdmd recognizes the following options:
   --help            this message
   --loop            assume \"foreach (line; stdin.byLine()) { ... }\" for eval
   --main            add a stub main program to the mix (e.g. for unittesting)
+  --makedepend      print dependencies in makefile format and exit
   --man             open web browser on manual page
   --shebang         rdmd is in a shebang line (put as first argument)
 ";
