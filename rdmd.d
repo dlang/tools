@@ -403,7 +403,12 @@ private string[string] getDependencies(string rootModule, string objDir,
         immutable moduleName = pattern[1], moduleSrc = pattern[2];
         if (inALibrary(moduleName, moduleSrc)) continue;
         immutable moduleObj = d2obj(moduleSrc);
-        myModules[/*rel2abs*/std.path.join(rootDir, moduleSrc)] = moduleObj;
+        // 2011-06-05: dmd outputs dependencies relative to the path
+        // in which the compiler is run, not to the path of the root
+        // module. Therefore issue deps relative to current dir.
+        //
+        //myModules[/*rel2abs*/std.path.join(rootDir, moduleSrc)] = moduleObj;
+        myModules[moduleSrc] = moduleObj;
     }
 
     return myModules;
