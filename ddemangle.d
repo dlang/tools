@@ -19,45 +19,45 @@ import core.demangle;
 
 void main()
 {
-	foreach (line; stdin.byLine(File.KeepTerminator.yes))
-	{
-		size_t beginIdx, endIdx;
+    foreach (line; stdin.byLine(File.KeepTerminator.yes))
+    {
+        size_t beginIdx, endIdx;
 
-		enum State { searching_, searchingD, searchingEnd, done }
-		State state;
-		foreach (i, char c; line)
-		{
-			switch (state)
-			{
-			case State.searching_:
-				if (c == '_')
-				{
-					beginIdx = i;
-					state = State.searchingD;
-				}
-				break;
-			case State.searchingD:
-				if (c == 'D')
-					state = State.searchingEnd;
-				else if (c != '_')
-					state = State.searching_;
-				break;
-			case State.searchingEnd:
-				if (c == ' ' || c == '"' || c == '\'')
-				{
-					endIdx = i;
-					state = State.done;
-				}
-				break;
-			}
-			if (state == State.done)
-				break;
-		}
+        enum State { searching_, searchingD, searchingEnd, done }
+        State state;
+        foreach (i, char c; line)
+        {
+            switch (state)
+            {
+            case State.searching_:
+                if (c == '_')
+                {
+                    beginIdx = i;
+                    state = State.searchingD;
+                }
+                break;
+            case State.searchingD:
+                if (c == 'D')
+                    state = State.searchingEnd;
+                else if (c != '_')
+                    state = State.searching_;
+                break;
+            case State.searchingEnd:
+                if (c == ' ' || c == '"' || c == '\'')
+                {
+                    endIdx = i;
+                    state = State.done;
+                }
+                break;
+            }
+            if (state == State.done)
+                break;
+        }
 
-		if (endIdx > beginIdx)
-			write(line[0..beginIdx], demangle(line[beginIdx..endIdx]), line[endIdx..$]);
-		else
-			write(line);
-	}
+        if (endIdx > beginIdx)
+            write(line[0..beginIdx], demangle(line[beginIdx..endIdx]), line[endIdx..$]);
+        else
+            write(line);
+    }
 }
 
