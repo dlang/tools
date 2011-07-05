@@ -19,7 +19,7 @@ import core.demangle;
 
 void main()
 {
-	foreach (line; stdin.byLine())
+	foreach (line; stdin.byLine(File.KeepTerminator.yes))
 	{
 		size_t beginIdx, endIdx;
 
@@ -55,9 +55,9 @@ void main()
 		}
 
 		if (endIdx > beginIdx)
-			writeln(line[0..beginIdx], demangle(line[beginIdx..endIdx]), line[endIdx..$]);
+			write(line[0..beginIdx], demangle(line[beginIdx..endIdx]), line[endIdx..$]);
 		else
-			writeln(line);
+			write(line);
 	}
 }
 
