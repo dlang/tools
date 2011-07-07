@@ -17,8 +17,19 @@ module ddemangle;
 import std.stdio;
 import core.demangle;
 
-void main()
+int main(string[] args)
 {
+    if (args.length != 1)
+    {    // this takes care of the --help / -h case too!
+        writeln("Usage: ", args[0], " [-h|--help]");
+        writeln("Demangler filter for D symbols: demangle the first D mangled symbol
+found on each line (if any) from standard input and send the result
+to standard output.");
+        if (args.length != 2 || !(args[1] == "--help" || args[1] == "-h"))
+            return 1; // invalid arguments
+        return 0; // help called normally
+    }
+
     foreach (line; stdin.byLine(File.KeepTerminator.yes))
     {
         size_t beginIdx, endIdx;
@@ -59,5 +70,6 @@ void main()
         else
             write(line);
     }
+    return 0;
 }
 
