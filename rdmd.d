@@ -2,7 +2,7 @@
 
 import std.algorithm, std.array, std.c.stdlib, std.datetime,
     std.exception, std.file, std.getopt,
-    std.md5, std.path, std.process, std.regexp,
+    std.md5, std.path, std.process, std.random, std.regexp,
     std.stdio, std.string, std.typetuple;
 
 version (Posix)
@@ -257,13 +257,16 @@ bool inALibrary(string source, in string object)
 
 private string myOwnTmpDir()
 {
+    static string tmpRoot = "";
+    if (tmpRoot != "")
+      return tmpRoot; // We've already generated a tmpRoot.
     version (Posix)
     {
-        enum tmpRoot = "/tmp/.rdmd";
+        tmpRoot = "/tmp/.rdmd";
     }
     else version (Windows)
     {
-        auto tmpRoot = std.process.getenv("TEMP");
+        tmpRoot = std.process.getenv("TEMP");
         if (!tmpRoot)
         {
             tmpRoot = std.process.getenv("TMP");
@@ -271,6 +274,8 @@ private string myOwnTmpDir()
         if (!tmpRoot) tmpRoot = std.path.join(".", ".rdmd");
         else tmpRoot ~= sep ~ ".rdmd";
     }
+    auto r = Random(unpredictableSeed);
+    tmpRoot ~= "." ~ std.conv.to!string(r.front);
     exists(tmpRoot) && isdir(tmpRoot) || mkdirRecurse(tmpRoot);
     return tmpRoot;
 }
