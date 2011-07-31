@@ -1,0 +1,5 @@
+*.o
+catdoc
+dman
+rdmd
+
