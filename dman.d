@@ -54,6 +54,8 @@ string topic2url(string topic)
 
     url = DmcCommands(topic);
     if (!url)
+        url = CHeader(topic);
+    if (!url)
         url = Misc(topic);
     if (!url)
         url = Phobos(topic);
@@ -83,11 +85,71 @@ string DmcCommands(string topic)
     return null;
 }
 
+string CHeader(string topic)
+{
+    static string[] dmccmds =
+    [
+        "assert.h",
+        "complex.h",
+        "ctype.h",
+        "fenv.h",
+        "float.h",
+        "locale.h",
+        "math.h",
+        "setjmp.h,"
+        "signal.h",
+        "stdarg.h",
+        "stddef.h",
+        "stdio.h",
+        "stdlib.h",
+        "string.h",
+        "time.h",
+        "gc.h",
+        "bios.h",
+        "cerror.h",
+        "disp.h",
+        "dos.h",
+        "emm.h",
+        "handle.h",
+        "int.h",
+        "msmouse.h",
+        "sound.h",
+        "swap.h",
+        "tsr.h",
+        "winio.h",
+        "bitops.h",
+        "conio.h",
+        "controlc.h",
+        "direct.h",
+        "fltpnt.h",
+        "io.h",
+        "page.h",
+        "process.h",
+        "search.h",
+        "sys/stat.h",
+        "tabsize.h",
+        "trace.h",
+        "utime.h",
+        "unmangle.h",
+        "util.h",
+        "regexp.h",
+        "complex.h",
+        "iostream.h",
+    ];
+
+    if (find(dmccmds, topic).length)
+    {
+        return "http://www.digitalmars.com/rtl/" ~ topic ~ "tml";
+    }
+    return null;
+}
+
 string Misc(string topic)
 {
     string[string] misc =
     [
         "D1": "http://www.digitalmars.com/d/1.0/",
+        "D2": "http://www.d-programming-language.org/",
         "faq": "http://d-programming-language.org/faq.html",
     ];
 
