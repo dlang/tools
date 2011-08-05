@@ -3,6 +3,7 @@ import std.stdio;
 import std.getopt;
 import std.algorithm;
 import std.regex;
+import std.uri;
 
 import std.net.browser;
 
@@ -59,6 +60,11 @@ string topic2url(string topic)
         url = Misc(topic);
     if (!url)
         url = Phobos(topic);
+    if (!url)
+        // Try "I'm Feeling Lucky"
+        url = "http://www.google.com/search?q=" ~
+              std.uri.encode(topic) ~
+              "&as_oq=site:d-programming-language.org+site:digitalmars.com&btnI=I%27m+Feeling+Lucky";
     return url;
 }
 
@@ -162,7 +168,7 @@ string Misc(string topic)
 string Phobos(string topic)
 {
     string phobos = "http://www.d-programming-language.org/phobos/";
-    if (find(topic, '.'))
+    if (find(topic, '.').length)
     {
         topic = replace(topic, regex("\\.", "g"), "_");
         return phobos ~ topic ~ ".html";
