@@ -307,22 +307,29 @@ private int rebuild(string root, string fullExe,
         string objDir, in string[string] myModules,
         string[] compilerFlags, bool addStubMain)
 {
-    auto todo = std.string.join(compilerFlags, " ")
-        ~" -of"~shellQuote(fullExe)
-        ~" -od"~shellQuote(objDir)
-        ~" -I"~shellQuote(dirname(root))
-        ~" "~shellQuote(root)~" ";
-    foreach (k; map!(shellQuote)(myModules.keys)) {
-        todo ~= k ~ " ";
-    }
-
-    // Need to add void main(){}?
-    if (addStubMain)
+    string buildTodo(bool shell)
     {
-        auto stubMain = std.path.join(myOwnTmpDir, "stubmain.d");
-        std.file.write(stubMain, "void main(){}");
-        todo ~= stubMain;
+        auto quote = shell ? &shellQuote :
+            function string(string s) {return s;};
+        
+        auto todo = std.string.join(compilerFlags, " ")
+            ~" -of"~quote(fullExe)
+            ~" -od"~quote(objDir)
+            ~" -I"~quote(dirname(root))
+            ~" "~quote(root)~" ";
+        foreach (k; map!(quote)(myModules.keys)) {
+            todo ~= k ~ " ";
+        }
+        // Need to add void main(){}?
+        if (addStubMain)
+        {
+            auto stubMain = std.path.join(myOwnTmpDir, "stubmain.d");
+            std.file.write(stubMain, "void main(){}");
+            todo ~= stubMain;
+        }
+        return todo;
     }
+    auto todo = buildTodo(true);
 
 	// Different shells and OS functions have different limits,
 	// but 1024 seems to be the smallest maximum outside of MS-DOS.
@@ -335,14 +342,7 @@ private int rebuild(string root, string fullExe,
 		// On Posix, DMD can't handle shell quotes in its response files.
 		version(Posix)
 		{
-			todo = std.string.join(compilerFlags.dup, " ")
-				~" -of"~fullExe
-				~" -od"~objDir
-				~" -I"~dirname(root)
-				~" "~root~" ";
-			foreach (k; myModules.keys) {
-				todo ~= k ~ " ";
-			}
+			todo = buildTodo(false);
 		}
 
 		std.file.write(rspName, todo);
