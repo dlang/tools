@@ -120,7 +120,8 @@ string CHeader(string topic)
 }
 
 string Clib(string topic)
-{
+{   static string rtl = "http://www.digitalmars.com/rtl/";
+
     /**************** ctype.h *******************************/
 
     static string[] isxxxxfuncs =
@@ -132,7 +133,7 @@ string Clib(string topic)
     ];
 
     if (find(isxxxxfuncs, topic).length)
-        return "http://www.digitalmars.com/rtl/ctype.html#isxxxx";
+        return rtl ~ "ctype.html#isxxxx";
 
     static string[] toxxxxfuncs =
     [
@@ -140,10 +141,10 @@ string Clib(string topic)
     ];
 
     if (find(toxxxxfuncs, topic).length)
-        return "http://www.digitalmars.com/rtl/ctype.html#_toxxxx";
+        return rtl ~ "ctype.html#_toxxxx";
 
     if (topic == "__toascii")
-        return "http://www.digitalmars.com/rtl/ctype.html#__toascii";
+        return rtl ~ "ctype.html#__toascii";
 
     /******************** disp.h ***************************/
 
@@ -159,7 +160,7 @@ string Clib(string topic)
     ];
 
     if (find(dispfuncs, topic).length)
-        return "http://www.digitalmars.com/rtl/disp.html#" ~ topic;
+        return rtl ~ "disp.html#" ~ topic;
 
     /******************** process.h ***************************/
 
@@ -202,7 +203,12 @@ string Clib(string topic)
     }
 
     if (find(processfuncs, topic).length)
-        return "http://www.digitalmars.com/rtl/process.html#" ~ topic;
+        return rtl ~ "process.html#" ~ topic;
+
+    /******************** stddef.h ***************************/
+
+    if (topic == "__threadid")
+        return rtl ~ "stddef.html#_threadid";
 
     /******************** stdio.h ***************************/
 
@@ -238,7 +244,64 @@ string Clib(string topic)
     }
 
     if (find(stdiofuncs, topic).length)
-        return "http://www.digitalmars.com/rtl/stdio.html#" ~ topic;
+        return rtl ~ "stdio.html#" ~ topic;
+
+    /******************* stdlib.h ****************************/
+
+    static string[] stdlibfuncs =
+    [
+        "__max",        "__min",        "_alloca",      "_atold",
+        "_chkstack",    "_cpumode",     "_ecvt",        "_environ",
+        "_exit",        "_fcvt",        "_fileinfo",    "_fmode",
+        "_onexit",      "_freect",      "_fullpath",    "_gcvt",
+        "_halloc",      "_hfree",       "_itoa",        "_lrotl",
+        "_ltoa",        "_makepath",    "_memavl",      "_memmax",
+        "_msize",       "_osmajor",     "_osminor",     "_osmode",
+        "_osver",       "_pgmptr",      "_psp",         "_putenv",
+        "_rotl",        "_searchenv",   "_splitpath",   "_stackavail",
+        "_ultoa",       "_winmajor",    "_winminor",    "_winver",
+        "exit",         "exit_pushstate", "abort",      "abs",
+        "atexit",       "atof",         "atoi",         "atol",
+        "bsearch",      "calloc",       "coreleft",     "errno",
+        "expand",       "free",         "getenv",       "ldiv",
+        "malloc",       "mblen",        "mbstowcs",     "mbtowc",
+        "_memmax",      "perror",       "qsort",        "rand",
+        "random",       "randomize",    "realloc",      "srand",
+        "strtof",       "strtol",       "strtold",      "system",
+        "_tolower",     "wcstombs",     "wctomb",
+    ];
+
+    switch (topic)
+    {   case "_fmbstowcs":
+        case "_fmbtowc":
+        case "_fonexit":
+        case "_fwcstombs":
+        case "_fwctomb":
+        case "_fatexit":
+        case "_fmblen":
+        case "_fcalloc":
+        case "_ncalloc":
+        case "_fmalloc":
+        case "_nmalloc":
+        case "_frealloc":
+        case "_nrealloc":
+        case "_fmsize":
+        case "_nmsize":
+            topic = topic[2..$];
+            break;
+
+        case "_lrotr":        topic = "_lrotl";  break;
+        case "_rotr":         topic = "_rotl";   break;
+        case "div":           topic = "ldiv";    break;
+        case "exit_popstate": topic = "exit_pushstate"; break;
+        case "strtod":        topic = "strtof"; break;
+        case "strtoul":       topic = "strtol"; break;
+        default:
+            break;
+    }
+
+    if (find(stdlibfuncs, topic).length)
+        return rtl ~ "stdlib.html#" ~ topic;
 
     /******************* string.h ****************************/
 
@@ -295,7 +358,7 @@ string Clib(string topic)
     }
 
     if (find(stringfuncs, topic).length)
-        return "http://www.digitalmars.com/rtl/string.html#" ~ topic;
+        return rtl ~ "string.html#" ~ topic;
 
     /***********************************************/
 
