@@ -121,7 +121,7 @@ string CHeader(string topic)
 
 string Clib(string topic)
 {
-    /***********************************************/
+    /**************** ctype.h *******************************/
 
     static string[] isxxxxfuncs =
     [
@@ -145,7 +145,7 @@ string Clib(string topic)
     if (topic == "__toascii")
         return "http://www.digitalmars.com/rtl/ctype.html#__toascii";
 
-    /***********************************************/
+    /******************** disp.h ***************************/
 
     static string[] dispfuncs =
     [
@@ -161,7 +161,50 @@ string Clib(string topic)
     if (find(dispfuncs, topic).length)
         return "http://www.digitalmars.com/rtl/disp.html#" ~ topic;
 
-    /***********************************************/
+    /******************** process.h ***************************/
+
+    static string[] processfuncs =
+    [
+        "_beginthread",
+        "_c_exit",
+        "_exec",
+        "_endthread",
+        "_getpid",
+        "_spawn",
+    ];
+
+    switch (topic)
+    {   case "_cexit":
+            topic = "_c_exit";
+            break;
+        case "_execl":
+        case "_execle":
+        case "_execlp":
+        case "_execlpe":
+        case "_execv":
+        case "_execve":
+        case "_execvp":
+        case "_execvpe":
+            topic = "_exec";
+            break;
+        case "_spawnl":
+        case "_spawnle":
+        case "_spawnlp":
+        case "_spawnlpe":
+        case "_spawnv":
+        case "_spawnve":
+        case "_spawnvp":
+        case "_spawnvpe":
+            topic = "_spawn";
+            break;
+        default:
+            break;
+    }
+
+    if (find(processfuncs, topic).length)
+        return "http://www.digitalmars.com/rtl/process.html#" ~ topic;
+
+    /******************** stdio.h ***************************/
 
     static string[] stdiofuncs =
     [
@@ -197,7 +240,7 @@ string Clib(string topic)
     if (find(stdiofuncs, topic).length)
         return "http://www.digitalmars.com/rtl/stdio.html#" ~ topic;
 
-    /***********************************************/
+    /******************* string.h ****************************/
 
     static string[] stringfuncs =
     [
