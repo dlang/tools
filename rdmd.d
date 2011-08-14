@@ -308,7 +308,7 @@ private int rebuild(string root, string fullExe,
         string objDir, in string[string] myModules,
         string[] compilerFlags, bool addStubMain)
 {
-    auto todo = compiler~" "~std.string.join(compilerFlags, " ")
+    auto todo = std.string.join(compilerFlags, " ")
         ~" -of"~shellQuote(fullExe)
         ~" -od"~shellQuote(objDir)
         ~" -I"~shellQuote(dirname(root))
@@ -336,7 +336,7 @@ private int rebuild(string root, string fullExe,
 		// On Posix, DMD can't handle shell quotes in its response files.
 		version(Posix)
 		{
-			todo = compiler~" "~std.string.join(compilerFlags.dup, " ")
+			todo = std.string.join(compilerFlags.dup, " ")
 				~" -of"~fullExe
 				~" -od"~objDir
 				~" -I"~dirname(root)
@@ -347,10 +347,10 @@ private int rebuild(string root, string fullExe,
 		}
 
 		std.file.write(rspName, todo);
-		todo = compiler ~ " " ~ shellQuote("@"~rspName);
+		todo = shellQuote("@"~rspName);
 	}
 
-    immutable result = run(todo);
+    immutable result = run(compiler ~ " " ~ todo);
     if (result)
     {
         // build failed
