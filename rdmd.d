@@ -248,6 +248,7 @@ bool inALibrary(string source, in string object)
     // Heuristics: if source starts with "std.", it's in a library
     return std.string.startsWith(source, "std.")
         || std.string.startsWith(source, "core.")
+        || std.string.startsWith(source, "tango.")
         || source == "object" || source == "gcstats";
     // another crude heuristic: if a module's path is absolute, it's
     // considered to be compiled in a separate library. Otherwise,
@@ -307,23 +308,29 @@ private int rebuild(string root, string fullExe,
         string objDir, in string[string] myDeps,
         string[] compilerFlags, bool addStubMain)
 {
-    auto todo = std.string.join(compilerFlags, " ")
-        ~" -of"~shellQuote(fullExe)
-        ~" -od"~shellQuote(objDir)
-        ~" -I"~shellQuote(dirname(root))
-        ~" "~shellQuote(root)~" ";
-    foreach (k, objectFile; myDeps)
-    if(objectFile !is null) {
-        todo ~= k.shellQuote() ~ " ";
-    }
-
-    // Need to add void main(){}?
-    if (addStubMain)
+    string buildTodo(bool shell)
     {
-        auto stubMain = std.path.join(myOwnTmpDir, "stubmain.d");
-        std.file.write(stubMain, "void main(){}");
-        todo ~= stubMain;
+        auto quote = shell ? &shellQuote :
+            function string(string s) {return s;};
+        
+        auto todo = std.string.join(compilerFlags, " ")
+            ~" -of"~quote(fullExe)
+            ~" -od"~quote(objDir)
+            ~" -I"~quote(dirname(root))
+            ~" "~quote(root)~" ";
+        foreach (k; map!(quote)(myModules.keys)) {
+            todo ~= k ~ " ";
+        }
+        // Need to add void main(){}?
+        if (addStubMain)
+        {
+            auto stubMain = std.path.join(myOwnTmpDir, "stubmain.d");
+            std.file.write(stubMain, "void main(){}");
+            todo ~= stubMain;
+        }
+        return todo;
     }
+    auto todo = buildTodo(true);
 
     // Different shells and OS functions have different limits,
     // but 1024 seems to be the smallest maximum outside of MS-DOS.
@@ -333,18 +340,11 @@ private int rebuild(string root, string fullExe,
         auto rspName = std.path.join(myOwnTmpDir,
                 "rdmd." ~ hash(root, compilerFlags) ~ ".rsp");
 
-        // On Posix, DMD can't handle shell quotes in its response files.
-        version(Posix)
-        {
-            todo = std.string.join(compilerFlags.dup, " ")
-                ~" -of"~fullExe
-                ~" -od"~objDir
-                ~" -I"~dirname(root)
-                ~" "~root~" ";
-            foreach (k; myModules.keys) {
-                todo ~= k ~ " ";
-            }
-        }
+		// On Posix, DMD can't handle shell quotes in its response files.
+		version(Posix)
+		{
+			todo = buildTodo(false);
+		}
 
         std.file.write(rspName, todo);
         todo = shellQuote("@"~rspName);
