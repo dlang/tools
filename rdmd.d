@@ -411,7 +411,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     scope(exit) collectException(depsReader.close); // don't care for errors
 
     // Fetch all dependencies and append them to myDeps
-    auto pattern = new RegExp(r"^(import|file|binary|config)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
+    auto pattern = new RegExp(r"^(import|file)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
     foreach (string line; lines(depsReader))
     {
         if (!pattern.test(line)) continue;
@@ -426,10 +426,6 @@ private string[string] getDependencies(string rootModule, string objDir,
             
         case "file":
             myDeps[pattern[3].strip()] = null;
-            break;
-            
-        case "binary", "config":
-            myDeps[pattern[2].strip()] = null;
             break;
             
         default: assert(0);
