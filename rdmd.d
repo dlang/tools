@@ -318,7 +318,7 @@ private int rebuild(string root, string fullExe,
             ~" -od"~quote(objDir)
             ~" -I"~quote(dirname(root))
             ~" "~quote(root)~" ";
-        foreach (k; map!(quote)(myModules.keys)) {
+        foreach (k; map!(quote)(myDeps.keys)) {
             todo ~= k ~ " ";
         }
         // Need to add void main(){}?
@@ -411,7 +411,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     scope(exit) collectException(depsReader.close); // don't care for errors
 
     // Fetch all dependencies and append them to myDeps
-    auto pattern = new RegExp(r"^(import|file|binary|config)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
+    auto pattern = new RegExp(r"^(import|file)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
     foreach (string line; lines(depsReader))
     {
         if (!pattern.test(line)) continue;
@@ -428,10 +428,6 @@ private string[string] getDependencies(string rootModule, string objDir,
             myDeps[pattern[3].strip()] = null;
             break;
             
-        case "binary", "config":
-            myDeps[pattern[2].strip()] = null;
-            break;
-            
         default: assert(0);
         }
     }
@@ -439,7 +435,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     return myDeps;
 }
 
-/*private*/ string shellQuote(string arg)
+/*private*/ string shellQuote(string arg) @safe pure nothrow
 {
     // This may have to change under windows
     version (Windows) enum quotechar = '"';
