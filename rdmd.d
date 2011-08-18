@@ -439,7 +439,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     return myDeps;
 }
 
-/*private*/ string shellQuote(string arg)
+/*private*/ string shellQuote(string arg) @safe pure nothrow
 {
     // This may have to change under windows
     version (Windows) enum quotechar = '"';
