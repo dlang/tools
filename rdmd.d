@@ -318,7 +318,7 @@ private int rebuild(string root, string fullExe,
             ~" -od"~quote(objDir)
             ~" -I"~quote(dirname(root))
             ~" "~quote(root)~" ";
-        foreach (k; map!(quote)(myModules.keys)) {
+        foreach (k; map!(quote)(myDeps.keys)) {
             todo ~= k ~ " ";
         }
         // Need to add void main(){}?
