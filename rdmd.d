@@ -310,12 +310,12 @@ private int rebuild(string root, string fullExe,
 {
     string buildTodo(bool shell)
     {
-		// Workaround for BUG3180
-		static string noQuote(string arg)
-		{
-			return arg;
-		}
-		
+        // Workaround for BUG3180
+        static string noQuote(string arg)
+        {
+            return arg;
+        }
+        
         auto quote = shell ? &shellQuote : &noQuote;
         
         auto todo = std.string.join(compilerFlags, " ")
@@ -420,9 +420,9 @@ private string[string] getDependencies(string rootModule, string objDir,
     auto pattern = regex(r"^(import|file|binary|config)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
     foreach (string line; lines(depsReader))
     {
-		auto regexMatch = match(line, pattern);
+        auto regexMatch = match(line, pattern);
         if (regexMatch.empty) continue;
-		auto captures = regexMatch.captures;
+        auto captures = regexMatch.captures;
         switch(captures[1])
         {
         case "import":
