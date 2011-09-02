@@ -5,7 +5,7 @@ import std.algorithm;
 import std.regex;
 import std.uri;
 
-import std.net.browser;
+import std.process;
 
 int main(string[] args)
 {
