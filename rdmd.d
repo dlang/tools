@@ -318,8 +318,9 @@ private int rebuild(string root, string fullExe,
             ~" -od"~quote(objDir)
             ~" -I"~quote(dirname(root))
             ~" "~quote(root)~" ";
-        foreach (k; map!(quote)(myModules.keys)) {
-            todo ~= k ~ " ";
+        foreach (k, objectFile; myDeps) {
+            if(objectFile !is null)
+                todo ~= quote(k) ~ " ";
         }
         // Need to add void main(){}?
         if (addStubMain)
