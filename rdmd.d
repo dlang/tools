@@ -2,7 +2,7 @@
 
 import std.algorithm, std.array, std.c.stdlib, std.datetime,
     std.exception, std.file, std.getopt,
-    std.md5, std.path, std.process, std.regexp,
+    std.md5, std.path, std.process, std.regex,
     std.stdio, std.string, std.typetuple;
 
 version (Posix)
@@ -168,7 +168,7 @@ int main(string[] args)
     if (!dryRun)        
     {
         exists(objDir)
-            ? enforce(dryRun || isdir(objDir),
+            ? enforce(dryRun || isDir(objDir),
                     "Entry `"~objDir~"' exists but is not a directory.")
             : mkdir(objDir);
     }
@@ -272,7 +272,7 @@ private string myOwnTmpDir()
         if (!tmpRoot) tmpRoot = std.path.join(".", ".rdmd");
         else tmpRoot ~= sep ~ ".rdmd";
     }
-    exists(tmpRoot) && isdir(tmpRoot) || mkdirRecurse(tmpRoot);
+    exists(tmpRoot) && isDir(tmpRoot) || mkdirRecurse(tmpRoot);
     return tmpRoot;
 }
 
@@ -412,25 +412,27 @@ private string[string] getDependencies(string rootModule, string objDir,
     scope(exit) collectException(depsReader.close); // don't care for errors
 
     // Fetch all dependencies and append them to myDeps
-    auto pattern = new RegExp(r"^(import|file|binary|config)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
+    auto pattern = regex(r"^(import|file|binary|config)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
     foreach (string line; lines(depsReader))
     {
-        if (!pattern.test(line)) continue;
-        switch(pattern[1])
+		auto regexMatch = match(line, pattern);
+        if (regexMatch.empty) continue;
+		auto captures = regexMatch.captures;
+        switch(captures[1])
         {
         case "import":
-            invariant moduleName = pattern[2].strip(), moduleSrc = pattern[3].strip();
+            invariant moduleName = captures[2].strip(), moduleSrc = captures[3].strip();
             if (inALibrary(moduleName, moduleSrc)) continue;
             invariant moduleObj = d2obj(moduleSrc);
             myDeps[moduleSrc] = moduleObj;
             break;
             
         case "file":
-            myDeps[pattern[3].strip()] = null;
+            myDeps[captures[3].strip()] = null;
             break;
             
         case "binary", "config":
-            myDeps[pattern[2].strip()] = null;
+            myDeps[captures[2].strip()] = null;
             break;
             
         default: assert(0);
