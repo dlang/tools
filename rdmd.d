@@ -310,8 +310,13 @@ private int rebuild(string root, string fullExe,
 {
     string buildTodo(bool shell)
     {
-        auto quote = shell ? &shellQuote :
-            function string(string s) {return s;};
+		// Workaround for BUG3180
+		static string noQuote(string arg)
+		{
+			return arg;
+		}
+		
+        auto quote = shell ? &shellQuote : &noQuote;
         
         auto todo = std.string.join(compilerFlags, " ")
             ~" -of"~quote(fullExe)
@@ -442,7 +447,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     return myDeps;
 }
 
-/*private*/ string shellQuote(string arg) @safe pure nothrow
+/*private*/ string shellQuote(string arg)
 {
     // This may have to change under windows
     version (Windows) enum quotechar = '"';
