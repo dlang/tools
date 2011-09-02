@@ -2,7 +2,7 @@
 
 import std.algorithm, std.array, std.c.stdlib, std.datetime,
     std.exception, std.file, std.getopt,
-    std.md5, std.path, std.process, std.regexp,
+    std.md5, std.path, std.process, std.regex,
     std.stdio, std.string, std.typetuple;
 
 version (Posix)
@@ -90,9 +90,9 @@ int main(string[] args)
         }
     }
 
-	auto programPos = indexOfProgram(args);
-	// Insert "--" to tell getopts when to stop
-	args = args[0..programPos] ~ "--" ~ args[programPos .. $];
+    auto programPos = indexOfProgram(args);
+    // Insert "--" to tell getopts when to stop
+    args = args[0..programPos] ~ "--" ~ args[programPos .. $];
 
     bool bailout;    // bailout set by functions called in getopt if
                      // program should exit
@@ -134,7 +134,7 @@ int main(string[] args)
     }
 
     // Parse the program line - first find the program to run
-	programPos = indexOfProgram(args);
+    programPos = indexOfProgram(args);
     if (programPos == args.length)
     {
         write(helpString);
@@ -151,13 +151,13 @@ int main(string[] args)
     // Compute the object directory and ensure it exists
     immutable objDir = getObjPath(root, compilerFlags);
     // Fetch dependencies
-    const myModules = getDependencies(root, objDir, compilerFlags);
+    const myDeps = getDependencies(root, objDir, compilerFlags);
 
     // --makedepend mode. Just print dependencies and exit.
     if (makeDepend)
     {
         stdout.write(root, " :");
-        foreach (mod, _; myModules)
+        foreach (mod, _; myDeps)
         {
             stdout.write(' ', mod);
         }
@@ -168,7 +168,7 @@ int main(string[] args)
     if (!dryRun)        
     {
         exists(objDir)
-            ? enforce(dryRun || isdir(objDir),
+            ? enforce(dryRun || isDir(objDir),
                     "Entry `"~objDir~"' exists but is not a directory.")
             : mkdir(objDir);
     }
@@ -202,9 +202,9 @@ int main(string[] args)
     if (isNewer(root, exe) ||
             std.algorithm.find!
                 ((string a) {return isNewer(a, exe);})
-                (myModules.keys).length)
+                (myDeps.keys).length)
     {
-        immutable result = rebuild(root, exe, objDir, myModules, compilerFlags,
+        immutable result = rebuild(root, exe, objDir, myDeps, compilerFlags,
                                    addStubMain);
         if (result) return result;
     }
@@ -230,17 +230,17 @@ int main(string[] args)
 
 size_t indexOfProgram(string[] args)
 {
-	foreach(i, arg; args)
-	{
-		if (i > 0 &&
+    foreach(i, arg; args)
+    {
+        if (i > 0 &&
                 !arg.startsWith('-', '@') &&
                 !arg.endsWith(".obj", ".o", ".lib", ".a", ".def"))
         {
             return i;
         }
-	}
-	
-	return args.length;
+    }
+    
+    return args.length;
 }
 
 bool inALibrary(string source, in string object)
@@ -248,6 +248,7 @@ bool inALibrary(string source, in string object)
     // Heuristics: if source starts with "std.", it's in a library
     return std.string.startsWith(source, "std.")
         || std.string.startsWith(source, "core.")
+        || std.string.startsWith(source, "tango.")
         || source == "object" || source == "gcstats";
     // another crude heuristic: if a module's path is absolute, it's
     // considered to be compiled in a separate library. Otherwise,
@@ -271,7 +272,7 @@ private string myOwnTmpDir()
         if (!tmpRoot) tmpRoot = std.path.join(".", ".rdmd");
         else tmpRoot ~= sep ~ ".rdmd";
     }
-    exists(tmpRoot) && isdir(tmpRoot) || mkdirRecurse(tmpRoot);
+    exists(tmpRoot) && isDir(tmpRoot) || mkdirRecurse(tmpRoot);
     return tmpRoot;
 }
 
@@ -299,57 +300,63 @@ private string getObjPath(in string root, in string[] compilerFlags)
             "rdmd-" ~ basename(root) ~ '-' ~ hash(root, compilerFlags));
 }
 
-// Rebuild the executable fullExe starting from modules myModules
+// Rebuild the executable fullExe starting from modules in myDeps
 // passing the compiler flags compilerFlags. Generates one large
 // object file.
 
 private int rebuild(string root, string fullExe,
-        string objDir, in string[string] myModules,
+        string objDir, in string[string] myDeps,
         string[] compilerFlags, bool addStubMain)
 {
-    auto todo = compiler~" "~std.string.join(compilerFlags, " ")
-        ~" -of"~shellQuote(fullExe)
-        ~" -od"~shellQuote(objDir)
-        ~" -I"~shellQuote(dirname(root))
-        ~" "~shellQuote(root)~" ";
-    foreach (k; map!(shellQuote)(myModules.keys)) {
-        todo ~= k ~ " ";
-    }
-
-    // Need to add void main(){}?
-    if (addStubMain)
+    string buildTodo(bool shell)
     {
-        auto stubMain = std.path.join(myOwnTmpDir, "stubmain.d");
-        std.file.write(stubMain, "void main(){}");
-        todo ~= stubMain;
+        // Workaround for BUG3180
+        static string noQuote(string arg)
+        {
+            return arg;
+        }
+        
+        auto quote = shell ? &shellQuote : &noQuote;
+        
+        auto todo = std.string.join(compilerFlags, " ")
+            ~" -of"~quote(fullExe)
+            ~" -od"~quote(objDir)
+            ~" -I"~quote(dirname(root))
+            ~" "~quote(root)~" ";
+        foreach (k, objectFile; myDeps) {
+            if(objectFile !is null)
+                todo ~= quote(k) ~ " ";
+        }
+        // Need to add void main(){}?
+        if (addStubMain)
+        {
+            auto stubMain = std.path.join(myOwnTmpDir, "stubmain.d");
+            std.file.write(stubMain, "void main(){}");
+            todo ~= stubMain;
+        }
+        return todo;
+    }
+    auto todo = buildTodo(true);
+
+    // Different shells and OS functions have different limits,
+    // but 1024 seems to be the smallest maximum outside of MS-DOS.
+    enum maxLength = 1024;
+     if (todo.length + compiler.length >= maxLength)
+    {
+        auto rspName = std.path.join(myOwnTmpDir,
+                "rdmd." ~ hash(root, compilerFlags) ~ ".rsp");
+
+        // On Posix, DMD can't handle shell quotes in its response files.
+        version(Posix)
+        {
+            todo = buildTodo(false);
+        }
+
+        std.file.write(rspName, todo);
+        todo = shellQuote("@"~rspName);
     }
 
-	// Different shells and OS functions have different limits,
-	// but 1024 seems to be the smallest maximum outside of MS-DOS.
-	enum maxLength = 1024;
- 	if (todo.length + compiler.length >= maxLength)
-	{
-		auto rspName = std.path.join(myOwnTmpDir,
-				"rdmd." ~ hash(root, compilerFlags) ~ ".rsp");
-
-		// On Posix, DMD can't handle shell quotes in its response files.
-		version(Posix)
-		{
-			todo = compiler~" "~std.string.join(compilerFlags.dup, " ")
-				~" -of"~fullExe
-				~" -od"~objDir
-				~" -I"~dirname(root)
-				~" "~root~" ";
-			foreach (k; myModules.keys) {
-				todo ~= k ~ " ";
-			}
-		}
-
-		std.file.write(rspName, todo);
-		todo = compiler ~ " " ~ shellQuote("@"~rspName);
-	}
-
-    immutable result = run(todo);
+    immutable result = run(compiler ~ " " ~ todo);
     if (result)
     {
         // build failed
@@ -388,8 +395,8 @@ private string[string] getDependencies(string rootModule, string objDir,
     immutable depsFilename = rootModule~".deps";
     immutable rootDir = dirname(rootModule);
 
-    // myModules maps module source paths to corresponding .o names
-    string[string] myModules;// = [ rootModule : d2obj(rootModule) ];
+    // myDeps maps dependency paths to corresponding .o name (or null, if not a D module)
+    string[string] myDeps;// = [ rootModule : d2obj(rootModule) ];
     // Must collect dependencies
     immutable depsGetter = /*"cd "~shellQuote(rootDir)~" && "
                              ~*/compiler~" "~std.string.join(compilerFlags, " ")
@@ -409,23 +416,35 @@ private string[string] getDependencies(string rootModule, string objDir,
     scope(success) collectException(std.file.remove(depsFilename));
     scope(exit) collectException(depsReader.close); // don't care for errors
 
-    // Fetch all dependent modules and append them to myModules
-    auto pattern = new RegExp(r"^import\s+(\S+)\s+\((\S+)\)\s*$");
+    // Fetch all dependencies and append them to myDeps
+    auto pattern = regex(r"^(import|file|binary|config)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
     foreach (string line; lines(depsReader))
     {
-        if (!pattern.test(line)) continue;
-        immutable moduleName = pattern[1], moduleSrc = pattern[2];
-        if (inALibrary(moduleName, moduleSrc)) continue;
-        immutable moduleObj = d2obj(moduleSrc);
-        // 2011-06-05: dmd outputs dependencies relative to the path
-        // in which the compiler is run, not to the path of the root
-        // module. Therefore issue deps relative to current dir.
-        //
-        //myModules[/*rel2abs*/std.path.join(rootDir, moduleSrc)] = moduleObj;
-        myModules[moduleSrc] = moduleObj;
+        auto regexMatch = match(line, pattern);
+        if (regexMatch.empty) continue;
+        auto captures = regexMatch.captures;
+        switch(captures[1])
+        {
+        case "import":
+            invariant moduleName = captures[2].strip(), moduleSrc = captures[3].strip();
+            if (inALibrary(moduleName, moduleSrc)) continue;
+            invariant moduleObj = d2obj(moduleSrc);
+            myDeps[moduleSrc] = moduleObj;
+            break;
+            
+        case "file":
+            myDeps[captures[3].strip()] = null;
+            break;
+            
+        case "binary", "config":
+            myDeps[captures[2].strip()] = null;
+            break;
+            
+        default: assert(0);
+        }
     }
 
-    return myModules;
+    return myDeps;
 }
 
 /*private*/ string shellQuote(string arg)
