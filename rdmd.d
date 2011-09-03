@@ -426,9 +426,9 @@ private string[string] getDependencies(string rootModule, string objDir,
         switch(captures[1])
         {
         case "import":
-            invariant moduleName = captures[2].strip(), moduleSrc = captures[3].strip();
+            immutable moduleName = captures[2].strip(), moduleSrc = captures[3].strip();
             if (inALibrary(moduleName, moduleSrc)) continue;
-            invariant moduleObj = d2obj(moduleSrc);
+            immutable moduleObj = d2obj(moduleSrc);
             myDeps[moduleSrc] = moduleObj;
             break;
             
