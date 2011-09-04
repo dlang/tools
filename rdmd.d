@@ -585,7 +585,7 @@ string which(string path)
         string absPath = std.path.join(envPath, path);
         if (exists(absPath) && isFile(absPath)) return absPath;
     }
-    throw new Exception(path, "File not found");
+    throw new FileException(path, "File not found in PATH");
 }
 
 /*
