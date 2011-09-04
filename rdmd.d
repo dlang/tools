@@ -436,7 +436,11 @@ private string[string] getDependencies(string rootModule, string objDir,
             myDeps[captures[3].strip()] = null;
             break;
             
-        case "binary", "config":
+        case "binary":
+            myDeps[which(captures[2].strip())] = null;
+            break;
+        
+        case "config":
             myDeps[captures[2].strip()] = null;
             break;
             
@@ -571,6 +575,17 @@ string thisVersion()
         : "";
     static assert(month != "", "Unknown month "~month);
     return year[0]~year[1 .. $]~monthNum~day;
+}
+
+string which(string path)
+{
+    if (isabs(path)) return path;
+    foreach(envPath; split(environment["PATH"], pathsep))
+    {
+        string absPath = std.path.join(envPath, path);
+        if (exists(absPath) && isFile(absPath)) return absPath;
+    }
+    throw new Exception(path, "File not found");
 }
 
 /*
