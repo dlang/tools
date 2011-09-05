@@ -580,7 +580,7 @@ string thisVersion()
 string which(string path)
 {
     if (path.canFind(sep) || altsep != "" && path.canFind(altsep)) return path;
-    foreach(envPath; split(environment["PATH"], pathsep))
+    foreach (envPath; std.algorithm.splitter(environment["PATH"], pathsep))
     {
         string absPath = std.path.join(envPath, path);
         if (exists(absPath) && isFile(absPath)) return absPath;
