@@ -63,6 +63,8 @@ to standard output.");
                     state = State.done;
                 }
                 break;
+            default:
+                break;
             }
             if (state == State.done)
                 break;
