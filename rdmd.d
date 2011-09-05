@@ -579,7 +579,7 @@ string thisVersion()
 
 string which(string path)
 {
-    if (isabs(path)) return path;
+    if (path.canFind(sep) || altsep != "" && path.canFind(altsep)) return path;
     foreach(envPath; split(environment["PATH"], pathsep))
     {
         string absPath = std.path.join(envPath, path);
