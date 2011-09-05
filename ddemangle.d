@@ -15,17 +15,18 @@
 module ddemangle;
 
 import std.stdio;
+import std.ascii;
 import core.demangle;
 
 int main(string[] args)
 {
     if (args.length != 1)
     {    // this takes care of the --help / -h case too!
-        writeln("Usage: ", args[0], " [-h|--help]");
-        writeln("Demangler filter for D symbols: demangle the first D mangled symbol
+        stderr.writeln("Usage: ", args[0], " [-h|--help]");
+        stderr.writeln("Demangler filter for D symbols: demangle the first D mangled symbol
 found on each line (if any) from standard input and send the result
 to standard output.");
-        if (args.length != 2 || !(args[1] == "--help" || args[1] == "-h"))
+        if (args.length != 2 || (args[1] != "--help" && args[1] != "-h"))
             return 1; // invalid arguments
         return 0; // help called normally
     }
@@ -54,10 +55,7 @@ to standard output.");
                     state = State.searching_;
                 break;
             case State.searchingEnd:
-                if (!(c >= 'a' && c <= 'z') &&
-                    !(c >= 'A' && c <= 'Z') &&
-                    !(c >= '0' && c <= '9') &&
-                    c != '_')
+                if (!isAlphaNum(c) && c != '_')
                 {
                     endIdx = i;
                     state = State.done;
