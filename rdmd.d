@@ -148,9 +148,9 @@ int main(string[] args)
     args = args[0 .. programPos];
     auto compilerFlags = args[1 .. programPos - 1];
 
-    // --build-only implies the user would like a binary in the program directory
+    // --build-only implies the user would like a binary in the current directory
     if (buildOnly && !exe)
-        exe = exeDirname ~ sep;
+        exe = "." ~ std.path.sep;
 
     // Compute the object directory and ensure it exists
     immutable objDir = getObjPath(root, compilerFlags);
