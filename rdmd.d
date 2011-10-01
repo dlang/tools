@@ -103,7 +103,6 @@ int main(string[] args)
     getopt(args,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
-            std.getopt.config.stopOnFirstNonOption,
             "build-only", &buildOnly,
             "chatty", &chatty,
             "compiler", &compiler,
