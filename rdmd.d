@@ -236,7 +236,7 @@ size_t indexOfProgram(string[] args)
     {
         if (i > 0 &&
                 !arg.startsWith('-', '@') &&
-                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def"))
+                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map"))
         {
             return i;
         }
