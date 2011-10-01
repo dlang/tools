@@ -13,7 +13,7 @@ int main(string[] args)
     {
         writeln("dman: Look up D topics in the manual
 Usage:
-    dman [-man] topic
+    dman [--man] topic
 ");
         return 1;
     }
@@ -22,7 +22,9 @@ Usage:
     getopt(args, "man", { man = true; });
 
     if (man)
-        browse("http://www.digitalmars.com/");
+    {   browse("http://www.digitalmars.com/ctg/dman.html");
+        return 0;
+    }
     else if (args.length != 2)
     {
         writeln("dman: no topic");
