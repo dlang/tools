@@ -184,7 +184,7 @@ int main(string[] args)
         if (std.algorithm.endsWith(exe, std.path.sep[]))
         {
             // user specified a directory, complete it to a file
-            exe = std.path.join(exe, exeBasename);
+            exe = std.path.join(exe, exeBasename) ~ binExt;
         }
     }
     else
@@ -192,15 +192,13 @@ int main(string[] args)
         //exe = exeBasename ~ '.' ~ hash(root, compilerFlags);
         version (Posix)
             exe = std.path.join(myOwnTmpDir, rel2abs(root)[1 .. $])
-                ~ '.' ~ hash(root, compilerFlags);
+                ~ '.' ~ hash(root, compilerFlags) ~ binExt;
         else version (Windows)
             exe = std.path.join(myOwnTmpDir, replace(root, ".", "-"))
-                ~ '-' ~ hash(root, compilerFlags);
+                ~ '-' ~ hash(root, compilerFlags) ~ binExt;
         else
             static assert(0);
     }
-    // Add an ".exe" for Windows
-    exe ~= binExt;
 
     // Have at it
     if (isNewer(root, exe) ||
