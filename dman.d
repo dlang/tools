@@ -57,6 +57,8 @@ string topic2url(string topic)
 
     url = DmcCommands(topic);
     if (!url)
+        url = Ddoc(topic);
+    if (!url)
         url = CHeader(topic);
     if (!url)
         url = Clib(topic);
@@ -92,6 +94,24 @@ string DmcCommands(string topic)
         else if (topic == "linker")
             topic = "optlink";
         return "http://www.digitalmars.com/ctg/" ~ topic ~ ".html";
+    }
+    return null;
+}
+
+string Ddoc(string topic)
+{
+    static string[] etags = mixin (import("expression.tag"));
+
+    if (find(etags, topic).length)
+    {
+        return "http://www.d-programming-language.org/expression.html#" ~ topic;
+    }
+
+    static string[] stags = mixin (import("statement.tag"));
+
+    if (find(stags, topic).length)
+    {
+        return "http://www.d-programming-language.org/statement.html#" ~ topic;
     }
     return null;
 }
