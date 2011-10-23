@@ -243,12 +243,13 @@ size_t indexOfProgram(string[] args)
     return args.length;
 }
 
-bool inALibrary(string source, in string object)
+bool inALibrary(string source, string object)
 {
     // Heuristics: if source starts with "std.", it's in a library
     return std.string.startsWith(source, "std.")
         || std.string.startsWith(source, "core.")
         || std.string.startsWith(source, "tango.")
+        || std.string.endsWith(object, ".di")
         || source == "object" || source == "gcstats";
     // another crude heuristic: if a module's path is absolute, it's
     // considered to be compiled in a separate library. Otherwise,
