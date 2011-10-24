@@ -103,7 +103,6 @@ int main(string[] args)
     getopt(args,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
-            std.getopt.config.stopOnFirstNonOption,
             "build-only", &buildOnly,
             "chatty", &chatty,
             "compiler", &compiler,
@@ -148,6 +147,10 @@ int main(string[] args)
     args = args[0 .. programPos];
     auto compilerFlags = args[1 .. programPos - 1];
 
+    // --build-only implies the user would like a binary in the current directory
+    if (buildOnly && !exe)
+        exe = "." ~ std.path.sep;
+
     // Compute the object directory and ensure it exists
     immutable objDir = getObjPath(root, compilerFlags);
     // Fetch dependencies
@@ -180,7 +183,7 @@ int main(string[] args)
         if (std.algorithm.endsWith(exe, std.path.sep[]))
         {
             // user specified a directory, complete it to a file
-            exe = std.path.join(exe, exeBasename);
+            exe = std.path.join(exe, exeBasename) ~ binExt;
         }
     }
     else
@@ -188,15 +191,13 @@ int main(string[] args)
         //exe = exeBasename ~ '.' ~ hash(root, compilerFlags);
         version (Posix)
             exe = std.path.join(myOwnTmpDir, rel2abs(root)[1 .. $])
-                ~ '.' ~ hash(root, compilerFlags);
+                ~ '.' ~ hash(root, compilerFlags) ~ binExt;
         else version (Windows)
             exe = std.path.join(myOwnTmpDir, replace(root, ".", "-"))
-                ~ '-' ~ hash(root, compilerFlags);
+                ~ '-' ~ hash(root, compilerFlags) ~ binExt;
         else
             static assert(0);
     }
-    // Add an ".exe" for Windows
-    exe ~= binExt;
 
     // Have at it
     if (isNewer(root, exe) ||
@@ -234,7 +235,7 @@ size_t indexOfProgram(string[] args)
     {
         if (i > 0 &&
                 !arg.startsWith('-', '@') &&
-                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def"))
+                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map"))
         {
             return i;
         }
@@ -261,7 +262,8 @@ private string myOwnTmpDir()
 {
     version (Posix)
     {
-        enum tmpRoot = "/tmp/.rdmd";
+        import core.sys.posix.unistd;
+        auto tmpRoot = format("/tmp/.rdmd-%d", getuid());
     }
     else version (Windows)
     {
