@@ -217,16 +217,7 @@ int main(string[] args)
     }
 
     // run
-    version (Windows)
-    {
-        foreach(ref arg; programArgs)
-            arg = shellQuote(arg);
-        return system(std.string.join([ exe ] ~ programArgs, " "));
-    }
-    else
-    {
-        return execv(exe, [ exe ] ~ programArgs);
-    }
+    return exec([ exe ] ~ programArgs);
 }
 
 size_t indexOfProgram(string[] args)
@@ -311,55 +302,45 @@ private int rebuild(string root, string fullExe,
         string objDir, in string[string] myDeps,
         string[] compilerFlags, bool addStubMain)
 {
-    string buildTodo(bool shell)
+    string[] buildTodo()
     {
-        // Workaround for BUG3180
-        static string noQuote(string arg)
-        {
-            return arg;
-        }
-        
-        auto quote = shell ? &shellQuote : &noQuote;
-        
-        auto todo = std.string.join(compilerFlags, " ")
-            ~" -of"~quote(fullExe)
-            ~" -od"~quote(objDir)
-            ~" -I"~quote(dirname(root))
-            ~" "~quote(root)~" ";
+        auto todo = compilerFlags
+            ~ [ "-of"~fullExe ]
+            ~ [ "-od"~objDir ]
+            ~ [ "-I"~dirname(root) ]
+            ~ [ root ];
         foreach (k, objectFile; myDeps) {
             if(objectFile !is null)
-                todo ~= quote(k) ~ " ";
+                todo ~= [ k ];
         }
         // Need to add void main(){}?
         if (addStubMain)
         {
             auto stubMain = std.path.join(myOwnTmpDir, "stubmain.d");
             std.file.write(stubMain, "void main(){}");
-            todo ~= stubMain;
+            todo ~= [ stubMain ];
         }
         return todo;
     }
-    auto todo = buildTodo(true);
+    auto todo = buildTodo();
 
     // Different shells and OS functions have different limits,
     // but 1024 seems to be the smallest maximum outside of MS-DOS.
     enum maxLength = 1024;
-     if (todo.length + compiler.length >= maxLength)
+    auto commandLength = escapeShellCommand(todo).length;
+    if (commandLength + compiler.length >= maxLength)
     {
         auto rspName = std.path.join(myOwnTmpDir,
                 "rdmd." ~ hash(root, compilerFlags) ~ ".rsp");
 
-        // On Posix, DMD can't handle shell quotes in its response files.
-        version(Posix)
-        {
-            todo = buildTodo(false);
-        }
+        // DMD uses Windows-style command-line parsing in response files
+        // regardless of the operating system it's running on.
+        std.file.write(rspName, array(map!escapeWindowsArgument(todo)).join(" "));
 
-        std.file.write(rspName, todo);
-        todo = shellQuote("@"~rspName);
+        todo = [ "@"~rspName ];
     }
 
-    immutable result = run(compiler ~ " " ~ todo);
+    immutable result = run([ compiler ] ~ todo);
     if (result)
     {
         // build failed
@@ -375,11 +356,35 @@ private int rebuild(string root, string fullExe,
 
 // Run a program optionally writing the command line first
 
-private int run(string todo)
+private int run(string[] argv, string output = null, bool shell = true)
 {
-    if (chatty) writeln(todo);
+    string command = escapeShellCommand(argv);
+    if (chatty) writeln(command);
     if (dryRun) return 0;
-    return system(todo);
+
+    if (output)
+    {
+        shell = true;
+        command ~= " > " ~ escapeShellArgument(output);
+    }
+
+    version (Windows)
+    {
+        shell = true;
+
+        // Follow CMD's rules for quote parsing (see "cmd /?").
+        command = '"' ~ command ~ '"';
+    }
+
+    if (shell)
+        return system(command);
+    else
+        return execv(argv[0], argv);
+}
+
+private int exec(string[] argv)
+{
+    return run(argv, null, false);
 }
 
 // Given module rootModule, returns a mapping of all dependees .d
@@ -401,16 +406,14 @@ private string[string] getDependencies(string rootModule, string objDir,
     // myDeps maps dependency paths to corresponding .o name (or null, if not a D module)
     string[string] myDeps;// = [ rootModule : d2obj(rootModule) ];
     // Must collect dependencies
-    immutable depsGetter = /*"cd "~shellQuote(rootDir)~" && "
-                             ~*/compiler~" "~std.string.join(compilerFlags, " ")
-        ~" -v -o- "~shellQuote(rootModule)
-        ~" -I"~shellQuote(rootDir)
-        ~" >"~depsFilename;
-    if (chatty) writeln(depsGetter);
-    immutable depsExitCode = system(depsGetter);
+    auto depsGetter =
+        // "cd "~shellQuote(rootDir)~" && "
+        [ compiler ] ~ compilerFlags ~
+        ["-v", "-o-", rootModule, "-I"~rootDir];
+    immutable depsExitCode = run(depsGetter, depsFilename);
     if (depsExitCode)
     {
-        stderr.writeln("Failed: ", depsGetter);
+        stderr.writeln("Failed: ", escapeShellCommand(depsGetter));
         exit(depsExitCode);
     }
     auto depsReader = File(depsFilename);
@@ -454,20 +457,72 @@ private string[string] getDependencies(string rootModule, string objDir,
     return myDeps;
 }
 
-/*private*/ string shellQuote(string arg)
+// Quote an argument in a manner conforming to the behavior of
+// CommandLineToArgvW and DMD's response-file parsing algorithm.
+// References:
+// * http://msdn.microsoft.com/en-us/library/windows/desktop/bb776391(v=vs.85).aspx
+// * http://blogs.msdn.com/b/oldnewthing/archive/2010/09/17/10063629.aspx
+// * https://github.com/D-Programming-Language/dmd/blob/master/src/root/response.c
+
+/*private*/ string escapeWindowsArgument(string arg)
 {
-    // This may have to change under windows
-    version (Windows) enum quotechar = '"';
-    else enum quotechar = '\'';
+    // Escape trailing backslashes, so they don't escape the ending quote.
+    // Backslashes elsewhere should NOT be escaped.
+    for (int i=arg.length-1; i>=0 && arg[i]=='\\'; i--)
+        arg ~= '\\';
+    return '"' ~ std.array.replace(arg, `"`, `\"`) ~ '"';
+}
+
+version(Windows) version(unittest)
+{
+    extern (Windows) wchar_t**  CommandLineToArgvW(wchar_t*, int*);
+    extern (C) size_t wcslen(in wchar *);
+
+    unittest
+    {
+        string[] testStrings = [
+            ``, `\`, `"`, `""`, `"\`, `\"`, `\\`, `\\"`,
+            `Hello`,
+            `Hello, world`
+            `Hello, "world"`,
+            `C:\`,
+            `C:\dmd`,
+            `C:\Program Files\`,
+        ];
+
+        import std.conv;
+
+        foreach (s; testStrings)
+        {
+            auto q = escapeWindowsArgument(s);
+            LPWSTR lpCommandLine = (to!(wchar[])("Dummy.exe " ~ q) ~ "\0"w).ptr;
+            int numArgs;
+            LPWSTR* args = CommandLineToArgvW(lpCommandLine, &numArgs);
+            scope(exit) LocalFree(args);
+            assert(numArgs==2, s ~ " => " ~ q ~ " #" ~ text(numArgs-1));
+            auto arg = to!string(args[1][0..wcslen(args[1])]);
+            assert(arg == s, s ~ " => " ~ q ~ " => " ~ arg);
+        }
+    }
+}
+
+/*private*/ string escapeShellArgument(string arg)
+{
     version (Windows)
     {
-        // Escape trailing backslash, so it doesn't escape the ending quote.
-        // Backslashes elsewhere should NOT be escaped.
-        if(arg.length > 0 && arg[$-1] == '\\')
-            arg ~= '\\';
-        arg = std.array.replace(arg, `"`, `\"`);
+        return escapeWindowsArgument(arg);
+    }
+    else
+    {
+        // '\'' means: close quoted part of argument, append an escaped
+        // single quote, and reopen quotes
+        return `'` ~ std.array.replace(arg, `'`, `'\''`) ~ `'`;
+    }
 }
-    return quotechar ~ arg ~ quotechar;
+
+private string escapeShellCommand(string[] args)
+{
+    return array(map!escapeShellArgument(args)).join(" ");
 }
 
 private bool isNewer(string source, string target)
@@ -535,10 +590,10 @@ int eval(string todo)
     if (exists(binName) ||
             // Compile it
             (std.file.write(progname~".d", todo),
-                    run(compiler ~ " " ~ progname ~ ".d -of" ~ binName) == 0))
+                    run([ compiler, progname ~ ".d", "-of" ~ binName ]) == 0))
     {
         // It's there, just run it
-        run(binName);
+        exec([ binName ]);
     }
 
     // Clean pathname
