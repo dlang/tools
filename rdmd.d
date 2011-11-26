@@ -207,7 +207,12 @@ int main(string[] args)
     {
         immutable result = rebuild(root, exe, objDir, myDeps, compilerFlags,
                                    addStubMain);
-        if (result) return result;
+        if (result)
+        {
+            if (exists(exe))
+                remove(exe);
+            return result;
+        }
     }
 
     if (buildOnly)
