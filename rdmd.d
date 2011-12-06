@@ -24,6 +24,7 @@ else
 
 private bool chatty, buildOnly, dryRun, force;
 private string exe, compiler = "dmd";
+private string[] exclusions = ["std", "core", "tango"]; // packages that are to be excluded
 
 int main(string[] args)
 {
@@ -109,6 +110,7 @@ int main(string[] args)
             "dry-run", &dryRun,
             "eval", &eval,
             "loop", &loop,
+            "exclude", &exclusions,
             "force", &force,
             "help", { writeln(helpString); bailout = true; },
             "main", &addStubMain,
@@ -242,12 +244,16 @@ size_t indexOfProgram(string[] args)
 
 bool inALibrary(string source, string object)
 {
-    // Heuristics: if source starts with "std.", it's in a library
-    return std.string.startsWith(source, "std.")
-        || std.string.startsWith(source, "core.")
-        || std.string.startsWith(source, "tango.")
-        || std.string.endsWith(object, ".di")
-        || source == "object" || source == "gcstats";
+    if (std.string.endsWith(object, ".di")
+        || source == "object" || source == "gcstats")
+        return true;
+
+    foreach(string exclusion; exclusions)
+        if (std.string.startsWith(source, exclusion~'.'))
+            return true;
+
+    return false;
+
     // another crude heuristic: if a module's path is absolute, it's
     // considered to be compiled in a separate library. Otherwise,
     // it's a source module.
@@ -552,6 +558,7 @@ to dmd options, rdmd recognizes the following options:
   --dry-run         do not compile, just show what commands would be run
                       (implies --chatty)
   --eval=code       evaluate code \u00E0 la perl -e (multiple --eval allowed)
+  --exclude=package exclude a package from the build (multiple --exclude allowed)
   --force           force a rebuild even if apparently not necessary
   --help            this message
   --loop            assume \"foreach (line; stdin.byLine()) { ... }\" for eval
