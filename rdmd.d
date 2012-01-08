@@ -113,7 +113,7 @@ int main(string[] args)
             "help", { writeln(helpString); bailout = true; },
             "main", &addStubMain,
             "makedepend", &makeDepend,
-            "man", { man; bailout = true; },
+            "man", { man(); bailout = true; },
             "o", &dashOh);
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
@@ -254,7 +254,7 @@ bool inALibrary(string source, string object)
     //return isabs(mod);
 }
 
-private string myOwnTmpDir()
+private @property string myOwnTmpDir()
 {
     version (Posix)
     {
@@ -281,7 +281,7 @@ private string hash(in string root, in string[] compilerFlags)
         "--help", "-ignore", "-quiet", "-v" ];
     MD5_CTX context;
     context.start();
-    context.update(getcwd);
+    context.update(getcwd());
     context.update(root);
     foreach (flag; compilerFlags) {
         if (find(irrelevantSwitches, flag).length) continue;
@@ -425,7 +425,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     // Leave the deps file in place in case of failure, maybe the user
     // wants to take a look at it
     scope(success) collectException(std.file.remove(depsFilename));
-    scope(exit) collectException(depsReader.close); // don't care for errors
+    scope(exit) collectException(depsReader.close()); // don't care for errors
 
     // Fetch all dependencies and append them to myDeps
     auto pattern = regex(r"^(import|file|binary|config)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
@@ -536,7 +536,7 @@ private bool isNewer(string source, string target)
         timeLastModified(source) >= timeLastModified(target, SysTime(0));
 }
 
-private string helpString()
+private @property string helpString()
 {
     return
 "rdmd build "~thisVersion~"
@@ -616,7 +616,7 @@ int eval(string todo)
     return 0;
 }
 
-string thisVersion()
+@property string thisVersion()
 {
     enum d = __DATE__;
     enum month = d[0 .. 3],
