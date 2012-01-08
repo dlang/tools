@@ -110,10 +110,10 @@ int main(string[] args)
             "eval", &eval,
             "loop", &loop,
             "force", &force,
-            "help", (string) { writeln(helpString); bailout = true; },
+            "help", { writeln(helpString); bailout = true; },
             "main", &addStubMain,
             "makedepend", &makeDepend,
-            "man", (string) { man; bailout = true; },
+            "man", { man; bailout = true; },
             "o", &dashOh);
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
