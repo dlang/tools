@@ -3,6 +3,10 @@
 # Run this script to install or update your dmd toolchain from
 # github.
 #
+# Make sure zsh is installed. You may need to change the shebang line
+# to a different path (the exact location of zsh's installation
+# varies).
+#
 # First run, create a working directory, e.g. /path/to/d/. Then run
 # this script from that directory (the location of the script itself
 # doesn't matter). It will create the following subdirectories:
