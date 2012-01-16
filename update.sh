@@ -73,6 +73,7 @@ function confirmChoices() {
     if [[ ! -z $toInstall ]]; then
         echo "*** The following projects will be INSTALLED:"
         joinWithWorkingDir ${toInstall}
+        echo "*** Note: this script assumes you have a github account set up."
     fi
     if [[ ! -z $toUpdate ]]; then
         echo "*** The following projects will be UPDATED:"
