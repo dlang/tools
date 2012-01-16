@@ -102,7 +102,7 @@ function installAnew() {
     for project in $projects; do
         (
             cd $wd &&
-            git clone --quiet git@github.com:D-Programming-Language/$project.git &&
+            git clone --quiet -o upstream git://github.com/D-Programming-Language/$project.git &&
             touch $tempdir/$project
         ) &
     done
