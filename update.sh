@@ -156,22 +156,33 @@ function update() {
 
 function makeWorld() {
 # First make dmd
-    ( cd "$wd/dmd/src" && make -f posix.mak clean  && make -f posix.mak -j 8 )
+    (
+        cd "$wd/dmd/src" &&
+        make -f posix.mak clean MODEL=64 &&
+        make -f posix.mak -j 8 MODEL=64
+    )
 
 # Update the running dmd version
     echo "Copying "$wd/dmd/src/dmd" over $(which dmd)"
     sudo cp "$wd/dmd/src/dmd" $(which dmd)
 
 # Then make druntime
-    ( cd "$wd/druntime" && make -f posix.mak -j 8 DMD="$wd/dmd/src/dmd" )
+    (
+        cd "$wd/druntime" &&
+        make -f posix.mak -j 8 DMD="$wd/dmd/src/dmd" MODEL=64
+    )
 
 # Then make phobos
-    ( cd "$wd/phobos" && make -f posix.mak -j 8 DMD="$wd/dmd/src/dmd" )
+    (
+        cd "$wd/phobos" &&
+        make -f posix.mak -j 8 DMD="$wd/dmd/src/dmd" MODEL=64
+    )
 
 # Then make website
-    ( cd "$wd/d-programming-language.org" &&
-        make -f posix.mak clean DMD="$wd/dmd/src/dmd" &&
-        make -f posix.mak html -j 8 DMD="$wd/dmd/src/dmd"
+    (
+        cd "$wd/d-programming-language.org" &&
+        make -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=64 &&
+        make -f posix.mak html -j 8 DMD="$wd/dmd/src/dmd" MODEL=64
     )
 }
 
