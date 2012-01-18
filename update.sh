@@ -26,6 +26,10 @@ typeset -a projects
 projects=(dmd druntime phobos d-programming-language.org tools installer)
 # Working directory
 local wd=$(pwd)
+# Configuration
+local makecmd=make
+local parallel=8
+local model=64
 # List of projects to install vs. update. Their disjoint union is
 # $projects.
 local toInstall toUpdate
@@ -160,8 +164,8 @@ function makeWorld() {
 # First make dmd
     (
         cd "$wd/dmd/src" &&
-        make -f posix.mak clean MODEL=64 &&
-        make -f posix.mak -j 8 MODEL=64
+        $makecmd -f posix.mak clean MODEL=$model &&
+        $makecmd -f posix.mak -j $parallel MODEL=$model
     )
 
 # Update the running dmd version
@@ -178,20 +182,20 @@ function makeWorld() {
 # Then make druntime
     (
         cd "$wd/druntime" &&
-        make -f posix.mak -j 8 DMD="$wd/dmd/src/dmd" MODEL=64
+        $makecmd -f posix.mak -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
     )
 
 # Then make phobos
     (
         cd "$wd/phobos" &&
-        make -f posix.mak -j 8 DMD="$wd/dmd/src/dmd" MODEL=64
+        $makecmd -f posix.mak -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
     )
 
 # Then make website
     (
         cd "$wd/d-programming-language.org" &&
-        make -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=64 &&
-        make -f posix.mak html -j 8 DMD="$wd/dmd/src/dmd" MODEL=64
+        $makecmd -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=$model &&
+        $makecmd -f posix.mak html -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
     )
 }
 
