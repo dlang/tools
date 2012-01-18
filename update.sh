@@ -137,8 +137,8 @@ function update() {
         local project=$1
         if ! ( cd "$wd/$project" && \
             git checkout master && \
-            git pull origin master && \
-            git pull origin master --tags && \
+            git pull upstream master && \
+            git pull upstream master --tags && \
             git fetch && \
             git fetch --tags) 2>$tempdir/$project.log
         then
