@@ -1,11 +1,9 @@
-#!/bin/zsh
+#!/usr/bin/env zsh
 
 # Run this script to install or update your dmd toolchain from
 # github.
 #
-# Make sure zsh is installed. You may need to change the shebang line
-# to a different path (the exact location of zsh's installation
-# varies).
+# Make sure zsh is installed. You may need to change the shebang.
 #
 # First run, create a working directory, e.g. /path/to/d/. Then run
 # this script from that directory (the location of the script itself
@@ -28,6 +26,10 @@ typeset -a projects
 projects=(dmd druntime phobos d-programming-language.org tools installer)
 # Working directory
 local wd=$(pwd)
+# Configuration
+local makecmd=make
+local parallel=8
+local model=64
 # List of projects to install vs. update. Their disjoint union is
 # $projects.
 local toInstall toUpdate
@@ -137,8 +139,8 @@ function update() {
         local project=$1
         if ! ( cd "$wd/$project" && \
             git checkout master && \
-            git pull origin master && \
-            git pull origin master --tags && \
+            git pull upstream master && \
+            git pull upstream master --tags && \
             git fetch && \
             git fetch --tags) 2>$tempdir/$project.log
         then
@@ -162,31 +164,35 @@ function makeWorld() {
 # First make dmd
     (
         cd "$wd/dmd/src" &&
-        make -f posix.mak clean MODEL=64 &&
-        make -f posix.mak -j 8 MODEL=64
+        $makecmd -f posix.mak clean MODEL=$model &&
+        $makecmd -f posix.mak -j $parallel MODEL=$model
     )
 
 # Update the running dmd version
-    echo "Copying "$wd/dmd/src/dmd" over $(which dmd)"
-    sudo cp "$wd/dmd/src/dmd" $(which dmd)
+    local old=$(which dmd)
+    if [ -f "$old" ]; then
+        echo "Copying "$wd/dmd/src/dmd" over $old"
+        [ ! -w "$old" ] && local sudo="sudo"
+        $sudo cp "$wd/dmd/src/dmd" "$old"
+    fi
 
 # Then make druntime
     (
         cd "$wd/druntime" &&
-        make -f posix.mak -j 8 DMD="$wd/dmd/src/dmd" MODEL=64
+        $makecmd -f posix.mak -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
     )
 
 # Then make phobos
     (
         cd "$wd/phobos" &&
-        make -f posix.mak -j 8 DMD="$wd/dmd/src/dmd" MODEL=64
+        $makecmd -f posix.mak -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
     )
 
 # Then make website
     (
         cd "$wd/d-programming-language.org" &&
-        make -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=64 &&
-        make -f posix.mak html -j 8 DMD="$wd/dmd/src/dmd" MODEL=64
+        $makecmd -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=$model &&
+        $makecmd -f posix.mak html -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
     )
 }
 
