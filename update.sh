@@ -172,11 +172,8 @@ function makeWorld() {
     local old=$(which dmd)
     if [ -f "$old" ]; then
         echo "Copying "$wd/dmd/src/dmd" over $old"
-        sudo cp "$wd/dmd/src/dmd" "$old"
-    else
-        echo "Don't know where to install dmd." >&2
-        echo "Please install "$wd/dmd/src/dmd" manually in your PATH." >&2
-        exit 1
+        [ ! -w "$old" ] && local sudo="sudo"
+        $sudo cp "$wd/dmd/src/dmd" "$old"
     fi
 
 # Then make druntime
