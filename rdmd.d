@@ -471,7 +471,7 @@ private string[string] getDependencies(string rootModule, string objDir,
 // Quote an argument in a manner conforming to the behavior of
 // CommandLineToArgvW and DMD's response-file parsing algorithm.
 // References:
-// * http://msdn.microsoft.com/en-us/library/windows/desktop/bb776391(v=vs.85).aspx
+// * http://msdn.microsoft.com/en-us/library/windows/desktop/bb776391.aspx
 // * http://blogs.msdn.com/b/oldnewthing/archive/2010/09/17/10063629.aspx
 // * https://github.com/D-Programming-Language/dmd/blob/master/src/root/response.c
 
@@ -479,7 +479,7 @@ private string[string] getDependencies(string rootModule, string objDir,
 {
     // Escape trailing backslashes, so they don't escape the ending quote.
     // Backslashes elsewhere should NOT be escaped.
-    for (int i=arg.length-1; i>=0 && arg[i]=='\\'; i--)
+    for (ptrdiff_t i=arg.length-1; i>=0 && arg[i]=='\\'; i--)
         arg ~= '\\';
     return '"' ~ std.array.replace(arg, `"`, `\"`) ~ '"';
 }
