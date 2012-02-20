@@ -80,7 +80,7 @@ int main(string[] args)
             ShellExecuteA(null, "open", "http://www.digitalmars.com/d/2.0/rdmd.html", null, null, SW_SHOWNORMAL);
         }
         else
-        {        
+        {
             foreach (b; [ std.process.getenv("BROWSER"), "firefox",
                             "sensible-browser", "x-www-browser" ]) {
                 if (!b.length) continue;
@@ -170,7 +170,7 @@ int main(string[] args)
         return 0;
     }
 
-    if (!dryRun)        
+    if (!dryRun)
     {
         exists(objDir)
             ? enforce(dryRun || isDir(objDir),
@@ -203,9 +203,7 @@ int main(string[] args)
 
     // Have at it
     if (isNewer(root, exe) ||
-            std.algorithm.find!
-                ((string a) {return isNewer(a, exe);})
-                (myDeps.keys).length)
+            std.algorithm.canFind!(a => isNewer(a, exe))(myDeps.keys))
     {
         immutable result = rebuild(root, exe, objDir, myDeps, compilerFlags,
                                    addStubMain);
@@ -238,7 +236,7 @@ size_t indexOfProgram(string[] args)
             return i;
         }
     }
-    
+
     return args.length;
 }
 
@@ -406,17 +404,80 @@ private int exec(string[] argv)
 private string[string] getDependencies(string rootModule, string objDir,
         string[] compilerFlags)
 {
-    string d2obj(string dfile)
+    immutable depsFilename = rootModule ~ ".deps";
+
+    string[string] readDepsFile()
     {
-        return std.path.join(objDir, chomp(basename(dfile), ".d")~objExt);
+        string d2obj(string dfile)
+        {
+            return std.path.join(objDir, chomp(basename(dfile), ".d")~objExt);
+        }
+        auto depsReader = File(depsFilename);
+        // Delete the deps file on failure, we don't want to be fooled
+        //by it next time we try
+        scope(failure) collectException(std.file.remove(depsFilename));
+        scope(exit) collectException(depsReader.close()); // don't care for errors
+
+        // Fetch all dependencies and append them to myDeps
+        auto pattern = regex(r"^(import|file|binary|config)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
+        string[string] result;
+        foreach (string line; lines(depsReader))
+        {
+            auto regexMatch = match(line, pattern);
+            if (regexMatch.empty) continue;
+            auto captures = regexMatch.captures;
+            switch(captures[1])
+            {
+            case "import":
+                immutable moduleName = captures[2].strip(), moduleSrc = captures[3].strip();
+                if (inALibrary(moduleName, moduleSrc)) continue;
+                immutable moduleObj = d2obj(moduleSrc);
+                result[moduleSrc] = moduleObj;
+                break;
+
+            case "file":
+                result[captures[3].strip()] = null;
+                break;
+
+            case "binary":
+                result[which(captures[2].strip())] = null;
+                break;
+
+            case "config":
+                result[captures[2].strip()] = null;
+                break;
+
+            default: assert(0);
+            }
+        }
+        return result;
     }
 
-    immutable depsFilename = rootModule~".deps";
+    // Check if the old dependency file is fine
+    if (false && std.file.exists(depsFilename))
+    {
+        // See if the deps file is still in good shape
+        auto deps = readDepsFile();
+        bool mustRebuildDeps;
+        foreach (source, _; deps)
+        {
+            if (isNewer(source, depsFilename))
+            {
+                mustRebuildDeps = true;
+                break;
+            }
+        }
+        if (!mustRebuildDeps)
+        {
+            // Cool, we're in good shape
+            return deps;
+        }
+        // Fall through to rebuilding the deps file
+    }
+
     immutable rootDir = dirname(rootModule);
 
-    // myDeps maps dependency paths to corresponding .o name (or null, if not a D module)
-    string[string] myDeps;// = [ rootModule : d2obj(rootModule) ];
-    // Must collect dependencies
+    // Collect dependencies
     auto depsGetter =
         // "cd "~shellQuote(rootDir)~" && "
         [ compiler ] ~ compilerFlags ~
@@ -427,45 +488,8 @@ private string[string] getDependencies(string rootModule, string objDir,
         stderr.writeln("Failed: ", escapeShellCommand(depsGetter));
         exit(depsExitCode);
     }
-    auto depsReader = File(depsFilename);
-    // Leave the deps file in place in case of failure, maybe the user
-    // wants to take a look at it
-    scope(success) collectException(std.file.remove(depsFilename));
-    scope(exit) collectException(depsReader.close()); // don't care for errors
 
-    // Fetch all dependencies and append them to myDeps
-    auto pattern = regex(r"^(import|file|binary|config)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
-    foreach (string line; lines(depsReader))
-    {
-        auto regexMatch = match(line, pattern);
-        if (regexMatch.empty) continue;
-        auto captures = regexMatch.captures;
-        switch(captures[1])
-        {
-        case "import":
-            immutable moduleName = captures[2].strip(), moduleSrc = captures[3].strip();
-            if (inALibrary(moduleName, moduleSrc)) continue;
-            immutable moduleObj = d2obj(moduleSrc);
-            myDeps[moduleSrc] = moduleObj;
-            break;
-            
-        case "file":
-            myDeps[captures[3].strip()] = null;
-            break;
-            
-        case "binary":
-            myDeps[which(captures[2].strip())] = null;
-            break;
-        
-        case "config":
-            myDeps[captures[2].strip()] = null;
-            break;
-            
-        default: assert(0);
-        }
-    }
-
-    return myDeps;
+    return readDepsFile();
 }
 
 // Quote an argument in a manner conforming to the behavior of
@@ -573,13 +597,13 @@ to dmd options, rdmd recognizes the following options:
 immutable string importWorld = "
 module temporary;
 import std.stdio, std.algorithm, std.array, std.base64,
-    std.bigint, std.bitmanip, 
+    std.bigint, std.bitmanip,
     std.compiler, std.complex, std.conv, std.cpuid, std.cstream,
-    std.ctype, std.datetime, std.demangle, std.encoding, std.exception, 
-    std.file, 
-    std.format, std.functional, std.getopt, 
+    std.ctype, std.datetime, std.demangle, std.encoding, std.exception,
+    std.file,
+    std.format, std.functional, std.getopt,
     std.math, std.md5, std.metastrings, std.mmfile,
-    std.numeric, std.outbuffer, std.path, std.process, 
+    std.numeric, std.outbuffer, std.path, std.process,
     std.random, std.range, std.regex, std.regexp, std.signals, std.socket,
     std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream,
     std.string, std.syserror, std.system, std.traits, std.typecons,
