@@ -2,7 +2,7 @@
 
 import std.algorithm, std.array, std.c.stdlib, std.datetime,
     std.exception, std.file, std.getopt,
-    std.md5, std.path, std.process, std.regex,
+    std.md5, std.parallelism, std.path, std.process, std.regex,
     std.stdio, std.string, std.typetuple;
 
 version (Posix)
@@ -202,8 +202,7 @@ int main(string[] args)
     }
 
     // Have at it
-    if (isNewer(root, exe) ||
-            std.algorithm.canFind!(a => isNewer(a, exe))(myDeps.keys))
+    if (isNewer(root, exe) || anyNewerThan(myDeps.keys, exe))
     {
         immutable result = rebuild(root, exe, objDir, myDeps, compilerFlags,
                                    addStubMain);
@@ -455,15 +454,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     {
         // See if the deps file is still in good shape
         auto deps = readDepsFile();
-        bool mustRebuildDeps;
-        foreach (source, _; deps)
-        {
-            if (isNewer(source, depsFilename))
-            {
-                mustRebuildDeps = true;
-                break;
-            }
-        }
+        bool mustRebuildDeps = anyNewerThan(deps.keys, depsFilename);
         if (!mustRebuildDeps)
         {
             // Cool, we're in good shape
@@ -496,6 +487,32 @@ private string[string] getDependencies(string rootModule, string objDir,
     }
 
     return readDepsFile();
+}
+
+// Is any file newer than the given file?
+bool anyNewerThan(in string[] files, in string file)
+{
+    // Experimental: running isNewer in separate threads, one per file
+    if (false)
+    {
+        foreach (source; files)
+        {
+            if (isNewer(source, file))
+            {
+                return true;
+            }
+        }
+        return false;
+    } else {
+        foreach (source; taskPool.parallel(files, 1))
+        {
+            if (isNewer(source, file))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 // Quote an argument in a manner conforming to the behavior of
