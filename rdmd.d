@@ -413,9 +413,6 @@ private string[string] getDependencies(string rootModule, string objDir,
             return std.path.join(objDir, chomp(basename(dfile), ".d")~objExt);
         }
         auto depsReader = File(depsFilename);
-        // Delete the deps file on failure, we don't want to be fooled
-        //by it next time we try
-        scope(failure) collectException(std.file.remove(depsFilename));
         scope(exit) collectException(depsReader.close()); // don't care for errors
 
         // Fetch all dependencies and append them to myDeps
@@ -454,7 +451,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     }
 
     // Check if the old dependency file is fine
-    if (false && std.file.exists(depsFilename))
+    if (std.file.exists(depsFilename))
     {
         // See if the deps file is still in good shape
         auto deps = readDepsFile();
@@ -482,10 +479,19 @@ private string[string] getDependencies(string rootModule, string objDir,
         // "cd "~shellQuote(rootDir)~" && "
         [ compiler ] ~ compilerFlags ~
         ["-v", "-o-", rootModule, "-I"~rootDir];
+
+    scope(failure)
+    {
+        // Delete the deps file on failure, we don't want to be fooled
+        // by it next time we try
+        collectException(std.file.remove(depsFilename));
+    }
+
     immutable depsExitCode = run(depsGetter, depsFilename);
     if (depsExitCode)
     {
         stderr.writeln("Failed: ", escapeShellCommand(depsGetter));
+        collectException(std.file.remove(depsFilename));
         exit(depsExitCode);
     }
 
