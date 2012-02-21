@@ -503,15 +503,18 @@ bool anyNewerThan(in string[] files, in string file)
             }
         }
         return false;
-    } else {
-        foreach (source; taskPool.parallel(files, 1))
+    }
+    else
+    {
+        bool result;
+        foreach (source; taskPool.parallel(files))
         {
-            if (isNewer(source, file))
+            if (!result && isNewer(source, file))
             {
-                return true;
+                result = true;
             }
         }
-        return false;
+        return result;
     }
 }
 
