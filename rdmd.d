@@ -154,9 +154,15 @@ int main(string[] args)
         exe = "." ~ std.path.sep;
 
     // Compute the object directory and ensure it exists
-    immutable objDir = getObjPath(root, compilerFlags);
+    immutable workDir = getWorkPath(root, compilerFlags);
+    immutable objDir = std.path.join(workDir, "objs");
+    exists(workDir)
+        ? enforce(dryRun || isDir(workDir),
+                "Entry `"~workDir~"' exists but is not a directory.")
+        : mkdir(workDir);
+
     // Fetch dependencies
-    const myDeps = getDependencies(root, objDir, compilerFlags);
+    const myDeps = getDependencies(root, workDir, objDir, compilerFlags);
 
     // --makedepend mode. Just print dependencies and exit.
     if (makeDepend)
@@ -168,14 +174,6 @@ int main(string[] args)
         }
         stdout.writeln();
         return 0;
-    }
-
-    if (!dryRun)
-    {
-        exists(objDir)
-            ? enforce(dryRun || isDir(objDir),
-                    "Entry `"~objDir~"' exists but is not a directory.")
-            : mkdir(objDir);
     }
 
     // Compute executable name, check for freshness, rebuild
@@ -190,22 +188,14 @@ int main(string[] args)
     }
     else
     {
-        //exe = exeBasename ~ '.' ~ hash(root, compilerFlags);
-        version (Posix)
-            exe = std.path.join(myOwnTmpDir, rel2abs(root)[1 .. $])
-                ~ '.' ~ hash(root, compilerFlags) ~ binExt;
-        else version (Windows)
-            exe = std.path.join(myOwnTmpDir, replace(root, ".", "-"))
-                ~ '-' ~ hash(root, compilerFlags) ~ binExt;
-        else
-            static assert(0);
+        exe = std.path.join(workDir, exeBasename) ~ binExt;
     }
 
     // Have at it
     if (isNewer(root, exe) || anyNewerThan(myDeps.keys, exe))
     {
-        immutable result = rebuild(root, exe, objDir, myDeps, compilerFlags,
-                                   addStubMain);
+        immutable result = rebuild(root, exe, workDir, objDir,
+                                   myDeps, compilerFlags, addStubMain);
         if (result)
         {
             if (exists(exe))
@@ -278,7 +268,7 @@ private @property string myOwnTmpDir()
     return tmpRoot;
 }
 
-private string hash(in string root, in string[] compilerFlags)
+private string getWorkPath(in string root, in string[] compilerFlags)
 {
     enum string[] irrelevantSwitches = [
         "--help", "-ignore", "-quiet", "-v" ];
@@ -292,14 +282,11 @@ private string hash(in string root, in string[] compilerFlags)
     }
     ubyte digest[16];
     context.finish(digest);
-    return digestToString(digest);
-}
+    string hash = digestToString(digest);
 
-private string getObjPath(in string root, in string[] compilerFlags)
-{
     const tmpRoot = myOwnTmpDir;
     return std.path.join(tmpRoot,
-            "rdmd-" ~ basename(root) ~ '-' ~ hash(root, compilerFlags));
+            "rdmd-" ~ basename(root) ~ '-' ~ hash);
 }
 
 // Rebuild the executable fullExe starting from modules in myDeps
@@ -307,7 +294,7 @@ private string getObjPath(in string root, in string[] compilerFlags)
 // object file.
 
 private int rebuild(string root, string fullExe,
-        string objDir, in string[string] myDeps,
+        string workDir, string objDir, in string[string] myDeps,
         string[] compilerFlags, bool addStubMain)
 {
     string[] buildTodo()
@@ -338,8 +325,7 @@ private int rebuild(string root, string fullExe,
     auto commandLength = escapeShellCommand(todo).length;
     if (commandLength + compiler.length >= maxLength)
     {
-        auto rspName = std.path.join(myOwnTmpDir,
-                "rdmd." ~ hash(root, compilerFlags) ~ ".rsp");
+        auto rspName = std.path.join(workDir, "rdmd.rsp");
 
         // DMD uses Windows-style command-line parsing in response files
         // regardless of the operating system it's running on.
@@ -397,13 +383,13 @@ private int exec(string[] argv)
 
 // Given module rootModule, returns a mapping of all dependees .d
 // source filenames to their corresponding .o files sitting in
-// directory objDir. The mapping is obtained by running dmd -v against
+// directory workDir. The mapping is obtained by running dmd -v against
 // rootModule.
 
-private string[string] getDependencies(string rootModule, string objDir,
-        string[] compilerFlags)
+private string[string] getDependencies(string rootModule, string workDir,
+        string objDir, string[] compilerFlags)
 {
-    immutable depsFilename = rootModule ~ ".deps";
+    immutable depsFilename = std.path.join(workDir, "rdmd.deps");
 
     string[string] readDepsFile()
     {
