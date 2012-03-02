@@ -1,4 +1,3 @@
-
 import std.stdio;
 import std.getopt;
 import std.algorithm;
@@ -70,7 +69,7 @@ string topic2url(string topic)
         // Try "I'm Feeling Lucky"
         url = "http://www.google.com/search?q=" ~
               std.uri.encode(topic) ~
-              "&as_oq=site:d-programming-language.org+site:digitalmars.com&btnI=I%27m+Feeling+Lucky";
+              "&as_oq=site:dlang.org+site:digitalmars.com&btnI=I%27m+Feeling+Lucky";
     return url;
 }
 
@@ -104,14 +103,14 @@ string Ddoc(string topic)
 
     if (find(etags, topic).length)
     {
-        return "http://www.d-programming-language.org/expression.html#" ~ topic;
+        return "http://dlang.org/expression.html#" ~ topic;
     }
 
     static string[] stags = mixin (import("statement.tag"));
 
     if (find(stags, topic).length)
     {
-        return "http://www.d-programming-language.org/statement.html#" ~ topic;
+        return "http://dlang.org/statement.html#" ~ topic;
     }
     return null;
 }
@@ -854,8 +853,8 @@ string Misc(string topic)
     string[string] misc =
     [
         "D1": "http://www.digitalmars.com/d/1.0/",
-        "D2": "http://www.d-programming-language.org/",
-        "faq": "http://d-programming-language.org/faq.html",
+        "D2": "http://dlang.org/",
+        "faq": "http://dlang.org/faq.html",
     ];
 
     auto purl = topic in misc;
@@ -866,7 +865,7 @@ string Misc(string topic)
 
 string Phobos(string topic)
 {
-    string phobos = "http://www.d-programming-language.org/phobos/";
+    string phobos = "http://dlang.org/phobos/";
     if (find(topic, '.').length)
     {
         topic = replace(topic, regex("\\.", "g"), "_");
