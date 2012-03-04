@@ -342,7 +342,7 @@ private int rebuild(string root, string fullExe,
     }
     // clean up the dir containing the object file, just not in dry
     // run mode because we haven't created any!
-    if (!dryRun) {
+    if (!dryRun && exists(objDir)) {
         rmdirRecurse(objDir);
     }
     return 0;
