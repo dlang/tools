@@ -1,5 +1,6 @@
 
 import std.stdio;
+import std.file;
 import std.getopt;
 
 int main(string[] args)
