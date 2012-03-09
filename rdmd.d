@@ -660,7 +660,7 @@ int eval(string todo)
 
     // Clean pathname
     enum lifetimeInHours = 24;
-    auto cutoff = Clock.currTime() - dur!"hours"(lifetimeInHours);
+    auto cutoff = Clock.currTime() - hours(lifetimeInHours);
     foreach (DirEntry d; dirEntries(pathname, SpanMode.shallow))
     {
         if (d.timeLastModified < cutoff)
