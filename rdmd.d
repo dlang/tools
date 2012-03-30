@@ -650,7 +650,7 @@ int eval(string todo)
     auto binName = progname ~ binExt;
 
     bool compileFailure = false;
-    if (!exists(binName) || force)
+    if (force || !exists(binName))
     {
         // Compile it
         std.file.write(progname~".d", todo);
