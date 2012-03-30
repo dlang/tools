@@ -9,6 +9,7 @@ version (Posix)
 {
     enum objExt = ".o";
     enum binExt = "";
+	enum altDirSeparator = "";
 }
 else version (Windows)
 {
@@ -16,6 +17,7 @@ else version (Windows)
     extern(Windows) HINSTANCE ShellExecuteA(HWND, LPCSTR, LPCSTR, LPCSTR, LPCSTR, INT);
     enum objExt = ".obj";
     enum binExt = ".exe";
+	enum altDirSeparator = "/";
 }
 else
 {
@@ -51,13 +53,13 @@ int main(string[] args)
             // -odmydir passed
             if(!exe) // Don't let -od override -of
             {
-                // add a trailing path separator to clarify it's a dir
+                // add a trailing dir separator to clarify it's a dir
                 exe = value[1 .. $];
-                if (!std.algorithm.endsWith(exe, std.path.sep[]))
+                if (!std.algorithm.endsWith(exe, dirSeparator))
                 {
-                    exe ~= std.path.sep[];
+                    exe ~= dirSeparator;
                 }
-                assert(std.algorithm.endsWith(exe, std.path.sep[]));
+                assert(std.algorithm.endsWith(exe, dirSeparator));
             }
         }
         else if (value[0] == '-')
@@ -143,15 +145,15 @@ int main(string[] args)
     }
     auto
         root = /*rel2abs*/(chomp(args[programPos], ".d") ~ ".d"),
-        exeBasename = basename(root, ".d"),
-        exeDirname = dirname(root),
+        exeBasename = baseName(root, ".d"),
+        exeDirname = dirName(root),
         programArgs = args[programPos + 1 .. $];
     args = args[0 .. programPos];
     auto compilerFlags = args[1 .. programPos - 1];
 
     // --build-only implies the user would like a binary in the current directory
     if (buildOnly && !exe)
-        exe = "." ~ std.path.sep;
+        exe = "." ~ dirSeparator;
 
     // Compute the object directory and ensure it exists
     immutable objDir = getObjPath(root, compilerFlags);
@@ -182,20 +184,20 @@ int main(string[] args)
     if (exe)
     {
         // user-specified exe name
-        if (std.algorithm.endsWith(exe, std.path.sep[]))
+        if (std.algorithm.endsWith(exe, dirSeparator))
         {
             // user specified a directory, complete it to a file
-            exe = std.path.join(exe, exeBasename) ~ binExt;
+            exe = buildPath(exe, exeBasename) ~ binExt;
         }
     }
     else
     {
         //exe = exeBasename ~ '.' ~ hash(root, compilerFlags);
         version (Posix)
-            exe = std.path.join(myOwnTmpDir, rel2abs(root)[1 .. $])
+            exe = buildPath(myOwnTmpDir, rel2abs(root)[1 .. $])
                 ~ '.' ~ hash(root, compilerFlags) ~ binExt;
         else version (Windows)
-            exe = std.path.join(myOwnTmpDir, replace(root, ".", "-"))
+            exe = buildPath(myOwnTmpDir, replace(root, ".", "-"))
                 ~ '-' ~ hash(root, compilerFlags) ~ binExt;
         else
             static assert(0);
@@ -271,8 +273,8 @@ private @property string myOwnTmpDir()
         {
             tmpRoot = std.process.getenv("TMP");
         }
-        if (!tmpRoot) tmpRoot = std.path.join(".", ".rdmd");
-        else tmpRoot ~= sep ~ ".rdmd";
+        if (!tmpRoot) tmpRoot = buildPath(".", ".rdmd");
+        else tmpRoot ~= dirSeparator ~ ".rdmd";
     }
     exists(tmpRoot) && isDir(tmpRoot) || mkdirRecurse(tmpRoot);
     return tmpRoot;
@@ -298,8 +300,8 @@ private string hash(in string root, in string[] compilerFlags)
 private string getObjPath(in string root, in string[] compilerFlags)
 {
     const tmpRoot = myOwnTmpDir;
-    return std.path.join(tmpRoot,
-            "rdmd-" ~ basename(root) ~ '-' ~ hash(root, compilerFlags));
+    return buildPath(tmpRoot,
+            "rdmd-" ~ baseName(root) ~ '-' ~ hash(root, compilerFlags));
 }
 
 // Rebuild the executable fullExe starting from modules in myDeps
@@ -315,7 +317,7 @@ private int rebuild(string root, string fullExe,
         auto todo = compilerFlags
             ~ [ "-of"~fullExe ]
             ~ [ "-od"~objDir ]
-            ~ [ "-I"~dirname(root) ]
+            ~ [ "-I"~dirName(root) ]
             ~ [ root ];
         foreach (k, objectFile; myDeps) {
             if(objectFile !is null)
@@ -324,7 +326,7 @@ private int rebuild(string root, string fullExe,
         // Need to add void main(){}?
         if (addStubMain)
         {
-            auto stubMain = std.path.join(myOwnTmpDir, "stubmain.d");
+            auto stubMain = buildPath(myOwnTmpDir, "stubmain.d");
             std.file.write(stubMain, "void main(){}");
             todo ~= [ stubMain ];
         }
@@ -338,7 +340,7 @@ private int rebuild(string root, string fullExe,
     auto commandLength = escapeShellCommand(todo).length;
     if (commandLength + compiler.length >= maxLength)
     {
-        auto rspName = std.path.join(myOwnTmpDir,
+        auto rspName = buildPath(myOwnTmpDir,
                 "rdmd." ~ hash(root, compilerFlags) ~ ".rsp");
 
         // DMD uses Windows-style command-line parsing in response files
@@ -409,7 +411,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     {
         string d2obj(string dfile)
         {
-            return std.path.join(objDir, chomp(basename(dfile), ".d")~objExt);
+            return buildPath(objDir, chomp(baseName(dfile), ".d")~objExt);
         }
         auto depsReader = File(depsFilename);
         scope(exit) collectException(depsReader.close()); // don't care for errors
@@ -463,7 +465,7 @@ private string[string] getDependencies(string rootModule, string objDir,
         // Fall through to rebuilding the deps file
     }
 
-    immutable rootDir = dirname(rootModule);
+    immutable rootDir = dirName(rootModule);
 
     // Collect dependencies
     auto depsGetter =
@@ -645,7 +647,7 @@ int eval(string todo)
     ubyte digest[16];
     context.finish(digest);
     auto pathname = myOwnTmpDir;
-    auto progname = std.path.join(pathname,
+    auto progname = buildPath(pathname,
             "eval." ~ digestToString(digest));
     auto binName = progname ~ binExt;
 
@@ -699,10 +701,10 @@ int eval(string todo)
 
 string which(string path)
 {
-    if (path.canFind(sep) || altsep != "" && path.canFind(altsep)) return path;
-    foreach (envPath; std.algorithm.splitter(std.process.environment["PATH"], pathsep))
+    if (path.canFind(dirSeparator) || altDirSeparator != "" && path.canFind(altDirSeparator)) return path;
+    foreach (envPath; std.algorithm.splitter(std.process.environment["PATH"], pathSeparator))
     {
-        string absPath = std.path.join(envPath, path);
+        string absPath = buildPath(envPath, path);
         if (exists(absPath) && isFile(absPath)) return absPath;
     }
     throw new FileException(path, "File not found in PATH");
