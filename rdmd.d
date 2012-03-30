@@ -652,12 +652,18 @@ int eval(string todo)
             "eval." ~ digestToString(digest));
     auto binName = progname ~ binExt;
 
-    if (exists(binName) ||
-            // Compile it
-            (std.file.write(progname~".d", todo),
-                    run([ compiler, progname ~ ".d", "-of" ~ binName ]) == 0))
+    bool compileFailure = false;
+    if (force || !exists(binName))
     {
-        // It's there, just run it
+        // Compile it
+        std.file.write(progname~".d", todo);
+        if( run([ compiler, progname ~ ".d", "-of" ~ binName ]) != 0 )
+            compileFailure = true;
+    }
+
+    if (!compileFailure)
+    {
+        // Run it
         exec([ binName ]);
     }
 
