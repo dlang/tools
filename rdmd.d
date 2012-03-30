@@ -624,15 +624,16 @@ to dmd options, rdmd recognizes the following options:
 // For --eval
 immutable string importWorld = "
 module temporary;
-import std.stdio, std.algorithm, std.array, std.base64,
+import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
     std.bigint, std.bitmanip,
-    std.compiler, std.complex, std.conv, std.cpuid, std.cstream,
-    std.ctype, std.datetime, std.demangle, std.encoding, std.exception,
+    std.compiler, std.complex, std.concurrency, std.container, std.conv,
+	std.cpuid, std.cstream, std.csv,
+    std.datetime, std.demangle, std.encoding, std.exception,
     std.file,
-    std.format, std.functional, std.getopt,
-    std.math, std.md5, std.metastrings, std.mmfile,
-    std.numeric, std.outbuffer, std.path, std.process,
-    std.random, std.range, std.regex, std.regexp, std.signals, std.socket,
+    std.format, std.functional, std.getopt, std.json,
+    std.math, std.mathspecial, std.md5, std.metastrings, std.mmfile,
+    std.numeric, std.outbuffer, std.parallelism, std.path, std.process,
+    std.random, std.range, std.regex, std.signals, std.socket,
     std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream,
     std.string, std.syserror, std.system, std.traits, std.typecons,
     std.typetuple, std.uni, std.uri, std.utf, std.variant, std.xml, std.zip,
