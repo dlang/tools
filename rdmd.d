@@ -9,7 +9,7 @@ version (Posix)
 {
     enum objExt = ".o";
     enum binExt = "";
-	enum altDirSeparator = "";
+    enum altDirSeparator = "";
 }
 else version (Windows)
 {
@@ -17,7 +17,7 @@ else version (Windows)
     extern(Windows) HINSTANCE ShellExecuteA(HWND, LPCSTR, LPCSTR, LPCSTR, LPCSTR, INT);
     enum objExt = ".obj";
     enum binExt = ".exe";
-	enum altDirSeparator = "/";
+    enum altDirSeparator = "/";
 }
 else
 {
@@ -627,7 +627,7 @@ module temporary;
 import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
     std.bigint, std.bitmanip,
     std.compiler, std.complex, std.concurrency, std.container, std.conv,
-	std.cpuid, std.cstream, std.csv,
+    std.cpuid, std.cstream, std.csv,
     std.datetime, std.demangle, std.encoding, std.exception,
     std.file,
     std.format, std.functional, std.getopt, std.json,
