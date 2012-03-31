@@ -1,6 +1,8 @@
+module catdoc;
 
-import std.stdio;
+import std.file;
 import std.getopt;
+import std.stdio;
 
 int main(string[] args)
 {
