@@ -153,7 +153,7 @@ int main(string[] args)
 
     // --build-only implies the user would like a binary in the current directory
     if (buildOnly && !exe)
-        exe = "." ~ dirSeparator;
+        exe = exeDirname ~ dirSeparator;
 
     // Compute the object directory and ensure it exists
     immutable workDir = getWorkPath(root, compilerFlags);
