@@ -264,7 +264,7 @@ private @property string myOwnTmpDir()
     version (Posix)
     {
         import core.sys.posix.unistd;
-        auto tmpRoot = format("/tmp/.rdmd-%d", getuid());
+        auto tmpRoot = format("/tmp/.rdmd/%s/.rdmd-%d", __VERSION__, getuid());
     }
     else version (Windows)
     {
@@ -273,8 +273,8 @@ private @property string myOwnTmpDir()
         {
             tmpRoot = std.process.getenv("TMP");
         }
-        if (!tmpRoot) tmpRoot = buildPath(".", ".rdmd");
-        else tmpRoot ~= dirSeparator ~ ".rdmd";
+        if (!tmpRoot) tmpRoot = buildPath(".", format(".rdmd\\%s", __VERSION__));
+        else tmpRoot ~= dirSeparator ~ format(".rdmd\\%s", __VERSION__);
     }
     exists(tmpRoot) && isDir(tmpRoot) || mkdirRecurse(tmpRoot);
     return tmpRoot;
