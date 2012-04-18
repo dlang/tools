@@ -576,7 +576,7 @@ private string escapeShellCommand(string[] args)
 
 private bool isNewer(string source, string target)
 {
-    return force ||
+    return force || !source.exists() ||
         timeLastModified(source) >= timeLastModified(target, SysTime(0));
 }
 
