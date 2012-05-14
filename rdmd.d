@@ -144,7 +144,7 @@ int main(string[] args)
         return 1;
     }
     auto
-        root = /*rel2abs*/(chomp(args[programPos], ".d") ~ ".d"),
+        root = /*absolutePath*/(chomp(args[programPos], ".d") ~ ".d"),
         exeBasename = baseName(root, ".d"),
         exeDirname = dirName(root),
         programArgs = args[programPos + 1 .. $];
@@ -194,7 +194,7 @@ int main(string[] args)
     {
         //exe = exeBasename ~ '.' ~ hash(root, compilerFlags);
         version (Posix)
-            exe = buildPath(myOwnTmpDir, rel2abs(root)[1 .. $])
+            exe = buildPath(myOwnTmpDir, absolutePath(root)[1 .. $])
                 ~ '.' ~ hash(root, compilerFlags) ~ binExt;
         else version (Windows)
             exe = buildPath(myOwnTmpDir, replace(root, ".", "-"))
