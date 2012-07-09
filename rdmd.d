@@ -438,7 +438,7 @@ private string[string] getDependencies(string rootModule, string workDir,
     }
 
     // Check if the old dependency file is fine
-    if (std.file.exists(depsFilename) && !force)
+    if (!force && std.file.exists(depsFilename))
     {
         // See if the deps file is still in good shape
         auto deps = readDepsFile();
