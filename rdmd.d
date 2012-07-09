@@ -151,7 +151,7 @@ int main(string[] args)
     args = args[0 .. programPos];
     auto compilerFlags = args[1 .. programPos - 1];
 
-    // --build-only implies the user would like a binary in the current directory
+    // --build-only implies the user would like a binary in the program's directory
     if (buildOnly && !exe)
         exe = exeDirname ~ dirSeparator;
 
