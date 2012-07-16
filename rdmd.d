@@ -151,14 +151,20 @@ int main(string[] args)
     args = args[0 .. programPos];
     auto compilerFlags = args[1 .. programPos - 1];
 
-    // --build-only implies the user would like a binary in the current directory
+    // --build-only implies the user would like a binary in the program's directory
     if (buildOnly && !exe)
-        exe = "." ~ dirSeparator;
+        exe = exeDirname ~ dirSeparator;
 
     // Compute the object directory and ensure it exists
-    immutable objDir = getObjPath(root, compilerFlags);
+    immutable workDir = getWorkPath(root, compilerFlags);
+    immutable objDir = buildPath(workDir, "objs");
+    exists(workDir)
+        ? enforce(dryRun || isDir(workDir),
+                "Entry `"~workDir~"' exists but is not a directory.")
+        : mkdir(workDir);
+
     // Fetch dependencies
-    const myDeps = getDependencies(root, objDir, compilerFlags);
+    const myDeps = getDependencies(root, workDir, objDir, compilerFlags);
 
     // --makedepend mode. Just print dependencies and exit.
     if (makeDepend)
@@ -170,14 +176,6 @@ int main(string[] args)
         }
         stdout.writeln();
         return 0;
-    }
-
-    if (!dryRun)
-    {
-        exists(objDir)
-            ? enforce(dryRun || isDir(objDir),
-                    "Entry `"~objDir~"' exists but is not a directory.")
-            : mkdir(objDir);
     }
 
     // Compute executable name, check for freshness, rebuild
@@ -192,22 +190,14 @@ int main(string[] args)
     }
     else
     {
-        //exe = exeBasename ~ '.' ~ hash(root, compilerFlags);
-        version (Posix)
-            exe = buildPath(myOwnTmpDir, absolutePath(root)[1 .. $])
-                ~ '.' ~ hash(root, compilerFlags) ~ binExt;
-        else version (Windows)
-            exe = buildPath(myOwnTmpDir, replace(root, ".", "-"))
-                ~ '-' ~ hash(root, compilerFlags) ~ binExt;
-        else
-            static assert(0);
+        exe = buildPath(workDir, exeBasename) ~ binExt;
     }
 
     // Have at it
     if (isNewer(root, exe) || anyNewerThan(myDeps.keys, exe))
     {
-        immutable result = rebuild(root, exe, objDir, myDeps, compilerFlags,
-                                   addStubMain);
+        immutable result = rebuild(root, exe, workDir, objDir,
+                                   myDeps, compilerFlags, addStubMain);
         if (result)
         {
             if (exists(exe))
@@ -280,7 +270,7 @@ private @property string myOwnTmpDir()
     return tmpRoot;
 }
 
-private string hash(in string root, in string[] compilerFlags)
+private string getWorkPath(in string root, in string[] compilerFlags)
 {
     enum string[] irrelevantSwitches = [
         "--help", "-ignore", "-quiet", "-v" ];
@@ -294,14 +284,11 @@ private string hash(in string root, in string[] compilerFlags)
     }
     ubyte digest[16];
     context.finish(digest);
-    return digestToString(digest);
-}
+    string hash = digestToString(digest);
 
-private string getObjPath(in string root, in string[] compilerFlags)
-{
     const tmpRoot = myOwnTmpDir;
     return buildPath(tmpRoot,
-            "rdmd-" ~ baseName(root) ~ '-' ~ hash(root, compilerFlags));
+            "rdmd-" ~ baseName(root) ~ '-' ~ hash);
 }
 
 // Rebuild the executable fullExe starting from modules in myDeps
@@ -309,7 +296,7 @@ private string getObjPath(in string root, in string[] compilerFlags)
 // object file.
 
 private int rebuild(string root, string fullExe,
-        string objDir, in string[string] myDeps,
+        string workDir, string objDir, in string[string] myDeps,
         string[] compilerFlags, bool addStubMain)
 {
     string[] buildTodo()
@@ -340,8 +327,7 @@ private int rebuild(string root, string fullExe,
     auto commandLength = escapeShellCommand(todo).length;
     if (commandLength + compiler.length >= maxLength)
     {
-        auto rspName = buildPath(myOwnTmpDir,
-                "rdmd." ~ hash(root, compilerFlags) ~ ".rsp");
+        auto rspName = buildPath(workDir, "rdmd.rsp");
 
         // DMD uses Windows-style command-line parsing in response files
         // regardless of the operating system it's running on.
@@ -358,7 +344,7 @@ private int rebuild(string root, string fullExe,
     }
     // clean up the dir containing the object file, just not in dry
     // run mode because we haven't created any!
-    if (!dryRun) {
+    if (!dryRun && exists(objDir)) {
         rmdirRecurse(objDir);
     }
     return 0;
@@ -399,13 +385,13 @@ private int exec(string[] argv)
 
 // Given module rootModule, returns a mapping of all dependees .d
 // source filenames to their corresponding .o files sitting in
-// directory objDir. The mapping is obtained by running dmd -v against
+// directory workDir. The mapping is obtained by running dmd -v against
 // rootModule.
 
-private string[string] getDependencies(string rootModule, string objDir,
-        string[] compilerFlags)
+private string[string] getDependencies(string rootModule, string workDir,
+        string objDir, string[] compilerFlags)
 {
-    immutable depsFilename = rootModule ~ ".deps";
+    immutable depsFilename = buildPath(workDir, "rdmd.deps");
 
     string[string] readDepsFile()
     {
@@ -452,7 +438,7 @@ private string[string] getDependencies(string rootModule, string objDir,
     }
 
     // Check if the old dependency file is fine
-    if (std.file.exists(depsFilename))
+    if (!force && std.file.exists(depsFilename))
     {
         // See if the deps file is still in good shape
         auto deps = readDepsFile();
@@ -590,7 +576,7 @@ private string escapeShellCommand(string[] args)
 
 private bool isNewer(string source, string target)
 {
-    return force ||
+    return force || !source.exists() ||
         timeLastModified(source) >= timeLastModified(target, SysTime(0));
 }
 
