@@ -1,6 +1,6 @@
 /**
  * Demangler filter for D symbols: demangle the first D mangled symbol
- * found on each line (if any) from standard input and send the 
+ * found on each line (if any) from standard input and send the
  * result to standard output.
  *
  * Copyright:  2011 Michel Fortin
@@ -31,7 +31,7 @@ to standard output.");
         return 0; // help called normally
     }
 
-    foreach (line; stdin.byLine(File.KeepTerminator.yes))
+    foreach (line; stdin.byLine(KeepTerminator.yes))
     {
         size_t beginIdx, endIdx;
 
