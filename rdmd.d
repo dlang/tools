@@ -25,8 +25,19 @@ else
 }
 
 private bool chatty, buildOnly, dryRun, force;
-private string exe, compiler = "dmd";
+private string exe;
 private string[] exclusions = ["std", "core", "tango"]; // packages that are to be excluded
+
+version (DigitalMars)
+    private enum defaultCompiler = "dmd";
+else version (GNU)
+    private enum defaultCompiler = "gdmd";
+else version (LDC)
+    private enum defaultCompiler = "ldmd2";
+else
+    static assert(false, "Unknown compiler");
+
+private string compiler = defaultCompiler;
 
 int main(string[] args)
 {
@@ -588,11 +599,11 @@ Usage: rdmd [RDMD AND DMD OPTIONS]... program [PROGRAM OPTIONS]...
 Builds (with dependents) and runs a D program.
 Example: rdmd -release myprog --myprogparm 5
 
-Any option to be passed to dmd must occur before the program name. In addition
-to dmd options, rdmd recognizes the following options:
+Any option to be passed to the compiler must occur before the program name. In
+addition to compiler options, rdmd recognizes the following options:
   --build-only      just build the executable, don't run it
-  --chatty          write dmd commands to stdout before executing them
-  --compiler=comp   use the specified compiler (e.g. gdmd) instead of dmd
+  --chatty          write compiler commands to stdout before executing them
+  --compiler=comp   use the specified compiler (e.g. gdmd) instead of %s
   --dry-run         do not compile, just show what commands would be run
                       (implies --chatty)
   --eval=code       evaluate code \u00E0 la perl -e (multiple --eval allowed)
@@ -604,7 +615,7 @@ to dmd options, rdmd recognizes the following options:
   --makedepend      print dependencies in makefile format and exit
   --man             open web browser on manual page
   --shebang         rdmd is in a shebang line (put as first argument)
-";
+".format(compiler);
 }
 
 // For --eval
