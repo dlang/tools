@@ -615,7 +615,7 @@ addition to compiler options, rdmd recognizes the following options:
   --makedepend      print dependencies in makefile format and exit
   --man             open web browser on manual page
   --shebang         rdmd is in a shebang line (put as first argument)
-".format(compiler);
+".format(defaultCompiler);
 }
 
 // For --eval
