@@ -1,78 +1,67 @@
 /**
- * Demangler filter for D symbols: demangle the first D mangled symbol
- * found on each line (if any) from standard input and send the
- * result to standard output.
+ * An improved D symbol demangler.
  *
- * Copyright:  2011 Michel Fortin
- * License:    <a href="http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
- * Author:     Michel Fortin
+ * Replaces *all* occurrences of mangled D symbols in the input with their
+ * unmangled form, and writes the result to standard output.
+ *
+ * Copyright: Copyright H. S. Teoh 2012.
+ * License:   <a href="http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
+ * Authors:   H. S. Teoh
  */
-/*              Copyright Michel Fortin 2011.
- * Distributed under the Boost Software License, Version 1.0.
- *    (See accompanying file LICENSE_1_0.txt or copy at
- *          http://www.boost.org/LICENSE_1_0.txt)
- */
-module ddemangle;
 
-import std.stdio;
-import std.ascii;
 import core.demangle;
+import std.getopt;
+import std.regex;
+import std.stdio;
+import std.c.stdlib;
 
-int main(string[] args)
+void showhelp(string[] args)
 {
-    if (args.length != 1)
-    {    // this takes care of the --help / -h case too!
-        stderr.writeln("Usage: ", args[0], " [-h|--help]");
-        stderr.writeln("Demangler filter for D symbols: demangle the first D mangled symbol
-found on each line (if any) from standard input and send the result
-to standard output.");
-        if (args.length != 2 || (args[1] != "--help" && args[1] != "-h"))
-            return 1; // invalid arguments
-        return 0; // help called normally
-    }
+    stderr.writef(q"ENDHELP
+Usage: %s [options] <inputfile>
+Demangles all occurrences of mangled D symbols in the input and writes to
+standard output.
+If <inputfile> is a single dash '-', standard input is read.
+Options:
+    --help, -h    Show this help
+ENDHELP", args[0]);
 
-    foreach (line; stdin.byLine(KeepTerminator.yes))
-    {
-        size_t beginIdx, endIdx;
-
-        enum State { searching_, searchingD, searchingEnd, done }
-        State state;
-        foreach (i, char c; line)
-        {
-            switch (state)
-            {
-            case State.searching_:
-                if (c == '_')
-                {
-                    beginIdx = i;
-                    state = State.searchingD;
-                }
-                break;
-            case State.searchingD:
-                if (c == 'D')
-                    state = State.searchingEnd;
-                else if (c != '_')
-                    state = State.searching_;
-                break;
-            case State.searchingEnd:
-                if (!isAlphaNum(c) && c != '_')
-                {
-                    endIdx = i;
-                    state = State.done;
-                }
-                break;
-            default:
-                break;
-            }
-            if (state == State.done)
-                break;
-        }
-
-        if (endIdx > beginIdx)
-            write(line[0..beginIdx], demangle(line[beginIdx..endIdx]), line[endIdx..$]);
-        else
-            write(line);
-    }
-    return 0;
+    exit(1);
 }
 
+void main(string[] args)
+{
+    // Parse command-line arguments
+    try
+    {
+        getopt(args,
+            "help|h", { showhelp(args); },
+        );
+        if (args.length > 2) showhelp(args);
+    }
+    catch(Exception e)
+    {
+        stderr.writeln(e.msg);
+        stderr.writeln();
+        showhelp(args);
+    }
+
+    // Process input
+    try
+    {
+        auto f = (args.length==2 && args[1]!="-") ? File(args[1], "r") : stdin;
+        auto r = regex(r"\b(_D[0-9a-zA-Z_]+)\b", "g");
+
+        foreach (line; stdin.byLine())
+        {
+            writeln(replace!((a) => demangle(a.hit))(line, r));
+        }
+    }
+    catch(Exception e)
+    {
+        stderr.writeln(e.msg);
+        exit(1);
+    }
+}
+
+// vim:set sw=4 ts=4 expandtab:
