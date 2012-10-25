@@ -1,5 +1,8 @@
+.*.swp
 *.o
 catdoc
+ddemangle
+detab
 dman
 rdmd
-
+tolf
