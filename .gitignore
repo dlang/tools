@@ -1,5 +1,11 @@
 *.o
-catdoc
-dman
-rdmd
+*.tag
+/catdoc
+/dman
+/rdmd
+/ddemangle
+/dget
+/tolf
+/findtags
+/detab
 
