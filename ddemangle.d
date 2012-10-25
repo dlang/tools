@@ -24,7 +24,6 @@ standard output.
 If <inputfile> is a single dash '-', standard input is read.
 Options:
     --help, -h    Show this help
-    --debug, -D   Enable debugging
 ENDHELP", args[0]);
 
     exit(1);
@@ -32,14 +31,11 @@ ENDHELP", args[0]);
 
 void main(string[] args)
 {
-    bool dbg = false;
-
     // Parse command-line arguments
     try
     {
         getopt(args,
             "help|h", { showhelp(args); },
-            "debug|D", &dbg
         );
         if (args.length > 2) showhelp(args);
     }
@@ -54,16 +50,11 @@ void main(string[] args)
     try
     {
         auto f = (args.length==2 && args[1]!="-") ? File(args[1], "r") : stdin;
-
-        alias Captures!(typeof(f.byLine().front)) Cap;
-        auto filter = !dbg ? (Cap a) => demangle(a.hit)
-                           : (Cap a) => ">>>"~demangle(a.hit)~"<<<";
-
         auto r = regex(r"\b(_D[0-9a-zA-Z_]+)\b", "g");
 
         foreach (line; stdin.byLine())
         {
-            writeln(replace!filter(line, r));
+            writeln(replace!((a) => demangle(a.hit))(line, r));
         }
     }
     catch(Exception e)
