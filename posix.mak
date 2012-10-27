@@ -4,7 +4,7 @@ PREFIX ?= /usr/local/bin
 WITH_DOC ?= no
 DOC ?= ../d-programming-language.org/web
 
-MODEL = 32
+MODEL ?= 32
 ifneq (,$(MODEL))
     MODEL_FLAG ?= -m$(MODEL)
 endif
