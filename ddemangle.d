@@ -18,10 +18,10 @@ import std.c.stdlib;
 void showhelp(string[] args)
 {
     stderr.writef(q"ENDHELP
-Usage: %s [options] <inputfile>
+Usage: %s [options] [<inputfile>]
 Demangles all occurrences of mangled D symbols in the input and writes to
 standard output.
-If <inputfile> is a single dash '-', standard input is read.
+If <inputfile> is omitted, standard input is read.
 Options:
     --help, -h    Show this help
 ENDHELP", args[0]);
@@ -49,7 +49,7 @@ void main(string[] args)
     // Process input
     try
     {
-        auto f = (args.length==2 && args[1]!="-") ? File(args[1], "r") : stdin;
+        auto f = (args.length==2) ? File(args[1], "r") : stdin;
         auto r = regex(r"\b(_D[0-9a-zA-Z_]+)\b", "g");
 
         foreach (line; stdin.byLine())
