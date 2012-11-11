@@ -1,3 +1,4 @@
+
 import std.stdio;
 import std.getopt;
 import std.algorithm;
@@ -8,12 +9,16 @@ import std.process;
 
 int main(string[] args)
 {
+    char dman = 'd';
+    if (find(args[0], "cman").length)
+        dman = 'c';
+
     if (args.length < 2)
     {
-        writeln("dman: Look up D topics in the manual
+        writefln("%sman: Look up %s topics in the manual
 Usage:
-    dman [--man] topic
-");
+    %sman [--man] topic
+", dman, dman == 'c' ? 'C' : 'D', dman);
         return 1;
     }
 
@@ -24,29 +29,31 @@ Usage:
     {   browse("http://www.digitalmars.com/ctg/dman.html");
         return 0;
     }
-    else if (args.length != 2)
+    else if (args.length < 2)
     {
-        writeln("dman: no topic");
+        writefln("%sman: no topic", dman);
         return 1;
     }
 
     auto topic = args[1];
+    foreach (a; args[2..$])
+        topic ~= " " ~ a;
 
-    auto url = topic2url(topic);
+    auto url = topic2url(dman, topic);
     if (url)
     {
         browse(url);
     }
     else
     {
-        writefln("dman: topic '%s' not found", topic);
+        writefln("%sman: topic '%s' not found", dman, topic);
         return 1;
     }
 
     return 0;
 }
 
-string topic2url(string topic)
+string topic2url(char dman, string topic)
 {
     /* Instead of hardwiring these, dman should read from a .json database pointed to
      * by sc.ini or dmd.conf.
@@ -54,22 +61,41 @@ string topic2url(string topic)
 
     string url;
 
-    url = DmcCommands(topic);
-    if (!url)
-        url = Ddoc(topic);
-    if (!url)
-        url = CHeader(topic);
-    if (!url)
-        url = Clib(topic);
-    if (!url)
-        url = Misc(topic);
-    if (!url)
-        url = Phobos(topic);
-    if (!url)
-        // Try "I'm Feeling Lucky"
-        url = "http://www.google.com/search?q=" ~
-              std.uri.encode(topic) ~
-              "&as_oq=site:dlang.org+site:digitalmars.com&btnI=I%27m+Feeling+Lucky";
+    if (dman == 'c')
+    {
+        url = DmcCommands(topic);
+        if (!url)
+            url = CHeader(topic);
+        if (!url)
+            url = Clib(topic);
+        if (!url)
+            url = Misc(topic);
+        if (!url)
+            // Try "I'm Feeling Lucky"
+            url = "http://www.google.com/search?q=" ~
+                  "site:digitalmars.com " ~
+                  std.uri.encode(topic) ~
+                  "&btnI=I%27m+Feeling+Lucky";
+    }
+    else
+    {
+        url = DmcCommands(topic);
+        if (!url)
+            url = Ddoc(topic);
+        if (!url)
+            url = Misc(topic);
+        if (!url)
+            url = Phobos(topic);
+        if (!url)
+            url = CHeader(topic);
+        if (!url)
+            url = Clib(topic);
+        if (!url)
+            // Try "I'm Feeling Lucky"
+            url = "http://www.google.com/search?q=" ~
+                  std.uri.encode(topic) ~
+                  "&as_oq=site:d-programming-language.org+site:digitalmars.com&btnI=I%27m+Feeling+Lucky";
+    }
     return url;
 }
 
@@ -103,14 +129,14 @@ string Ddoc(string topic)
 
     if (find(etags, topic).length)
     {
-        return "http://dlang.org/expression.html#" ~ topic;
+        return "http://www.d-programming-language.org/expression.html#" ~ topic;
     }
 
     static string[] stags = mixin (import("statement.tag"));
 
     if (find(stags, topic).length)
     {
-        return "http://dlang.org/statement.html#" ~ topic;
+        return "http://www.d-programming-language.org/statement.html#" ~ topic;
     }
     return null;
 }
@@ -853,8 +879,8 @@ string Misc(string topic)
     string[string] misc =
     [
         "D1": "http://www.digitalmars.com/d/1.0/",
-        "D2": "http://dlang.org/",
-        "faq": "http://dlang.org/faq.html",
+        "D2": "http://www.d-programming-language.org/",
+        "faq": "http://d-programming-language.org/faq.html",
     ];
 
     auto purl = topic in misc;
@@ -863,9 +889,35 @@ string Misc(string topic)
     return null;
 }
 
+string moduleTag(string modulename)
+{
+    return
+    "static string[] " ~ modulename ~ "_tags = mixin (import(\"std_" ~ modulename ~ ".tag\"));
+    if (find(" ~ modulename ~ "_tags, topic).length)
+    {
+        return \"http://www.d-programming-language.org/phobos/std_" ~ modulename ~ ".html#\" ~ topic;
+    }
+    ";
+}
+
 string Phobos(string topic)
 {
-    string phobos = "http://dlang.org/phobos/";
+    mixin(moduleTag("algorithm"));
+    mixin(moduleTag("array"));
+    mixin(moduleTag("file"));
+    mixin(moduleTag("format"));
+    mixin(moduleTag("math"));
+    mixin(moduleTag("parallelism"));
+    mixin(moduleTag("path"));
+    mixin(moduleTag("random"));
+    mixin(moduleTag("range"));
+    mixin(moduleTag("regex"));
+    mixin(moduleTag("stdio"));
+    mixin(moduleTag("string"));
+    mixin(moduleTag("traits"));
+    mixin(moduleTag("typetuple"));
+
+    string phobos = "http://www.d-programming-language.org/phobos/";
     if (find(topic, '.').length)
     {
         topic = replace(topic, regex("\\.", "g"), "_");
