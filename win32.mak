@@ -1,4 +1,3 @@
-
 DOC=\cbx\mars\doc
 PHOBOSDOC=\cbx\mars\doc\phobos
 # Where scp command copies to
@@ -33,11 +32,11 @@ SCP=$(CP)
 
 DFLAGS=-O -release
 
-TARGETS=dman.exe findtags.exe
+TARGETS=dman.exe findtags.exe rdmd.exe
 
-MAKEFILES=win32.mak
+MAKEFILES=win32.mak posix.mak
 
-SRCS=dman.d findtags.d
+SRCS=dman.d findtags.d rdmd.d ddemangle.d
 
 TAGS=	expression.tag \
 	statement.tag \
@@ -113,6 +112,9 @@ findtags.exe : findtags.d
 
 dman.exe : dman.d $(TAGS)
 	$(DMD) $(DFLAGS) dman.d -J.
+
+rdmd.exe : rdmd.d
+	$(DMD) $(DFLAGS) rdmd.d advapi32.lib
 
 clean :
 	del $(TARGETS) $(TAGS)
