@@ -28,6 +28,13 @@ private bool chatty, buildOnly, dryRun, force;
 private string exe;
 private string[] exclusions = ["std", "core", "tango"]; // packages that are to be excluded
 
+enum Linker
+{
+    ld,
+    optlink,
+    unilink
+}
+
 version (DigitalMars)
     private enum defaultCompiler = "dmd";
 else version (GNU)
@@ -38,6 +45,27 @@ else
     static assert(false, "Unknown compiler");
 
 private string compiler = defaultCompiler;
+
+version (Windows)
+    private enum defaultLinker = Linker.optlink;
+else version (posix)
+    private enum defaultLinker = Linker.ld;
+else
+    static assert(false, "Unknown OS");
+
+Linker stringToLinker(string s)
+{
+    switch (s.toLower()) with (Linker)
+    {
+        case "optlink": return optlink;
+        case "unilink":
+        case "ulink":   return unilink;
+        case "ld":      return ld;
+        default:        assert(0, "Unrecognized linker: " ~ s);
+    }
+}
+
+private Linker linker = defaultLinker;
 
 int main(string[] args)
 {
@@ -114,12 +142,14 @@ int main(string[] args)
     bool addStubMain;// set by --main
     string[] eval;     // set by --eval
     bool makeDepend;
+    string linkerStr;
     getopt(args,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
             "build-only", &buildOnly,
             "chatty", &chatty,
             "compiler", &compiler,
+            "linker", &linkerStr,
             "dry-run", &dryRun,
             "eval", &eval,
             "loop", &loop,
@@ -130,6 +160,7 @@ int main(string[] args)
             "makedepend", &makeDepend,
             "man", { man(); bailout = true; },
             "o", &dashOh);
+    if (linkerStr.length) linker = stringToLinker(linkerStr);
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
 
@@ -313,7 +344,9 @@ private int rebuild(string root, string fullExe,
     string[] buildTodo()
     {
         auto todo = compilerFlags
-            ~ [ "-of"~fullExe ]
+            ~ ((linker == Linker.unilink)
+                        ? [ "-c" ]
+                        : [ "-of"~fullExe ])
             ~ [ "-od"~objDir ]
             ~ [ "-I"~dirName(root) ]
             ~ [ root ];
@@ -353,6 +386,28 @@ private int rebuild(string root, string fullExe,
         // build failed
         return result;
     }
+    if (linker == Linker.unilink)
+    {
+        // link manually
+        string[] linktodo;
+        linktodo ~= getFiles(objDir, objExt);
+        linktodo ~= format("-ZO%s", exe);
+        auto linkLength = escapeShellCommand(linktodo).length;
+        if (linkLength + "ulink".length >= maxLength)
+        {
+            auto rspName = buildPath(workDir, "ulink.rsp");
+            std.file.write(rspName, array(map!escapeWindowsArgument(linktodo)).join(" "));
+            linktodo = [ "@"~rspName ];
+        }
+
+        immutable linkResult = run([ "ulink" ] ~ linktodo);
+        if (linkResult)
+        {
+            // link failed
+            return linkResult;
+        }
+    }
+
     // clean up the dir containing the object file, just not in dry
     // run mode because we haven't created any!
     if (!dryRun && exists(objDir)) {
@@ -604,6 +659,7 @@ addition to compiler options, rdmd recognizes the following options:
   --build-only      just build the executable, don't run it
   --chatty          write compiler commands to stdout before executing them
   --compiler=comp   use the specified compiler (e.g. gdmd) instead of %s
+  --linker=link     use the specified linker (e.g. unilink) instead of %s
   --dry-run         do not compile, just show what commands would be run
                       (implies --chatty)
   --eval=code       evaluate code \u00E0 la perl -e (multiple --eval allowed)
@@ -615,7 +671,7 @@ addition to compiler options, rdmd recognizes the following options:
   --makedepend      print dependencies in makefile format and exit
   --man             open web browser on manual page
   --shebang         rdmd is in a shebang line (put as first argument)
-".format(defaultCompiler);
+".format(defaultCompiler, defaultLinker);
 }
 
 // For --eval
@@ -712,6 +768,15 @@ string which(string path)
         if (exists(absPath) && isFile(absPath)) return absPath;
     }
     throw new FileException(path, "File not found in PATH");
+}
+
+string[] getFiles(string path, string ext)
+{
+    string[] res;
+    foreach (string entry; dirEntries(path, SpanMode.shallow))
+        if (entry.isFile && entry.extension == ext)
+            res ~= entry;
+    return res;
 }
 
 /*
