@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Writes the latest tagged release from the dmd project on
+# github. This script expects a directory structure in which dmd/ and
+# tools/ live in the same directory.
+
+set -o errexit
+cd $(dirname $0)/../dmd
+git fetch --tags git@github.com:D-Programming-Language/dmd
+git tag | grep '^v[0-9]\.[0-9]*$' | sed 's/^v//' | sort -nr | head -n 1
