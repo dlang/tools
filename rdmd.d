@@ -606,7 +606,7 @@ addition to compiler options, rdmd recognizes the following options:
   --compiler=comp   use the specified compiler (e.g. gdmd) instead of %s
   --dry-run         do not compile, just show what commands would be run
                       (implies --chatty)
-  --eval=code       evaluate code \u00E0 la perl -e (multiple --eval allowed)
+  --eval=code       evaluate code as in perl -e (multiple --eval allowed)
   --exclude=package exclude a package from the build (multiple --exclude allowed)
   --force           force a rebuild even if apparently not necessary
   --help            this message
