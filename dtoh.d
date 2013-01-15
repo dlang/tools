@@ -144,8 +144,8 @@ void main(string[] args) {
 		}
 
 		string[string] typeMapping = [
-			"int"		: "long", // D int is fixed at 32 bit so I think this is more correct than using C int...
-			"uint"		: "unsigned long",
+			"int"		: "int",
+			"uint"		: "unsigned int",
 			"byte"		: "char",
 			"ubyte"		: "unsigned char",
 			"short"		: "short",
