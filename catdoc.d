@@ -1,3 +1,4 @@
+#!/usr/bin/env rdmd
 module catdoc;
 
 import std.file;
