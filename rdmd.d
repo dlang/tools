@@ -1,8 +1,8 @@
 // Written in the D programming language.
 
 import std.algorithm, std.array, std.c.stdlib, std.datetime,
-    std.exception, std.file, std.getopt,
-    std.md5, std.parallelism, std.path, std.process, std.regex,
+    std.digest.md, std.exception, std.file, std.getopt,
+    std.parallelism, std.path, std.process, std.regex,
     std.stdio, std.string, std.typetuple;
 
 version (Posix)
@@ -42,8 +42,7 @@ private string compiler = defaultCompiler;
 int main(string[] args)
 {
     //writeln("Invoked with: ", map!(q{a ~ ", "})(args));
-    if (args.length > 1 && std.algorithm.startsWith(args[1],
-                    "--shebang ", "--shebang="))
+    if (args.length > 1 && args[1].startsWith("--shebang ", "--shebang="))
     {
         // multiple options wrapped in one
         auto a = args[1]["--shebang ".length .. $];
@@ -66,11 +65,11 @@ int main(string[] args)
             {
                 // add a trailing dir separator to clarify it's a dir
                 exe = value[1 .. $];
-                if (!std.algorithm.endsWith(exe, dirSeparator))
+                if (!exe.endsWith(dirSeparator))
                 {
                     exe ~= dirSeparator;
                 }
-                assert(std.algorithm.endsWith(exe, dirSeparator));
+                assert(exe.endsWith(dirSeparator));
             }
         }
         else if (value[0] == '-')
@@ -87,18 +86,18 @@ int main(string[] args)
     // start the web browser on documentation page
     void man()
     {
+        const page = "http://dlang.org/rdmd.html";
         version(Windows)
         {
             // invoke browser that is associated with the http protocol
-            ShellExecuteA(null, "open", "http://www.digitalmars.com/d/2.0/rdmd.html", null, null, SW_SHOWNORMAL);
+            ShellExecuteA(null, "open", page, null, null, SW_SHOWNORMAL);
         }
         else
         {
             foreach (b; [ std.process.getenv("BROWSER"), "firefox",
                             "sensible-browser", "x-www-browser" ]) {
                 if (!b.length) continue;
-
-                if (!system(b~" http://www.digitalmars.com/d/2.0/rdmd.html"))
+                if (!system(b ~ " " ~ page))
                     return;
             }
         }
@@ -155,9 +154,9 @@ int main(string[] args)
         return 1;
     }
     auto
-        root = /*absolutePath*/(chomp(args[programPos], ".d") ~ ".d"),
-        exeBasename = baseName(root, ".d"),
-        exeDirname = dirName(root),
+        root = args[programPos].chomp(".d") ~ ".d",
+        exeBasename = root.baseName(".d"),
+        exeDirname = root.dirName,
         programArgs = args[programPos + 1 .. $];
     args = args[0 .. programPos];
     auto compilerFlags = args[1 .. programPos - 1];
@@ -169,10 +168,20 @@ int main(string[] args)
     // Compute the object directory and ensure it exists
     immutable workDir = getWorkPath(root, compilerFlags);
     immutable objDir = buildPath(workDir, "objs");
-    exists(workDir)
-        ? enforce(dryRun || isDir(workDir),
-                "Entry `"~workDir~"' exists but is not a directory.")
-        : mkdir(workDir);
+    yap("stat ", workDir);
+    DirEntry workDirEntry;
+    const workDirExists =
+        collectException(workDirEntry = dirEntry(workDir)) is null;
+    if (workDirExists)
+    {
+        enforce(dryRun || workDirEntry.isDir,
+                "Entry `"~workDir~"' exists but is not a directory.");
+    }
+    else
+    {
+        yap("mkdir ", workDir);
+        mkdir(workDir);
+    }
 
     // Fetch dependencies
     const myDeps = getDependencies(root, workDir, objDir, compilerFlags);
@@ -193,7 +202,7 @@ int main(string[] args)
     if (exe)
     {
         // user-specified exe name
-        if (std.algorithm.endsWith(exe, dirSeparator))
+        if (exe.endsWith(dirSeparator))
         {
             // user specified a directory, complete it to a file
             exe = buildPath(exe, exeBasename) ~ binExt;
@@ -205,7 +214,8 @@ int main(string[] args)
     }
 
     // Have at it
-    if (isNewer(root, exe) || anyNewerThan(myDeps.keys, exe))
+    auto exeTime = exe.timeLastModified(SysTime.min);
+    if ((root ~ myDeps.keys).anyNewerThan(exeTime))
     {
         immutable result = rebuild(root, exe, workDir, objDir,
                                    myDeps, compilerFlags, addStubMain);
@@ -229,13 +239,12 @@ int main(string[] args)
 
 size_t indexOfProgram(string[] args)
 {
-    foreach(i, arg; args)
+    foreach(i, arg; args[1 .. $])
     {
-        if (i > 0 &&
-                !arg.startsWith('-', '@') &&
+        if (!arg.startsWith('-', '@') &&
                 !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map"))
         {
-            return i;
+            return i + 1;
         }
     }
 
@@ -244,12 +253,12 @@ size_t indexOfProgram(string[] args)
 
 bool inALibrary(string source, string object)
 {
-    if (std.string.endsWith(object, ".di")
-        || source == "object" || source == "gcstats")
+    if (object.endsWith(".di")
+            || source == "object" || source == "gcstats")
         return true;
 
     foreach(string exclusion; exclusions)
-        if (std.string.startsWith(source, exclusion~'.'))
+        if (source.startsWith(exclusion~'.'))
             return true;
 
     return false;
@@ -277,7 +286,19 @@ private @property string myOwnTmpDir()
         if (!tmpRoot) tmpRoot = buildPath(".", ".rdmd");
         else tmpRoot ~= dirSeparator ~ ".rdmd";
     }
-    exists(tmpRoot) && isDir(tmpRoot) || mkdirRecurse(tmpRoot);
+    yap("stat ", tmpRoot);
+    DirEntry tmpRootEntry;
+    const tmpRootExists =
+        collectException(tmpRootEntry = dirEntry(tmpRoot)) is null;
+    if (!tmpRootExists)
+    {
+        mkdirRecurse(tmpRoot);
+    }
+    else
+    {
+        enforce(tmpRootEntry.isDir,
+                "Entry `"~tmpRoot~"' exists but is not a directory.");
+    }
     return tmpRoot;
 }
 
@@ -285,17 +306,18 @@ private string getWorkPath(in string root, in string[] compilerFlags)
 {
     enum string[] irrelevantSwitches = [
         "--help", "-ignore", "-quiet", "-v" ];
-    MD5_CTX context;
+
+    MD5 context;
     context.start();
-    context.update(getcwd());
-    context.update(root);
-    foreach (flag; compilerFlags) {
-        if (find(irrelevantSwitches, flag).length) continue;
-        context.update(flag);
+    context.put(getcwd().representation);
+    context.put(root.representation);
+    foreach (flag; compilerFlags)
+    {
+        if (irrelevantSwitches.canFind(flag)) continue;
+        context.put(flag.representation);
     }
-    ubyte digest[16];
-    context.finish(digest);
-    string hash = digestToString(digest);
+    auto digest = context.finish();
+    string hash = toHexString(digest);
 
     const tmpRoot = myOwnTmpDir;
     return buildPath(tmpRoot,
@@ -355,8 +377,14 @@ private int rebuild(string root, string fullExe,
     }
     // clean up the dir containing the object file, just not in dry
     // run mode because we haven't created any!
-    if (!dryRun && exists(objDir)) {
-        rmdirRecurse(objDir);
+    if (!dryRun)
+    {
+        yap("stat ", objDir);
+        if (objDir.exists)
+        {
+            yap("rmdirRecurse ", objDir);
+            rmdirRecurse(objDir);
+        }
     }
     return 0;
 }
@@ -366,7 +394,7 @@ private int rebuild(string root, string fullExe,
 private int run(string[] argv, string output = null, bool shell = true)
 {
     string command = escapeShellCommand(argv);
-    if (chatty) writeln(command);
+    yap(command);
     if (dryRun) return 0;
 
     if (output)
@@ -378,15 +406,15 @@ private int run(string[] argv, string output = null, bool shell = true)
     version (Windows)
     {
         shell = true;
-
         // Follow CMD's rules for quote parsing (see "cmd /?").
         command = '"' ~ command ~ '"';
     }
 
     if (shell)
+    {
         return system(command);
-    else
-        return execv(argv[0], argv);
+    }
+    return execv(argv[0], argv);
 }
 
 private int exec(string[] argv)
@@ -408,8 +436,9 @@ private string[string] getDependencies(string rootModule, string workDir,
     {
         string d2obj(string dfile)
         {
-            return buildPath(objDir, chomp(baseName(dfile), ".d")~objExt);
+            return buildPath(objDir, dfile.baseName.chomp(".d") ~ objExt);
         }
+        yap("read ", depsFilename);
         auto depsReader = File(depsFilename);
         scope(exit) collectException(depsReader.close()); // don't care for errors
 
@@ -449,17 +478,24 @@ private string[string] getDependencies(string rootModule, string workDir,
     }
 
     // Check if the old dependency file is fine
-    if (!force && std.file.exists(depsFilename))
+    if (!force)
     {
-        // See if the deps file is still in good shape
-        auto deps = readDepsFile();
-        bool mustRebuildDeps = anyNewerThan(deps.keys, depsFilename);
-        if (!mustRebuildDeps)
+        yap("stat ", depsFilename);
+        DirEntry depsEntry;
+        bool depsEntryExists =
+            collectException(depsEntry = depsFilename.dirEntry) is null;
+        if (depsEntryExists)
         {
-            // Cool, we're in good shape
-            return deps;
+            // See if the deps file is still in good shape
+            auto deps = readDepsFile();
+            bool mustRebuildDeps = deps.keys.anyNewerThan(depsEntry.timeLastModified);
+            if (!mustRebuildDeps)
+            {
+                // Cool, we're in good shape
+                return deps;
+            }
+            // Fall through to rebuilding the deps file
         }
-        // Fall through to rebuilding the deps file
     }
 
     immutable rootDir = dirName(rootModule);
@@ -491,12 +527,19 @@ private string[string] getDependencies(string rootModule, string workDir,
 // Is any file newer than the given file?
 bool anyNewerThan(in string[] files, in string file)
 {
-    // Experimental: running isNewer in separate threads, one per file
+    yap("stat ", file);
+    return files.anyNewerThan(file.timeLastModified);
+}
+
+// Is any file newer than the given file?
+bool anyNewerThan(in string[] files, SysTime t)
+{
+    // Experimental: running newerThan in separate threads, one per file
     if (false)
     {
         foreach (source; files)
         {
-            if (isNewer(source, file))
+            if (source.newerThan(t))
             {
                 return true;
             }
@@ -508,7 +551,7 @@ bool anyNewerThan(in string[] files, in string file)
         bool result;
         foreach (source; taskPool.parallel(files))
         {
-            if (!result && isNewer(source, file))
+            if (!result && source.newerThan(t))
             {
                 result = true;
             }
@@ -585,10 +628,28 @@ private string escapeShellCommand(string[] args)
     return array(map!escapeShellArgument(args)).join(" ");
 }
 
-private bool isNewer(string source, string target)
+private bool newerThan(string source, string target)
 {
-    return force || !source.exists() ||
-        timeLastModified(source) >= timeLastModified(target, SysTime(0));
+    if (force) return true;
+    yap("stat ", target);
+    return source.newerThan(timeLastModified(target, SysTime(0)));
+}
+
+private bool newerThan(string source, SysTime target)
+{
+    if (force) return true;
+    DirEntry entry;
+    try
+    {
+        yap("stat ", source);
+        entry = dirEntry(source);
+    }
+    catch (Exception)
+    {
+        // File not there, consider it newer
+        return true;
+    }
+    return entry.timeLastModified >= target;
 }
 
 private @property string helpString()
@@ -639,14 +700,9 @@ import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
 
 int eval(string todo)
 {
-    MD5_CTX context;
-    context.start();
-    context.update(todo);
-    ubyte digest[16];
-    context.finish(digest);
     auto pathname = myOwnTmpDir;
     auto progname = buildPath(pathname,
-            "eval." ~ digestToString(digest));
+            "eval." ~ todo.md5Of.toHexString);
     auto binName = progname ~ binExt;
 
     bool compileFailure = false;
@@ -667,6 +723,7 @@ int eval(string todo)
     // Clean pathname
     enum lifetimeInHours = 24;
     auto cutoff = Clock.currTime() - dur!"hours"(lifetimeInHours);
+    yap("dirEntries ", pathname);
     foreach (DirEntry d; dirEntries(pathname, SpanMode.shallow))
     {
         if (d.timeLastModified < cutoff)
@@ -712,6 +769,13 @@ string which(string path)
         if (exists(absPath) && isFile(absPath)) return absPath;
     }
     throw new FileException(path, "File not found in PATH");
+}
+
+void yap(size_t line = __LINE__, T...)(auto ref T stuff)
+{
+    if (!chatty) return;
+    debug stderr.writeln(line, ": ", stuff);
+    else stderr.writeln(stuff);
 }
 
 /*
