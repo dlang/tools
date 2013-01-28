@@ -2,7 +2,7 @@
 
 import std.algorithm, std.array, std.c.stdlib, std.datetime,
     std.digest.md, std.exception, std.file, std.getopt,
-    std.parallelism, std.path, std.process, std.regex,
+    std.parallelism, std.path, std.process, std.range, std.regex,
     std.stdio, std.string, std.typetuple;
 
 version (Posix)
@@ -179,8 +179,8 @@ int main(string[] args)
     }
     else
     {
-        yap("mkdir ", workDir);
-        mkdir(workDir);
+        yap("mkdirRecurse ", workDir);
+        mkdirRecurse(workDir);
     }
 
     // Fetch dependencies
@@ -215,7 +215,7 @@ int main(string[] args)
 
     // Have at it
     auto exeTime = exe.timeLastModified(SysTime.min);
-    if ((root ~ myDeps.keys).anyNewerThan(exeTime))
+    if (chain(root.only, myDeps.byKey).array.anyNewerThan(exeTime))
     {
         immutable result = rebuild(root, exe, workDir, objDir,
                                    myDeps, compilerFlags, addStubMain);
@@ -763,10 +763,13 @@ int eval(string todo)
 string which(string path)
 {
     if (path.canFind(dirSeparator) || altDirSeparator != "" && path.canFind(altDirSeparator)) return path;
-    foreach (envPath; std.algorithm.splitter(std.process.environment["PATH"], pathSeparator))
+    foreach (envPath; environment["PATH"].splitter(pathSeparator))
     {
         string absPath = buildPath(envPath, path);
-        if (exists(absPath) && isFile(absPath)) return absPath;
+        yap("stat ", absPath);
+        DirEntry e;
+        const exists = collectException(e = dirEntry(absPath)) is null;
+        if (exists && e.isFile) return absPath;
     }
     throw new FileException(path, "File not found in PATH");
 }
