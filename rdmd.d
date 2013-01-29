@@ -90,7 +90,7 @@ int main(string[] args)
         version(Windows)
         {
             // invoke browser that is associated with the http protocol
-            ShellExecuteA(null, "open", page, null, null, SW_SHOWNORMAL);
+            ShellExecuteA(null, "open", page.toStringz, null, null, SW_SHOWNORMAL);
         }
         else
         {
