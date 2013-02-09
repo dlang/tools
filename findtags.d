@@ -19,14 +19,14 @@ Usage:
 
     writeln("[");
 
-    foreach (line; File(args[1]).byLine(std.string.KeepTerminator.no, '<'))
+    foreach (line; File(ifile).byLine(std.string.KeepTerminator.no, '<'))
     {
         if (!line.skipOver(`a name="`))
         {
             continue;
         }
         auto tag = findSplitBefore(line, `"`)[0];
-        writefln("\"%s\",", tag);
+        writefln(`"%s",`, tag);
     }
 
     writeln("]");
