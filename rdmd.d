@@ -41,7 +41,7 @@ private string compiler = defaultCompiler;
 
 int main(string[] args)
 {
-    //writeln("Invoked with: ", map!(q{a ~ ", "})(args));
+    //writeln("Invoked with: ", args);
     if (args.length > 1 && args[1].startsWith("--shebang ", "--shebang="))
     {
         // multiple options wrapped in one
@@ -148,6 +148,7 @@ int main(string[] args)
 
     // Parse the program line - first find the program to run
     programPos = indexOfProgram(args);
+    assert(programPos > 0);
     if (programPos == args.length)
     {
         write(helpString);
@@ -159,7 +160,8 @@ int main(string[] args)
         exeDirname = root.dirName,
         programArgs = args[programPos + 1 .. $];
     args = args[0 .. programPos];
-    auto compilerFlags = args[1 .. programPos - 1];
+    assert(args.length >= 1);
+    auto compilerFlags = args[1 .. max(1, programPos - 1)];
 
     // --build-only implies the user would like a binary in the program's directory
     if (buildOnly && !exe)
