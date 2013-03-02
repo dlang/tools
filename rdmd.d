@@ -161,7 +161,7 @@ int main(string[] args)
         programArgs = args[programPos + 1 .. $];
     args = args[0 .. programPos];
     assert(args.length >= 1);
-    auto compilerFlags = args[1 .. max(1, programPos - 1)];
+    auto compilerFlags = args[1 .. $];
 
     // --build-only implies the user would like a binary in the program's directory
     if (buildOnly && !exe)
