@@ -32,7 +32,7 @@ SCP=$(CP)
 
 DFLAGS=-O -release
 
-TARGETS=dman.exe findtags.exe rdmd.exe
+TARGETS=dman.exe findtags.exe rdmd.exe changed.exe
 
 MAKEFILES=win32.mak posix.mak
 
@@ -115,6 +115,9 @@ dman.exe : dman.d $(TAGS)
 
 rdmd.exe : rdmd.d
 	$(DMD) $(DFLAGS) rdmd.d advapi32.lib
+
+changed.exe : changed.d
+	$(DMD) $(DFLAGS) changed.d
 
 clean :
 	del $(TARGETS) $(TAGS)

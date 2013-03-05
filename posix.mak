@@ -1,4 +1,5 @@
 DMD ?= dmd
+CC ?= gcc
 PREFIX ?= /usr/local/bin
 
 WITH_DOC ?= no
@@ -12,10 +13,13 @@ endif
 TOOLS = \
     rdmd \
     ddemangle \
-    dget \
     catdoc \
     detab \
     tolf
+
+CURL_TOOLS = \
+    dget \
+    changed
 
 DOC_TOOLS = \
     findtags \
@@ -25,7 +29,12 @@ TAGS = \
     expression.tag \
     statement.tag
 
-all: $(TOOLS)
+all: $(TOOLS) $(CURL_TOOLS)
+
+#dreadful custom step because of libcurl dmd linking problem
+$(CURL_TOOLS): %: %.d
+	$(DMD) -c $(<)
+	($(DMD) -v $(@).o  2>1 | grep gcc | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
 
 $(TOOLS) $(DOC_TOOLS): %: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) $(<)
@@ -33,10 +42,11 @@ $(TOOLS) $(DOC_TOOLS): %: %.d
 $(TAGS): %.tag: $(DOC)/%.html findtags
 	./findtags $(filter %.html,$(^)) > $(@)
 
+
 dman: $(TAGS)
 dman: DFLAGS += -J.
 
-install: $(TOOLS)
+install: $(TOOLS) $(CURL_TOOLS)
 	install -d $(DESTDIR)$(PREFIX)
 	install -t $(DESTDIR)$(PREFIX) $(^)
 
