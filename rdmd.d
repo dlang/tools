@@ -50,7 +50,8 @@ int main(string[] args)
     }
 
     // Continue parsing the command line; now get rdmd's own arguments
-    // parse the -o option
+
+    // Parse the -o option (-ofmyfile or -odmydir).
     void dashOh(string key, string value)
     {
         if (value[0] == 'f')
@@ -61,7 +62,7 @@ int main(string[] args)
         else if (value[0] == 'd')
         {
             // -odmydir passed
-            if(!exe) // Don't let -od override -of
+            if (!exe) // Don't let -od override -of
             {
                 // add a trailing dir separator to clarify it's a dir
                 exe = value[1 .. $];
@@ -201,6 +202,20 @@ int main(string[] args)
     }
 
     // Compute executable name, check for freshness, rebuild
+    /*
+      We need to be careful about using -o. Normally the generated
+      executable is hidden in the unique directory workDir. But if the
+      user forces generation in a specific place by using -od or -of,
+      the time of the binary can't be used to check for freshness
+      because the user may change e.g. the compile option from one run
+      to the next, yet the generated binary's datetime stays the
+      same. In those cases, we'll use a dedicated file called ".built"
+      and placed in workDir. Upon a successful build, ".built" will be
+      touched. See also
+      http://d.puremagic.com/issues/show_bug.cgi?id=4814
+     */
+    string buildWitness;
+    SysTime lastBuildTime = SysTime.min;
     if (exe)
     {
         // user-specified exe name
@@ -209,15 +224,24 @@ int main(string[] args)
             // user specified a directory, complete it to a file
             exe = buildPath(exe, exeBasename) ~ binExt;
         }
+        buildWitness = buildPath(workDir, ".built");
+        if (!exe.newerThan(buildWitness))
+        {
+            // Both exe and buildWitness exist, and exe is older than
+            // buildWitness. This is the only situation in which we
+            // may NOT need to recompile.
+            lastBuildTime = buildWitness.timeLastModified(SysTime.min);
+        }
     }
     else
     {
         exe = buildPath(workDir, exeBasename) ~ binExt;
+        buildWitness = exe;
+        lastBuildTime = buildWitness.timeLastModified(SysTime.min);
     }
 
     // Have at it
-    auto exeTime = exe.timeLastModified(SysTime.min);
-    if (chain(root.only, myDeps.byKey).array.anyNewerThan(exeTime))
+    if (chain(root.only, myDeps.byKey).array.anyNewerThan(lastBuildTime))
     {
         immutable result = rebuild(root, exe, workDir, objDir,
                                    myDeps, compilerFlags, addStubMain);
@@ -226,6 +250,13 @@ int main(string[] args)
             if (exists(exe))
                 remove(exe);
             return result;
+        }
+
+        // Touch the build witness to track the build time
+        if (buildWitness != exe)
+        {
+            yap("touch ", buildWitness);
+            std.file.write(buildWitness, "");
         }
     }
 
@@ -630,6 +661,11 @@ private string escapeShellCommand(string[] args)
     return array(map!escapeShellArgument(args)).join(" ");
 }
 
+/*
+If force is true, returns true. Otherwise, if source and target both
+exist, returns true iff source's timeLastModified is strictly greater
+than target's. Otherwise, returns true.
+ */
 private bool newerThan(string source, string target)
 {
     if (force) return true;
@@ -640,18 +676,16 @@ private bool newerThan(string source, string target)
 private bool newerThan(string source, SysTime target)
 {
     if (force) return true;
-    DirEntry entry;
     try
     {
         yap("stat ", source);
-        entry = dirEntry(source);
+        return dirEntry(source).timeLastModified > target;
     }
     catch (Exception)
     {
         // File not there, consider it newer
         return true;
     }
-    return entry.timeLastModified >= target;
 }
 
 private @property string helpString()
