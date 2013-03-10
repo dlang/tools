@@ -1,4 +1,6 @@
 *.o
+*.obj
+*.exe
 *.tag
 /catdoc
 /dman

@@ -9,6 +9,7 @@ version (Posix)
 {
     enum objExt = ".o";
     enum binExt = "";
+    enum libExt = ".a";
     enum altDirSeparator = "";
 }
 else version (Windows)
@@ -17,6 +18,7 @@ else version (Windows)
     extern(Windows) HINSTANCE ShellExecuteA(HWND, LPCSTR, LPCSTR, LPCSTR, LPCSTR, INT);
     enum objExt = ".obj";
     enum binExt = ".exe";
+    enum libExt = ".lib";
     enum altDirSeparator = "/";
 }
 else
@@ -164,13 +166,22 @@ int main(string[] args)
     assert(args.length >= 1);
     auto compilerFlags = args[1 .. $];
 
+    bool lib = args.canFind("-lib");
+    string outExt = lib ? libExt : binExt;
+
     // --build-only implies the user would like a binary in the program's directory
     if (buildOnly && !exe)
         exe = exeDirname ~ dirSeparator;
 
+    if (exe && exe.endsWith(dirSeparator))
+    {
+        // user specified a directory, complete it to a file
+        exe = buildPath(exe, exeBasename) ~ outExt;
+    }
+
     // Compute the object directory and ensure it exists
     immutable workDir = getWorkPath(root, compilerFlags);
-    immutable objDir = buildPath(workDir, "objs");
+    string objDir = buildPath(workDir, "objs");
     yap("stat ", workDir);
     DirEntry workDirEntry;
     const workDirExists =
@@ -184,6 +195,15 @@ int main(string[] args)
     {
         yap("mkdirRecurse ", workDir);
         mkdirRecurse(workDir);
+    }
+
+    if (lib)
+    {
+        // When building libraries, DMD does not generate object files.
+        // Instead, it uses the -od parameter as the location for the library file.
+        // Thus, override objDir (which is normally a temporary directory)
+        // to be the target output directory.
+        objDir = exe.dirName;
     }
 
     // Fetch dependencies
@@ -219,11 +239,6 @@ int main(string[] args)
     if (exe)
     {
         // user-specified exe name
-        if (exe.endsWith(dirSeparator))
-        {
-            // user specified a directory, complete it to a file
-            exe = buildPath(exe, exeBasename) ~ binExt;
-        }
         buildWitness = buildPath(workDir, ".built");
         if (!exe.newerThan(buildWitness))
         {
@@ -235,7 +250,7 @@ int main(string[] args)
     }
     else
     {
-        exe = buildPath(workDir, exeBasename) ~ binExt;
+        exe = buildPath(workDir, exeBasename) ~ outExt;
         buildWitness = exe;
         lastBuildTime = buildWitness.timeLastModified(SysTime.min);
     }
@@ -413,7 +428,7 @@ private int rebuild(string root, string fullExe,
     if (!dryRun)
     {
         yap("stat ", objDir);
-        if (objDir.exists)
+        if (objDir.exists && objDir.startsWith(workDir))
         {
             yap("rmdirRecurse ", objDir);
             rmdirRecurse(objDir);
@@ -433,7 +448,7 @@ private int run(string[] argv, string output = null, bool shell = true)
     if (output)
     {
         shell = true;
-        command ~= " > " ~ escapeShellArgument(output);
+        command ~= " > " ~ escapeShellFileName(output);
     }
 
     version (Windows)
@@ -471,12 +486,37 @@ private string[string] getDependencies(string rootModule, string workDir,
         {
             return buildPath(objDir, dfile.baseName.chomp(".d") ~ objExt);
         }
+        string findLib(string libName)
+        {
+            // This can't be 100% precise without knowing exactly where the linker
+            // will look for libraries (which requires, but is not limited to,
+            // parsing the linker's command line (as specified in dmd.conf/sc.ini).
+            // Go for best-effort instead.
+            string[] dirs = ["."];
+            foreach (envVar; ["LIB", "LIBRARY_PATH", "LD_LIBRARY_PATH"])
+                dirs ~= environment.get(envVar, "").split(pathSeparator);
+            version (Windows)
+                string[] names = [libName ~ ".lib"];
+            else
+            {
+                string[] names = ["lib" ~ libName ~ ".a", "lib" ~ libName ~ ".so"];
+                dirs ~= ["/lib", "/usr/lib"];
+            }
+            foreach (dir; dirs)
+                foreach (name; names)
+                {
+                    auto path = buildPath(dir, name);
+                    if (path.exists)
+                        return absolutePath(path);
+                }
+            return null;
+        }
         yap("read ", depsFilename);
         auto depsReader = File(depsFilename);
         scope(exit) collectException(depsReader.close()); // don't care for errors
 
         // Fetch all dependencies and append them to myDeps
-        auto pattern = regex(r"^(import|file|binary|config)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
+        auto pattern = regex(r"^(import|file|binary|config|library)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
         string[string] result;
         foreach (string line; lines(depsReader))
         {
@@ -504,6 +544,16 @@ private string[string] getDependencies(string rootModule, string workDir,
                 result[captures[2].strip()] = null;
                 break;
 
+            case "library":
+                immutable libName = captures[2].strip();
+                immutable libPath = findLib(libName);
+                if (libPath)
+                {
+                    yap("library ", libName, " ", libPath);
+                    result[libPath] = null;
+                }
+                break;
+
             default: assert(0);
             }
         }
@@ -521,7 +571,8 @@ private string[string] getDependencies(string rootModule, string workDir,
         {
             // See if the deps file is still in good shape
             auto deps = readDepsFile();
-            bool mustRebuildDeps = deps.keys.anyNewerThan(depsEntry.timeLastModified);
+            auto allDeps = chain(rootModule.only, deps.byKey).array;
+            bool mustRebuildDeps = allDeps.anyNewerThan(depsEntry.timeLastModified);
             if (!mustRebuildDeps)
             {
                 // Cool, we're in good shape
@@ -591,74 +642,6 @@ bool anyNewerThan(in string[] files, SysTime t)
         }
         return result;
     }
-}
-
-// Quote an argument in a manner conforming to the behavior of
-// CommandLineToArgvW and DMD's response-file parsing algorithm.
-// References:
-// * http://msdn.microsoft.com/en-us/library/windows/desktop/bb776391.aspx
-// * http://blogs.msdn.com/b/oldnewthing/archive/2010/09/17/10063629.aspx
-// * https://github.com/D-Programming-Language/dmd/blob/master/src/root/response.c
-
-/*private*/ string escapeWindowsArgument(string arg)
-{
-    // Escape trailing backslashes, so they don't escape the ending quote.
-    // Backslashes elsewhere should NOT be escaped.
-    for (ptrdiff_t i=arg.length-1; i>=0 && arg[i]=='\\'; i--)
-        arg ~= '\\';
-    return '"' ~ std.array.replace(arg, `"`, `\"`) ~ '"';
-}
-
-version(Windows) version(unittest)
-{
-    extern (Windows) wchar_t**  CommandLineToArgvW(wchar_t*, int*);
-    extern (C) size_t wcslen(in wchar *);
-
-    unittest
-    {
-        string[] testStrings = [
-            ``, `\`, `"`, `""`, `"\`, `\"`, `\\`, `\\"`,
-            `Hello`,
-            `Hello, world`
-            `Hello, "world"`,
-            `C:\`,
-            `C:\dmd`,
-            `C:\Program Files\`,
-        ];
-
-        import std.conv;
-
-        foreach (s; testStrings)
-        {
-            auto q = escapeWindowsArgument(s);
-            LPWSTR lpCommandLine = (to!(wchar[])("Dummy.exe " ~ q) ~ "\0"w).ptr;
-            int numArgs;
-            LPWSTR* args = CommandLineToArgvW(lpCommandLine, &numArgs);
-            scope(exit) LocalFree(args);
-            assert(numArgs==2, s ~ " => " ~ q ~ " #" ~ text(numArgs-1));
-            auto arg = to!string(args[1][0..wcslen(args[1])]);
-            assert(arg == s, s ~ " => " ~ q ~ " => " ~ arg);
-        }
-    }
-}
-
-/*private*/ string escapeShellArgument(string arg)
-{
-    version (Windows)
-    {
-        return escapeWindowsArgument(arg);
-    }
-    else
-    {
-        // '\'' means: close quoted part of argument, append an escaped
-        // single quote, and reopen quotes
-        return `'` ~ std.array.replace(arg, `'`, `'\''`) ~ `'`;
-    }
-}
-
-private string escapeShellCommand(string[] args)
-{
-    return array(map!escapeShellArgument(args)).join(" ");
 }
 
 /*
