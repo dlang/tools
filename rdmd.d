@@ -486,12 +486,37 @@ private string[string] getDependencies(string rootModule, string workDir,
         {
             return buildPath(objDir, dfile.baseName.chomp(".d") ~ objExt);
         }
+        string findLib(string libName)
+        {
+            // This can't be 100% precise without knowing exactly where the linker
+            // will look for libraries (which requires, but is not limited to,
+            // parsing the linker's command line (as specified in dmd.conf/sc.ini).
+            // Go for best-effort instead.
+            string[] dirs = ["."];
+            foreach (envVar; ["LIB", "LIBRARY_PATH", "LD_LIBRARY_PATH"])
+                dirs ~= environment.get(envVar, "").split(pathSeparator);
+            version (Windows)
+                string[] names = [libName ~ ".lib"];
+            else
+            {
+                string[] names = ["lib" ~ libName ~ ".a", "lib" ~ libName ~ ".so"];
+                dirs ~= ["/lib", "/usr/lib"];
+            }
+            foreach (dir; dirs)
+                foreach (name; names)
+                {
+                    auto path = buildPath(dir, name);
+                    if (path.exists)
+                        return absolutePath(path);
+                }
+            return null;
+        }
         yap("read ", depsFilename);
         auto depsReader = File(depsFilename);
         scope(exit) collectException(depsReader.close()); // don't care for errors
 
         // Fetch all dependencies and append them to myDeps
-        auto pattern = regex(r"^(import|file|binary|config)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
+        auto pattern = regex(r"^(import|file|binary|config|library)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
         string[string] result;
         foreach (string line; lines(depsReader))
         {
@@ -517,6 +542,16 @@ private string[string] getDependencies(string rootModule, string workDir,
 
             case "config":
                 result[captures[2].strip()] = null;
+                break;
+
+            case "library":
+                immutable libName = captures[2].strip();
+                immutable libPath = findLib(libName);
+                if (libPath)
+                {
+                    yap("library ", libName, " ", libPath);
+                    result[libPath] = null;
+                }
                 break;
 
             default: assert(0);
