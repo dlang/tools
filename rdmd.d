@@ -433,7 +433,7 @@ private int run(string[] argv, string output = null, bool shell = true)
     if (output)
     {
         shell = true;
-        command ~= " > " ~ escapeShellArgument(output);
+        command ~= " > " ~ escapeShellFileName(output);
     }
 
     version (Windows)
@@ -591,74 +591,6 @@ bool anyNewerThan(in string[] files, SysTime t)
         }
         return result;
     }
-}
-
-// Quote an argument in a manner conforming to the behavior of
-// CommandLineToArgvW and DMD's response-file parsing algorithm.
-// References:
-// * http://msdn.microsoft.com/en-us/library/windows/desktop/bb776391.aspx
-// * http://blogs.msdn.com/b/oldnewthing/archive/2010/09/17/10063629.aspx
-// * https://github.com/D-Programming-Language/dmd/blob/master/src/root/response.c
-
-/*private*/ string escapeWindowsArgument(string arg)
-{
-    // Escape trailing backslashes, so they don't escape the ending quote.
-    // Backslashes elsewhere should NOT be escaped.
-    for (ptrdiff_t i=arg.length-1; i>=0 && arg[i]=='\\'; i--)
-        arg ~= '\\';
-    return '"' ~ std.array.replace(arg, `"`, `\"`) ~ '"';
-}
-
-version(Windows) version(unittest)
-{
-    extern (Windows) wchar_t**  CommandLineToArgvW(wchar_t*, int*);
-    extern (C) size_t wcslen(in wchar *);
-
-    unittest
-    {
-        string[] testStrings = [
-            ``, `\`, `"`, `""`, `"\`, `\"`, `\\`, `\\"`,
-            `Hello`,
-            `Hello, world`
-            `Hello, "world"`,
-            `C:\`,
-            `C:\dmd`,
-            `C:\Program Files\`,
-        ];
-
-        import std.conv;
-
-        foreach (s; testStrings)
-        {
-            auto q = escapeWindowsArgument(s);
-            LPWSTR lpCommandLine = (to!(wchar[])("Dummy.exe " ~ q) ~ "\0"w).ptr;
-            int numArgs;
-            LPWSTR* args = CommandLineToArgvW(lpCommandLine, &numArgs);
-            scope(exit) LocalFree(args);
-            assert(numArgs==2, s ~ " => " ~ q ~ " #" ~ text(numArgs-1));
-            auto arg = to!string(args[1][0..wcslen(args[1])]);
-            assert(arg == s, s ~ " => " ~ q ~ " => " ~ arg);
-        }
-    }
-}
-
-/*private*/ string escapeShellArgument(string arg)
-{
-    version (Windows)
-    {
-        return escapeWindowsArgument(arg);
-    }
-    else
-    {
-        // '\'' means: close quoted part of argument, append an escaped
-        // single quote, and reopen quotes
-        return `'` ~ std.array.replace(arg, `'`, `'\''`) ~ `'`;
-    }
-}
-
-private string escapeShellCommand(string[] args)
-{
-    return array(map!escapeShellArgument(args)).join(" ");
 }
 
 /*
