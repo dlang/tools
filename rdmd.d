@@ -9,6 +9,7 @@ version (Posix)
 {
     enum objExt = ".o";
     enum binExt = "";
+    enum libExt = ".a";
     enum altDirSeparator = "";
 }
 else version (Windows)
@@ -17,6 +18,7 @@ else version (Windows)
     extern(Windows) HINSTANCE ShellExecuteA(HWND, LPCSTR, LPCSTR, LPCSTR, LPCSTR, INT);
     enum objExt = ".obj";
     enum binExt = ".exe";
+    enum libExt = ".lib";
     enum altDirSeparator = "/";
 }
 else
@@ -164,13 +166,22 @@ int main(string[] args)
     assert(args.length >= 1);
     auto compilerFlags = args[1 .. $];
 
+    bool lib = args.canFind("-lib");
+    string outExt = lib ? libExt : binExt;
+
     // --build-only implies the user would like a binary in the program's directory
     if (buildOnly && !exe)
         exe = exeDirname ~ dirSeparator;
 
+    if (exe && exe.endsWith(dirSeparator))
+    {
+        // user specified a directory, complete it to a file
+        exe = buildPath(exe, exeBasename) ~ outExt;
+    }
+
     // Compute the object directory and ensure it exists
     immutable workDir = getWorkPath(root, compilerFlags);
-    immutable objDir = buildPath(workDir, "objs");
+    string objDir = buildPath(workDir, "objs");
     yap("stat ", workDir);
     DirEntry workDirEntry;
     const workDirExists =
@@ -184,6 +195,15 @@ int main(string[] args)
     {
         yap("mkdirRecurse ", workDir);
         mkdirRecurse(workDir);
+    }
+
+    if (lib)
+    {
+        // When building libraries, DMD does not generate object files.
+        // Instead, it uses the -od parameter as the location for the library file.
+        // Thus, override objDir (which is normally a temporary directory)
+        // to be the target output directory.
+        objDir = exe.dirName;
     }
 
     // Fetch dependencies
@@ -219,11 +239,6 @@ int main(string[] args)
     if (exe)
     {
         // user-specified exe name
-        if (exe.endsWith(dirSeparator))
-        {
-            // user specified a directory, complete it to a file
-            exe = buildPath(exe, exeBasename) ~ binExt;
-        }
         buildWitness = buildPath(workDir, ".built");
         if (!exe.newerThan(buildWitness))
         {
@@ -235,7 +250,7 @@ int main(string[] args)
     }
     else
     {
-        exe = buildPath(workDir, exeBasename) ~ binExt;
+        exe = buildPath(workDir, exeBasename) ~ outExt;
         buildWitness = exe;
         lastBuildTime = buildWitness.timeLastModified(SysTime.min);
     }
@@ -413,7 +428,7 @@ private int rebuild(string root, string fullExe,
     if (!dryRun)
     {
         yap("stat ", objDir);
-        if (objDir.exists)
+        if (objDir.exists && objDir.startsWith(workDir))
         {
             yap("rmdirRecurse ", objDir);
             rmdirRecurse(objDir);
