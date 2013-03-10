@@ -571,7 +571,8 @@ private string[string] getDependencies(string rootModule, string workDir,
         {
             // See if the deps file is still in good shape
             auto deps = readDepsFile();
-            bool mustRebuildDeps = deps.keys.anyNewerThan(depsEntry.timeLastModified);
+            auto allDeps = chain(rootModule.only, deps.byKey).array;
+            bool mustRebuildDeps = allDeps.anyNewerThan(depsEntry.timeLastModified);
             if (!mustRebuildDeps)
             {
                 // Cool, we're in good shape
