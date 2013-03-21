@@ -290,7 +290,7 @@ size_t indexOfProgram(string[] args)
     foreach(i, arg; args[1 .. $])
     {
         if (!arg.startsWith('-', '@') &&
-                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map"))
+                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map", ".res"))
         {
             return i + 1;
         }
