@@ -107,8 +107,18 @@ int main(string[] args)
     }
 
     auto programPos = indexOfProgram(args);
-    // Insert "--" to tell getopts when to stop
-    args = args[0..programPos] ~ "--" ~ args[programPos .. $];
+    assert(programPos > 0);
+    if (programPos == args.length)
+    {
+        write(helpString);
+        return 1;
+    }
+    auto
+        root = args[programPos].chomp(".d") ~ ".d",
+        exeBasename = root.baseName(".d"),
+        exeDirname = root.dirName,
+        programArgs = args[programPos + 1 .. $];
+    args = args[0 .. programPos];
 
     bool bailout;    // bailout set by functions called in getopt if
                      // program should exit
@@ -149,20 +159,6 @@ int main(string[] args)
                 ~ std.string.join(eval, "\n") ~ ";\n}");
     }
 
-    // Parse the program line - first find the program to run
-    programPos = indexOfProgram(args);
-    assert(programPos > 0);
-    if (programPos == args.length)
-    {
-        write(helpString);
-        return 1;
-    }
-    auto
-        root = args[programPos].chomp(".d") ~ ".d",
-        exeBasename = root.baseName(".d"),
-        exeDirname = root.dirName,
-        programArgs = args[programPos + 1 .. $];
-    args = args[0 .. programPos];
     assert(args.length >= 1);
     auto compilerFlags = args[1 .. $];
 
