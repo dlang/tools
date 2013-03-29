@@ -89,21 +89,7 @@ int main(string[] args)
     // start the web browser on documentation page
     void man()
     {
-        const page = "http://dlang.org/rdmd.html";
-        version(Windows)
-        {
-            // invoke browser that is associated with the http protocol
-            ShellExecuteA(null, "open", page.toStringz, null, null, SW_SHOWNORMAL);
-        }
-        else
-        {
-            foreach (b; [ std.process.getenv("BROWSER"), "firefox",
-                            "sensible-browser", "x-www-browser" ]) {
-                if (!b.length) continue;
-                if (!system(b ~ " " ~ page))
-                    return;
-            }
-        }
+        std.process.browse("http://dlang.org/rdmd.html");
     }
 
     auto programPos = indexOfProgram(args);
