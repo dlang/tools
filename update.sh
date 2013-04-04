@@ -110,7 +110,7 @@ function installAnew() {
     for project in $projects; do
         (
             cd $wd &&
-            git clone --quiet -o upstream git://github.com/D-Programming-Language/$project.git &&
+            git clone --quiet -o upstream $GIT_HOME/$project.git &&
             touch $tempdir/$project
         ) &
     done
@@ -193,8 +193,8 @@ function makeWorld() {
 # Then make website
     (
         cd "$wd/d-programming-language.org" &&
-        $makecmd -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=$model &&
-        $makecmd -f posix.mak html -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
+        $makecmd -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=$model GIT_HOME=$GIT_HOME &&
+        $makecmd -f posix.mak html -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model GIT_HOME=$GIT_HOME
     )
 }
 
