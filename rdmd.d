@@ -781,14 +781,20 @@ int eval(string todo)
 
 string which(string path)
 {
+    yap("which ", path);
     if (path.canFind(dirSeparator) || altDirSeparator != "" && path.canFind(altDirSeparator)) return path;
-    foreach (envPath; environment["PATH"].splitter(pathSeparator))
+    string[] extensions = [""];
+    version(Windows) extensions ~= environment["PATHEXT"].split(pathSeparator);
+    foreach (extension; extensions)
     {
-        string absPath = buildPath(envPath, path);
-        yap("stat ", absPath);
-        DirEntry e;
-        const exists = collectException(e = dirEntry(absPath)) is null;
-        if (exists && e.isFile) return absPath;
+        foreach (envPath; environment["PATH"].splitter(pathSeparator))
+        {
+            string absPath = buildPath(envPath, path ~ extension);
+            yap("stat ", absPath);
+            DirEntry e;
+            const exists = collectException(e = dirEntry(absPath)) is null;
+            if (exists && e.isFile) return absPath;
+        }
     }
     throw new FileException(path, "File not found in PATH");
 }
