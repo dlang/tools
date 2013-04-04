@@ -19,6 +19,8 @@
 # update.
 #
 
+GIT_HOME=https://github.com/D-Programming-Language
+
 setopt err_exit
 
 local projects
@@ -44,7 +46,7 @@ function handleCmdLine() {
     local arg
     for arg in $*; do
         case $arg in
-    	    (--tag=*)
+          (--tag=*)
             tag="`echo $arg | sed 's/[-a-zA-Z0-9]*=//'`"
             ;;
             (*)
@@ -123,7 +125,7 @@ function installAnew() {
         if [[ ! -z $tag &&
                     ($project = dmd || $project = druntime || $project = phobos ||
                         $project = d-programming-language.org) ]]; then
-	        ( cd $wd/$project && git checkout v$tag )
+          ( cd $wd/$project && git checkout v$tag )
         fi
     done
 }
