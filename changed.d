@@ -15,6 +15,7 @@ Authors:   Dmitry Olshansky,
 Example usage:
 ---
 rdmd changed.d --start=2013-01-01 --end=2013-04-01
+rdmd changed.d --start=2013-01-01 (end date implicitly set to current date)
 ---
 */
 
@@ -82,10 +83,8 @@ string escapeParens(string input)
 }
 
 /** Generate and return the change log as a string. */
-string getChangeLog(string start_date, string end_date)
+string getChangeLog(Date start, Date end)
 {
-    auto start = dateFromStr(start_date);
-    auto end = end_date.empty ? to!Date(Clock.currTime()) : dateFromStr(end_date);
     auto req = generateRequest(templateRequest, start, end);
     debug stderr.writeln(req);  // write text
     auto data = req.get;
@@ -174,9 +173,12 @@ int main(string[] args)
         return 1;
     }
 
+    Date start = dateFromStr(start_date);
+    Date end = end_date.empty ? to!Date(Clock.currTime()) : dateFromStr(end_date);
+
     // caching to avoid querying bugzilla
     // (depends on the compile date of the generator + the start and end dates)
-    string cachePath = getCachePath(start_date, end_date);
+    string cachePath = getCachePath(to!string(start), to!string(end));
     debug stderr.writefln("Cache file: %s\nCache file found: %s", cachePath, cachePath.exists);
     string changeLog;
     if (cachePath.exists)
@@ -185,7 +187,7 @@ int main(string[] args)
     }
     else
     {
-        changeLog = getChangeLog(start_date, end_date);
+        changeLog = getChangeLog(start, end);
         std.file.write(cachePath, changeLog);
     }
 
