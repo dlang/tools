@@ -47,10 +47,10 @@ PHOBOS_TAGS:= \
 
 all: $(TOOLS) $(CURL_TOOLS)
 
-#dreadful custom step because of libcurl dmd linking problem
+#dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
 $(CURL_TOOLS): %: %.d
 	$(DMD) -c $(<)
-	($(DMD) -v $(@).o  2>1 | grep gcc | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
+	($(DMD) -v $(@).o  2>&1 | grep gcc | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
 
 $(TOOLS) $(DOC_TOOLS): %: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) $(<)
