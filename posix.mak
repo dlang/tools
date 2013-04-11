@@ -5,9 +5,9 @@ PREFIX ?= /usr/local/bin
 WITH_DOC ?= no
 DOC ?= ../d-programming-language.org/web
 
-MODEL = 32
+MODEL:=
 ifneq (,$(MODEL))
-    MODEL_FLAG ?= -m$(MODEL)
+    MODEL_FLAG:=-m$(MODEL)
 endif
 
 TOOLS = \
