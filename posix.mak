@@ -5,9 +5,9 @@ PREFIX ?= /usr/local/bin
 WITH_DOC ?= no
 DOC ?= ../d-programming-language.org/web
 
-MODEL = 32
+MODEL:=
 ifneq (,$(MODEL))
-    MODEL_FLAG ?= -m$(MODEL)
+    MODEL_FLAG:=-m$(MODEL)
 endif
 
 TOOLS = \
@@ -25,28 +25,46 @@ DOC_TOOLS = \
     findtags \
     dman
 
-TAGS = \
-    expression.tag \
-    statement.tag
+TAGS:= \
+	expression.tag \
+	statement.tag
+
+PHOBOS_TAGS:= \
+	std_algorithm.tag \
+	std_array.tag \
+	std_file.tag \
+	std_format.tag \
+	std_math.tag \
+	std_parallelism.tag \
+	std_path.tag \
+	std_random.tag \
+	std_range.tag \
+	std_regex.tag \
+	std_stdio.tag \
+	std_string.tag \
+	std_traits.tag \
+	std_typetuple.tag
 
 all: $(TOOLS) $(CURL_TOOLS) dustmite
 
 dustmite: DustMite/dustmite.d DustMite/dsplit.d
 	$(DMD) $(MODEL_FLAG) DustMite/dustmite.d DustMite/dsplit.d -of$(@)
 
-#dreadful custom step because of libcurl dmd linking problem
+#dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
 $(CURL_TOOLS): %: %.d
 	$(DMD) -c $(<)
-	($(DMD) -v $(@).o  2>1 | grep gcc | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
+	($(DMD) -v $(@).o  2>&1 | grep gcc | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
 
 $(TOOLS) $(DOC_TOOLS): %: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) $(<)
 
 $(TAGS): %.tag: $(DOC)/%.html findtags
-	./findtags $(filter %.html,$(^)) > $(@)
+	./findtags $< > $@
 
+$(PHOBOS_TAGS): %.tag: $(DOC)/phobos/%.html findtags
+	./findtags $< > $@
 
-dman: $(TAGS)
+dman: $(TAGS) $(PHOBOS_TAGS)
 dman: DFLAGS += -J.
 
 install: $(TOOLS) $(CURL_TOOLS)
