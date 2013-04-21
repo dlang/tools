@@ -19,6 +19,8 @@
 # update.
 #
 
+GIT_HOME=https://github.com/D-Programming-Language
+
 setopt err_exit
 
 local projects
@@ -44,7 +46,7 @@ function handleCmdLine() {
     local arg
     for arg in $*; do
         case $arg in
-    	    (--tag=*)
+          (--tag=*)
             tag="`echo $arg | sed 's/[-a-zA-Z0-9]*=//'`"
             ;;
             (*)
@@ -108,7 +110,7 @@ function installAnew() {
     for project in $projects; do
         (
             cd $wd &&
-            git clone --quiet -o upstream git://github.com/D-Programming-Language/$project.git &&
+            git clone --quiet -o upstream $GIT_HOME/$project.git &&
             touch $tempdir/$project
         ) &
     done
@@ -123,7 +125,7 @@ function installAnew() {
         if [[ ! -z $tag &&
                     ($project = dmd || $project = druntime || $project = phobos ||
                         $project = d-programming-language.org) ]]; then
-	        ( cd $wd/$project && git checkout v$tag )
+          ( cd $wd/$project && git checkout v$tag )
         fi
     done
 }
@@ -191,8 +193,8 @@ function makeWorld() {
 # Then make website
     (
         cd "$wd/d-programming-language.org" &&
-        $makecmd -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=$model &&
-        $makecmd -f posix.mak html -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
+        $makecmd -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=$model GIT_HOME=$GIT_HOME &&
+        $makecmd -f posix.mak html -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model GIT_HOME=$GIT_HOME
     )
 }
 
