@@ -3,7 +3,7 @@ CC ?= gcc
 PREFIX ?= /usr/local/bin
 
 WITH_DOC ?= no
-DOC ?= ../d-programming-language.org/web
+DOC ?= ../dlang.org/web
 
 MODEL:=
 ifneq (,$(MODEL))

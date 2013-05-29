@@ -9,7 +9,7 @@
 # this script from that directory (the location of the script itself
 # doesn't matter). It will create the following subdirectories:
 # /path/to/d/dmd, /path/to/d/druntime, /path/to/d/phobos,
-# /path/to/d/d-programming-language.org, /path/to/d/tools, and
+# /path/to/d/dlang.org, /path/to/d/tools, and
 # /path/to/d/installer. Then it will fetch all corresponding projects
 # from github and build them fresh.
 #
@@ -23,7 +23,7 @@ setopt err_exit
 
 local projects
 typeset -a projects
-projects=(dmd druntime phobos d-programming-language.org tools installer)
+projects=(dmd druntime phobos dlang.org tools installer)
 # Working directory
 local wd=$(pwd)
 # Configuration
@@ -122,7 +122,7 @@ function installAnew() {
         fi
         if [[ ! -z $tag &&
                     ($project = dmd || $project = druntime || $project = phobos ||
-                        $project = d-programming-language.org) ]]; then
+                        $project = dlang.org) ]]; then
 	        ( cd $wd/$project && git checkout v$tag )
         fi
     done
@@ -190,7 +190,7 @@ function makeWorld() {
 
 # Then make website
     (
-        cd "$wd/d-programming-language.org" &&
+        cd "$wd/dlang.org" &&
         $makecmd -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=$model &&
         $makecmd -f posix.mak html -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
     )
