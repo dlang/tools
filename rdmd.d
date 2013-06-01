@@ -192,6 +192,20 @@ int main(string[] args)
         mkdirRecurse(workDir);
     }
 
+    DirEntry objDirEntry;
+    const objDirExists =
+    	collectException(objDirEntry = dirEntry(objDir)) is null;
+    if (objDirExists)
+    {
+        enforce(dryRun || objDirEntry.isDir,
+                "Entry `"~objDir~"' exists but is not a directory.");
+    }
+    else
+    {
+        yap("mkdirRecurse ", objDir);
+        mkdirRecurse(objDir);
+    }
+
     if (lib)
     {
         // When building libraries, DMD does not generate object files.
