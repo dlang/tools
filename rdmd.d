@@ -192,6 +192,17 @@ int main(string[] args)
         mkdirRecurse(workDir);
     }
 
+    if (exists(objDir))
+    {
+        enforce(dryRun || isDir(objDir),
+                "Entry `"~objDir~"' exists but is not a directory.");
+    }
+    else
+    {
+        yap("mkdirRecurse ", objDir);
+        mkdirRecurse(objDir);
+    }
+
     if (lib)
     {
         // When building libraries, DMD does not generate object files.
