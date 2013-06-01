@@ -192,12 +192,9 @@ int main(string[] args)
         mkdirRecurse(workDir);
     }
 
-    DirEntry objDirEntry;
-    const objDirExists =
-    	collectException(objDirEntry = dirEntry(objDir)) is null;
-    if (objDirExists)
+    if (exists(objDir))
     {
-        enforce(dryRun || objDirEntry.isDir,
+        enforce(dryRun || isDir(objDir),
                 "Entry `"~objDir~"' exists but is not a directory.");
     }
     else
