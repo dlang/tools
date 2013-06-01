@@ -327,7 +327,7 @@ private @property string myOwnTmpDir()
             tmpRoot = std.process.getenv("TMP");
         }
         if (!tmpRoot) tmpRoot = buildPath(".", ".rdmd");
-        else tmpRoot ~= dirSeparator ~ ".rdmd";
+        else tmpRoot = tmpRoot.replace("/", dirSeparator) ~ dirSeparator ~ ".rdmd";
     }
     yap("stat ", tmpRoot);
     DirEntry tmpRootEntry;
