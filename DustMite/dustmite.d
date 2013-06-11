@@ -24,10 +24,13 @@ import dsplit;
 alias std.string.join join;
 
 string dir, resultDir, tester, globalCache;
+string dirSuffix(string suffix) { return (dir.absolutePath().buildNormalizedPath() ~ "." ~ suffix).relativePath(); }
+
 size_t maxBreadth;
 Entity root;
+bool concatPerformed;
 int tests; bool foundAnything;
-bool noSave;
+bool noSave, trace;
 
 struct Times { StopWatch total, load, testSave, resultSave, test, clean, cacheHash, globalCache, misc; }
 Times times;
@@ -41,10 +44,10 @@ void measure(string what)(void delegate() p)
 
 struct Reduction
 {
-	enum Type { None, Remove, Unwrap, ReplaceWord }
+	enum Type { None, Remove, Unwrap, Concat, ReplaceWord }
 	Type type;
 
-	// Remove / Unwrap
+	// Remove / Unwrap / Concat
 	size_t[] address;
 	Entity target;
 
@@ -64,6 +67,7 @@ struct Reduction
 				return format(`%s [%d/%d: %s -> %s]`, name, index+1, total, from, to);
 			case Reduction.Type.Remove:
 			case Reduction.Type.Unwrap:
+			case Reduction.Type.Concat:
 				string[] segments = new string[address.length];
 				Entity e = root;
 				size_t progress;
@@ -99,6 +103,7 @@ int main(string[] args)
 		"dump", &dump,
 		"times", &showTimes,
 		"cache", &globalCache, // for research
+		"trace", &trace, // for debugging
 		"nosave|no-save", &noSave, // for research
 		"no-optimize", &noOptimize, // for research
 		"h|help", &showHelp
@@ -138,6 +143,7 @@ Less interesting options:
   --times            Display verbose spent time breakdown
   --cache DIR        Use DIR as persistent disk cache
                        (in addition to memory cache)
+  --trace            Save all attempted reductions to DIR.trace
   --no-save          Disable saving in-progress results
   --no-optimize      Disable tree optimization step
                        (may be useful with --dump)
@@ -184,9 +190,10 @@ EOS");
 		optimize(root);
 	maxBreadth = getMaxBreadth(root);
 	countDescendants(root);
+	assignID(root);
 
 	if (dump)
-		dumpSet(dir ~ ".dump");
+		dumpSet(dirSuffix("dump"));
 
 	if (tester is null)
 	{
@@ -194,7 +201,7 @@ EOS");
 		return 0;
 	}
 
-	resultDir = dir ~ ".reduced";
+	resultDir = dirSuffix("reduced");
 	enforce(!exists(resultDir), "Result directory already exists");
 
 	if (!test(nullReduction))
@@ -248,9 +255,22 @@ size_t checkDescendants(Entity e)
 {
 	size_t n = 1;
 	foreach (c; e.children)
-		n += countDescendants(c);
+		n += checkDescendants(c);
 	assert(e.descendants == n);
 	return n;
+}
+
+size_t countFiles(Entity e)
+{
+	if (e.isFile)
+		return 1;
+	else
+	{
+		size_t n = 0;
+		foreach (c; e.children)
+			n += countFiles(c);
+		return n;
+	}
 }
 
 /// Try reductions at address. Edit set, save result and return true on successful reduction.
@@ -263,6 +283,9 @@ bool testAddress(size_t[] address)
 	else
 	if (e.head.length && e.tail.length && tryReduction(Reduction(Reduction.Type.Unwrap, address, e)))
 		return true;
+	else
+	if (e.isFile && !concatPerformed && tryReduction(Reduction(Reduction.Type.Concat, address, e)))
+		return concatPerformed = true;
 	else
 		return false;
 }
@@ -416,6 +439,9 @@ void reduceInDepth()
 
 void reduce()
 {
+	if (countFiles(root) < 2)
+		concatPerformed = true;
+
 	//reduceCareful();
 	//reduceLookback();
 	reduceInDepth();
@@ -534,6 +560,20 @@ void dump(Entity root, ref Reduction reduction, void delegate(string) handleFile
 				foreach (c; e.children)
 					dumpEntity(c);
 				break;
+			case Reduction.Type.Concat: // write contents of all files to this one; leave other files empty
+				handleFile(e.filename);
+
+				void dumpFileContent(Entity e)
+				{
+					foreach (f; e.children)
+						if (f.isFile)
+							foreach (c; f.children)
+								dumpEntity(c);
+						else
+							dumpFileContent(f);
+				}
+				dumpFileContent(root);
+				break;
 			}
 		}
 		else
@@ -543,6 +583,8 @@ void dump(Entity root, ref Reduction reduction, void delegate(string) handleFile
 		if (e.isFile)
 		{
 			handleFile(e.filename);
+			if (reduction.type == Reduction.Type.Concat) // not the target - writing an empty file
+				return;
 			foreach (c; e.children)
 				dumpEntity(c);
 		}
@@ -676,6 +718,29 @@ void applyReduction(ref Reduction r)
 			with (entityAt(r.address))
 				head = tail = null;
 			return;
+		case Reduction.Type.Concat:
+		{
+			Entity[] allData;
+			void scan(Entity e)
+			{
+				if (e.isFile)
+				{
+					allData ~= e.children;
+					e.children = null;
+				}
+				else
+					foreach (c; e.children)
+						scan(c);
+			}
+
+			scan(root);
+
+			r.target.children = allData;
+			optimize(r.target);
+			countDescendants(root);
+
+			return;
+		}
 	}
 }
 
@@ -836,6 +901,7 @@ bool test(Reduction reduction)
 
 		if (globalCache)
 		{
+			if (!exists(globalCache)) mkdirRecurse(globalCache);
 			string cacheBase = absolutePath(buildPath(globalCache, formatHash(digest))) ~ "-";
 			bool found;
 
@@ -861,7 +927,7 @@ bool test(Reduction reduction)
 
 	bool doTest()
 	{
-		string testdir = dir ~ ".test";
+		string testdir = dirSuffix("test");
 		measure!"testSave"({save(reduction, testdir);}); scope(exit) measure!"clean"({safeDelete(testdir);});
 
 		auto lastdir = getcwd(); scope(exit) chdir(lastdir);
@@ -873,7 +939,18 @@ bool test(Reduction reduction)
 		return result;
 	}
 
-	return ramCached(diskCached(doTest()));
+	auto result = ramCached(diskCached(doTest()));
+	if (trace) saveTrace(reduction, dirSuffix("trace"), result);
+	return result;
+}
+
+void saveTrace(Reduction reduction, string dir, bool result)
+{
+	if (!exists(dir)) mkdir(dir);
+	static size_t count;
+	string countStr = format("%08d-#%08d-%d", count++, reduction.target ? reduction.target.id : 0, result ? 1 : 0);
+	auto traceDir = buildPath(dir, countStr);
+	save(reduction, traceDir);
 }
 
 void applyNoRemoveMagic()
@@ -919,7 +996,9 @@ void applyNoRemoveRegex(string[] noRemoveStr)
 			mark(c);
 	}
 
-	foreach (f; root.children)
+	auto files = root.isFile ? [root] : root.children;
+
+	foreach (f; files)
 	{
 		assert(f.isFile);
 		if (canFind!((a){return !match(f.filename, a).empty;})(noRemove))
@@ -1045,21 +1124,20 @@ void loadCoverage(string dir)
 	scanFiles(root);
 }
 
+void assignID(Entity e)
+{
+	static int counter;
+	e.id = ++counter;
+	foreach (c; e.children)
+		assignID(c);
+}
+
 void dumpSet(string fn)
 {
 	auto f = File(fn, "wt");
 
 	string printable(string s) { return s is null ? "null" : `"` ~ s.replace("\\", `\\`).replace("\"", `\"`).replace("\r", `\r`).replace("\n", `\n`) ~ `"`; }
 	string printableFN(string s) { return "/*** " ~ s ~ " ***/"; }
-
-	int counter;
-	void assignID(Entity e)
-	{
-		e.id = counter++;
-		foreach (c; e.children)
-			assignID(c);
-	}
-	assignID(root);
 
 	bool[int] dependents;
 	void scanDependents(Entity e)
@@ -1078,8 +1156,8 @@ void dumpSet(string fn)
 		// if (!fileLevel) { f.writeln(prefix, "[ ... ]"); continue; }
 
 		f.write(prefix);
-		if (e.id in dependents)
-			f.write(e.id, " ");
+		if (e.id in dependents || trace)
+			f.write("#", e.id, " ");
 		if (e.dependencies.length)
 		{
 			f.write(" => ");

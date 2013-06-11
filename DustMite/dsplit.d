@@ -368,14 +368,26 @@ void postProcessD(ref Entity[] entities)
 {
 	for (int i=0; i<entities.length;)
 	{
-		// Add dependencies for comma-separated lists.
+		// Process comma-separated lists. Nest later items and add a dependency for the comma.
 
 		if (i+2 <= entities.length && entities[i].children.length >= 1 && entities[i].tail.stripD() == ",")
 		{
+			// Put the comma in its own entity, so it can have a dependency
 			auto comma = new Entity(entities[i].tail);
-			entities[i].children ~= comma;
 			entities[i].tail = null;
-			comma.dependencies ~= [entities[i].children[$-2], getHeadEntity(entities[i+1])];
+
+			// Create a separate group for the item and its following comma, so that they could be removed together
+			auto commaGroup = new Entity(null, [entities[i].children[$-1], comma], null);
+			entities[i].children[$-1] = commaGroup;
+
+			// Place all the remaining items from the current entity into their own new group,
+			// so that they could be removed together and the comma could have a dependency on all the remaining items
+			auto rest = new Entity(null, entities[i+1..$], null);
+			entities[i].children ~= rest;
+			entities = entities[0..i+1];
+
+			// Register the dependency
+			comma.dependencies ~= rest;
 		}
 
 		// Group together consecutive entities which might represent a single language construct
