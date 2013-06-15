@@ -107,17 +107,7 @@ int main(string[] args)
 
     auto programPos = indexOfProgram(args);
     assert(programPos > 0);
-    if (programPos == args.length)
-    {
-        write(helpString);
-        return 1;
-    }
-    auto
-        root = args[programPos].chomp(".d") ~ ".d",
-        exeBasename = root.baseName(".d"),
-        exeDirname = root.dirName,
-        programArgs = args[programPos + 1 .. $];
-    args = args[0 .. programPos];
+    auto argsBeforeProgram = args[0 .. programPos];
 
     bool bailout;    // bailout set by functions called in getopt if
                      // program should exit
@@ -125,7 +115,7 @@ int main(string[] args)
     bool addStubMain;// set by --main
     string[] eval;     // set by --eval
     bool makeDepend;
-    getopt(args,
+    getopt(argsBeforeProgram,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
             "build-only", &buildOnly,
@@ -158,10 +148,23 @@ int main(string[] args)
                 ~ std.string.join(eval, "\n") ~ ";\n}");
     }
 
-    assert(args.length >= 1);
-    auto compilerFlags = args[1 .. $];
+    // no code on command line => require a source file
+    if (programPos == args.length)
+    {
+        write(helpString);
+        return 1;
+    }
 
-    bool lib = args.canFind("-lib");
+    auto
+        root = args[programPos].chomp(".d") ~ ".d",
+        exeBasename = root.baseName(".d"),
+        exeDirname = root.dirName,
+        programArgs = args[programPos + 1 .. $];
+
+    assert(argsBeforeProgram.length >= 1);
+    auto compilerFlags = argsBeforeProgram[1 .. $];
+
+    bool lib = compilerFlags.canFind("-lib");
     string outExt = lib ? libExt : binExt;
 
     // --build-only implies the user would like a binary in the program's directory
