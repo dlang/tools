@@ -178,12 +178,9 @@ int main(string[] args)
     immutable workDir = getWorkPath(root, compilerFlags);
     string objDir = buildPath(workDir, "objs");
     yap("stat ", workDir);
-    DirEntry workDirEntry;
-    const workDirExists =
-        collectException(workDirEntry = dirEntry(workDir)) is null;
-    if (workDirExists)
+    if (exists(workDir))
     {
-        enforce(dryRun || workDirEntry.isDir,
+        enforce(dryRun || isDir(workDir),
                 "Entry `"~workDir~"' exists but is not a directory.");
     }
     else
@@ -341,17 +338,14 @@ private @property string myOwnTmpDir()
         else tmpRoot = tmpRoot.replace("/", dirSeparator) ~ dirSeparator ~ ".rdmd";
     }
     yap("stat ", tmpRoot);
-    DirEntry tmpRootEntry;
-    const tmpRootExists =
-        collectException(tmpRootEntry = dirEntry(tmpRoot)) is null;
-    if (!tmpRootExists)
+    if (exists(tmpRoot))
     {
-        mkdirRecurse(tmpRoot);
+        enforce(isDir(tmpRoot),
+                "Entry `"~tmpRoot~"' exists but is not a directory.");
     }
     else
     {
-        enforce(tmpRootEntry.isDir,
-                "Entry `"~tmpRoot~"' exists but is not a directory.");
+        mkdirRecurse(tmpRoot);
     }
     return tmpRoot;
 }
@@ -570,15 +564,12 @@ private string[string] getDependencies(string rootModule, string workDir,
     if (!force)
     {
         yap("stat ", depsFilename);
-        DirEntry depsEntry;
-        bool depsEntryExists =
-            collectException(depsEntry = depsFilename.dirEntry) is null;
-        if (depsEntryExists)
+        if (exists(depsFilename))
         {
             // See if the deps file is still in good shape
             auto deps = readDepsFile();
             auto allDeps = chain(rootModule.only, deps.byKey).array;
-            bool mustRebuildDeps = allDeps.anyNewerThan(depsEntry.timeLastModified);
+            bool mustRebuildDeps = allDeps.anyNewerThan(timeLastModified(depsFilename));
             if (!mustRebuildDeps)
             {
                 // Cool, we're in good shape
@@ -797,9 +788,8 @@ string which(string path)
         {
             string absPath = buildPath(envPath, path ~ extension);
             yap("stat ", absPath);
-            DirEntry e;
-            const exists = collectException(e = dirEntry(absPath)) is null;
-            if (exists && e.isFile) return absPath;
+            if (exists(absPath) && isFile(absPath))
+                return absPath;
         }
     }
     throw new FileException(path, "File not found in PATH");
