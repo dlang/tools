@@ -115,7 +115,7 @@ int main(string[] args)
     auto
         root = args[programPos].chomp(".d") ~ ".d",
         exeBasename = root.baseName(".d"),
-        exeDirname = root.dirName,
+        exeDirname = root.dirName(),
         programArgs = args[programPos + 1 .. $];
     args = args[0 .. programPos];
 
@@ -206,7 +206,7 @@ int main(string[] args)
         // Instead, it uses the -od parameter as the location for the library file.
         // Thus, override objDir (which is normally a temporary directory)
         // to be the target output directory.
-        objDir = exe.dirName;
+        objDir = exe.dirName();
     }
 
     // Fetch dependencies
@@ -259,7 +259,7 @@ int main(string[] args)
     }
 
     // Have at it
-    if (chain(root.only, myDeps.byKey).array.anyNewerThan(lastBuildTime))
+    if (chain(root.only(), myDeps.byKey).array().anyNewerThan(lastBuildTime))
     {
         immutable result = rebuild(root, exe, workDir, objDir,
                                    myDeps, compilerFlags, addStubMain);
@@ -357,12 +357,12 @@ private string getWorkPath(in string root, in string[] compilerFlags)
 
     MD5 context;
     context.start();
-    context.put(getcwd().representation);
-    context.put(root.representation);
+    context.put(getcwd().representation());
+    context.put(root.representation());
     foreach (flag; compilerFlags)
     {
         if (irrelevantSwitches.canFind(flag)) continue;
-        context.put(flag.representation);
+        context.put(flag.representation());
     }
     auto digest = context.finish();
     string hash = toHexString(digest);
@@ -484,7 +484,7 @@ private string[string] getDependencies(string rootModule, string workDir,
     {
         string d2obj(string dfile)
         {
-            return buildPath(objDir, dfile.baseName.chomp(".d") ~ objExt);
+            return buildPath(objDir, dfile.baseName().chomp(".d") ~ objExt);
         }
         string findLib(string libName)
         {
@@ -568,7 +568,7 @@ private string[string] getDependencies(string rootModule, string workDir,
         {
             // See if the deps file is still in good shape
             auto deps = readDepsFile();
-            auto allDeps = chain(rootModule.only, deps.byKey).array;
+            auto allDeps = chain(rootModule.only(), deps.byKey).array();
             bool mustRebuildDeps = allDeps.anyNewerThan(timeLastModified(depsFilename));
             if (!mustRebuildDeps)
             {
@@ -609,7 +609,7 @@ private string[string] getDependencies(string rootModule, string workDir,
 bool anyNewerThan(in string[] files, in string file)
 {
     yap("stat ", file);
-    return files.anyNewerThan(file.timeLastModified);
+    return files.anyNewerThan(file.timeLastModified());
 }
 
 // Is any file newer than the given file?
@@ -718,7 +718,7 @@ int eval(string todo)
 {
     auto pathname = myOwnTmpDir;
     auto progname = buildPath(pathname,
-            "eval." ~ todo.md5Of.toHexString);
+            "eval." ~ todo.md5Of().toHexString());
     auto binName = progname ~ binExt;
 
     bool compileFailure = false;
