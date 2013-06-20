@@ -605,7 +605,7 @@ private string[string] getDependencies(string rootModule, string workDir,
         exit(depsExitCode);
     }
 
-    return readDepsFile();
+    return dryRun ? null : readDepsFile();
 }
 
 // Is any file newer than the given file?
