@@ -107,17 +107,7 @@ int main(string[] args)
 
     auto programPos = indexOfProgram(args);
     assert(programPos > 0);
-    if (programPos == args.length)
-    {
-        write(helpString);
-        return 1;
-    }
-    auto
-        root = args[programPos].chomp(".d") ~ ".d",
-        exeBasename = root.baseName(".d"),
-        exeDirname = root.dirName,
-        programArgs = args[programPos + 1 .. $];
-    args = args[0 .. programPos];
+    auto argsBeforeProgram = args[0 .. programPos];
 
     bool bailout;    // bailout set by functions called in getopt if
                      // program should exit
@@ -125,7 +115,7 @@ int main(string[] args)
     bool addStubMain;// set by --main
     string[] eval;     // set by --eval
     bool makeDepend;
-    getopt(args,
+    getopt(argsBeforeProgram,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
             "build-only", &buildOnly,
@@ -158,10 +148,23 @@ int main(string[] args)
                 ~ std.string.join(eval, "\n") ~ ";\n}");
     }
 
-    assert(args.length >= 1);
-    auto compilerFlags = args[1 .. $];
+    // no code on command line => require a source file
+    if (programPos == args.length)
+    {
+        write(helpString);
+        return 1;
+    }
 
-    bool lib = args.canFind("-lib");
+    auto
+        root = args[programPos].chomp(".d") ~ ".d",
+        exeBasename = root.baseName(".d"),
+        exeDirname = root.dirName,
+        programArgs = args[programPos + 1 .. $];
+
+    assert(argsBeforeProgram.length >= 1);
+    auto compilerFlags = argsBeforeProgram[1 .. $];
+
+    bool lib = compilerFlags.canFind("-lib");
     string outExt = lib ? libExt : binExt;
 
     // --build-only implies the user would like a binary in the program's directory
@@ -701,11 +704,11 @@ module temporary;
 import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
     std.bigint, std.bitmanip,
     std.compiler, std.complex, std.concurrency, std.container, std.conv,
-    std.cpuid, std.cstream, std.csv,
-    std.datetime, std.demangle, std.encoding, std.exception,
+    std.cstream, std.csv,
+    std.datetime, std.demangle, std.digest.md, std.encoding, std.exception,
     std.file,
     std.format, std.functional, std.getopt, std.json,
-    std.math, std.mathspecial, std.md5, std.metastrings, std.mmfile,
+    std.math, std.mathspecial, std.metastrings, std.mmfile,
     std.numeric, std.outbuffer, std.parallelism, std.path, std.process,
     std.random, std.range, std.regex, std.signals, std.socket,
     std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream,
