@@ -10,7 +10,7 @@
  *    (See accompanying file LICENSE_1_0.txt or copy at
  *          http://www.boost.org/LICENSE_1_0.txt)
  */
- 
+
 // Written in the D programming language.
 
 import std.algorithm, std.array, std.c.stdlib, std.datetime,
@@ -138,7 +138,7 @@ int main(string[] args)
     if (loop)
     {
         return .eval(importWorld ~ "void main(char[][] args) { "
-                ~ "foreach (line; stdin.byLine()) {\n"
+                ~ "foreach (line; std.stdio.stdin.byLine()) {\n"
                 ~ std.string.join(loop, "\n")
                 ~ ";\n} }");
     }
