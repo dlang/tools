@@ -93,6 +93,7 @@ int main(string[] args)
             // -o- passed
             enforce(false, "Option -o- currently not supported by rdmd");
         }
+        else if (value[0] == 'p') { }  // -op
         else
         {
             enforce(false, "Unrecognized option: "~key~value);
