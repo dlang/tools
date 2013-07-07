@@ -435,7 +435,10 @@ private int rebuild(string root, string fullExe,
         if (objDir.exists && objDir.startsWith(workDir))
         {
             yap("rmdirRecurse ", objDir);
-            rmdirRecurse(objDir);
+            // We swallow the exception because of a potential race: two
+            // concurrently-running scripts may attempt to remove this
+            // directory. One will fail.
+            collectException(rmdirRecurse(objDir));
         }
     }
     return 0;
