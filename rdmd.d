@@ -666,7 +666,7 @@ private bool newerThan(string source, SysTime target)
     try
     {
         yap("stat ", source);
-        return dirEntry(source).timeLastModified > target;
+        return DirEntry(source).timeLastModified > target;
     }
     catch (Exception)
     {
