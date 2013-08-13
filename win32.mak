@@ -38,8 +38,8 @@ ROOT = $(ROOT_OF_THEM_ALL)\windows\32
 TARGETS=	$(ROOT)\dman.exe \
 	$(ROOT)\findtags.exe \
 	$(ROOT)\rdmd.exe \
+	$(ROOT)\changed.exe \
 	$(ROOT)\dustmite.exe
-	#$(ROOT)\changed.exe \
 
 MAKEFILES=win32.mak posix.mak
 
