@@ -73,6 +73,7 @@ adoStream.Close
 
 string workDir;
 string dloadToolPath;
+bool hasImplib;
 
 void showHelp()
 {
@@ -100,7 +101,9 @@ int main(string[] args)
     curlZipBase = curlZipBase.replace("$(CURL_VERSION)", curlVersion);
     outputDir ~= "-" ~ curlVersion;
     workDir = buildPath(tempDir(), workDirName);
-
+    
+    checkImplib();
+    
     // Clear temporary work dir
     writeln("Clearing temporary work dir: ", workDir);
     removeDir(workDir);
@@ -115,9 +118,10 @@ int main(string[] args)
 
     // Download
     initDownloader();
-    download(unzipUrl,      unzipArchivePath);
-    download(basicUtilsUrl, basicUtilsArchivePath);
-    download(curlUrl,       curlArchivePath);
+    download(unzipUrl, unzipArchivePath);
+    if(!hasImplib)
+        download(basicUtilsUrl, basicUtilsArchivePath);
+    download(curlUrl, curlArchivePath);
     
     // Extract
     {
@@ -127,8 +131,11 @@ int main(string[] args)
         chdir(dirName(unzipArchivePath));
         run(unzipArchiveName); // Self-extracting archive
 
-        chdir(dirName(basicUtilsArchivePath));
-        unzip(basicUtilsArchiveName);
+        if(!hasImplib)
+        {
+            chdir(dirName(basicUtilsArchivePath));
+            unzip(basicUtilsArchiveName);
+        }
 
         chdir(workDir);
         unzip(curlArchivePath);
@@ -208,6 +215,20 @@ void initDownloader()
     std.file.write(dloadToolPath, dloadToolContent);
 }
 
+void checkImplib()
+{
+    try
+    {
+        hasImplib = executeShell("implib /h").output.startsWith("Digital Mars Import Library Manager");
+        writeln("NOCATCH: hasImplib: ", hasImplib);
+    }
+    catch(Exception e)
+    {
+        hasImplib = false;
+        writeln("DID CATCH: hasImplib: ", hasImplib);
+    }
+}
+
 void run(string cmd)
 {
     auto errlevel = system(cmd);
@@ -236,7 +257,7 @@ void implib(string libName)
     scope(exit) chdir(saveDir);
 
     chdir(dirName(libName));
-    auto implibTool = buildPath(workDir, `bup\dm\bin\implib.exe`);
+    auto implibTool = hasImplib? "implib" : buildPath(workDir, `bup\dm\bin\implib.exe`);
     auto libBaseName = baseName(libName);
     run(implibTool~" /s "~quote(libBaseName~".lib")~" "~quote(libBaseName~".dll"));
 }
