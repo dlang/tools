@@ -78,6 +78,17 @@ PHOBOS_TAGS:= \
 
 all: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 
+rdmd:      $(ROOT)/rdmd
+ddemangle: $(ROOT)/ddemangle
+catdoc:    $(ROOT)/catdoc
+detab:     $(ROOT)/detab
+tolf:      $(ROOT)/tolf
+dget:      $(ROOT)/dget
+changed:   $(ROOT)/changed
+findtags:  $(ROOT)/findtags
+dman:      $(ROOT)/dman
+dustmite:  $(ROOT)/dustmite
+
 $(ROOT)/dustmite: DustMite/dustmite.d DustMite/dsplit.d
 	$(DMD) $(MODEL_FLAG) DustMite/dustmite.d DustMite/dsplit.d -of$(@)
 

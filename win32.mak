@@ -64,6 +64,12 @@ TAGS=	expression.tag \
 
 targets : $(TARGETS)
 
+dman:      $(ROOT)\dman.exe
+findtags:  $(ROOT)\findtags.exe
+rdmd:      $(ROOT)\rdmd.exe
+changed:   $(ROOT)\changed.exe
+dustmite:  $(ROOT)\dustmite.exe
+
 expression.tag : $(ROOT)\findtags.exe $(DOC)\expression.html
 	+findtags $(DOC)\expression.html >expression.tag
 
