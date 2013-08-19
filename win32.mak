@@ -38,6 +38,7 @@ ROOT = $(ROOT_OF_THEM_ALL)\windows\32
 TARGETS=	$(ROOT)\dman.exe \
 	$(ROOT)\findtags.exe \
 	$(ROOT)\rdmd.exe \
+	$(ROOT)\ddemangle.exe \
 	$(ROOT)\changed.exe \
 	$(ROOT)\dustmite.exe
 
@@ -67,6 +68,7 @@ targets : $(TARGETS)
 dman:      $(ROOT)\dman.exe
 findtags:  $(ROOT)\findtags.exe
 rdmd:      $(ROOT)\rdmd.exe
+ddemangle: $(ROOT)\ddemangle.exe
 changed:   $(ROOT)\changed.exe
 dustmite:  $(ROOT)\dustmite.exe
 
@@ -128,6 +130,9 @@ $(ROOT)\dman.exe : dman.d $(TAGS)
 
 $(ROOT)\rdmd.exe : rdmd.d
 	$(DMD) $(DFLAGS) -of$@ rdmd.d advapi32.lib
+
+$(ROOT)\ddemangle.exe : ddemangle.d
+	$(DMD) $(DFLAGS) -of$@ ddemangle.d
 
 $(ROOT)\dustmite.exe : DustMite/dustmite.d DustMite/dsplit.d
 	$(DMD) $(DFLAGS) -of$@ DustMite/dustmite.d DustMite/dsplit.d
