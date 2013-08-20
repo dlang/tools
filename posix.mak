@@ -29,13 +29,9 @@ ifeq (,$(OS))
 	$(error Unrecognized or unsupported OS for uname: $(uname_S))
 endif
 
-# For now, 32 bit is the default model
-ifeq (,$(MODEL))
-	MODEL:=32
-endif
-
-ifneq (,$(MODEL))
-    MODEL_FLAG:=-m$(MODEL)
+MODEL:=default
+ifneq (default,$(MODEL))
+	MODEL_FLAG:=-m$(MODEL)
 endif
 
 ROOT_OF_THEM_ALL = generated
