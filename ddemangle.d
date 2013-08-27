@@ -50,11 +50,11 @@ void main(string[] args)
     try
     {
         auto f = (args.length==2) ? File(args[1], "r") : stdin;
-        auto r = regex(r"\b(_D[0-9a-zA-Z_]+)\b", "g");
+        auto r = regex(r"\b(_D[0-9a-zA-Z_]+)\b");
 
         foreach (line; stdin.byLine())
         {
-            writeln(replace!((a) => demangle(a.hit))(line, r));
+            writeln(replaceAll!(a => demangle(a.hit))(line, r));
         }
     }
     catch(Exception e)
