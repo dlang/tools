@@ -40,11 +40,12 @@ TARGETS=	$(ROOT)\dman.exe \
 	$(ROOT)\rdmd.exe \
 	$(ROOT)\ddemangle.exe \
 	$(ROOT)\changed.exe \
-	$(ROOT)\dustmite.exe
+	$(ROOT)\dustmite.exe \
+	$(ROOT)\largeaddr.exe
 
 MAKEFILES=win32.mak posix.mak
 
-SRCS=dman.d findtags.d rdmd.d ddemangle.d
+SRCS=dman.d findtags.d rdmd.d ddemangle.d largeaddr.d
 
 TAGS=	expression.tag \
 	statement.tag \
@@ -71,6 +72,7 @@ rdmd:      $(ROOT)\rdmd.exe
 ddemangle: $(ROOT)\ddemangle.exe
 changed:   $(ROOT)\changed.exe
 dustmite:  $(ROOT)\dustmite.exe
+largeaddr: $(ROOT)\largeaddr.exe
 
 expression.tag : $(ROOT)\findtags.exe $(DOC)\expression.html
 	+$(ROOT)\findtags $(DOC)\expression.html >expression.tag
@@ -139,6 +141,9 @@ $(ROOT)\dustmite.exe : DustMite/dustmite.d DustMite/dsplit.d
 
 $(ROOT)\changed.exe : changed.d
 	$(DMD) $(DFLAGS) -of$@ changed.d
+
+$(ROOT)\largeaddr.exe : largeaddr.d
+	$(DMD) $(DFLAGS) -of$@ largeaddr.d
 
 clean :
 	del $(TARGETS) $(TAGS)
