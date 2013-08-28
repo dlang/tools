@@ -150,6 +150,10 @@ int main(string[] args)
     removeDir(outputDir);
     copyDir(curlDir, outputDir);
     
+	writeln("Done.");
+	writeln("Your OPTLINK-compatable libcurl.lib, along with the rest of libcurl,");
+	writeln("is in the directory: ", outputDir);
+	
     return 0;
 }
 
