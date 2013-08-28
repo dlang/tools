@@ -10,6 +10,7 @@
  */
 
 import core.demangle;
+import std.algorithm : equal, map;
 import std.getopt;
 import std.regex;
 import std.stdio;
@@ -27,6 +28,30 @@ Options:
 ENDHELP", args[0]);
 
     exit(1);
+}
+
+auto reDemangle = regex(r"\b(_D[0-9a-zA-Z_]+)\b");
+
+auto ddemangle(T)(T line)
+    if (is(T : const(char)[]))
+{
+    return replaceAll!(a => demangle(a.hit))(line, reDemangle);
+}
+
+unittest
+{
+    string[] testData = [
+        "_D2rt4util7console8__assertFiZv",
+        "random initial junk _D2rt4util7console8__assertFiZv random trailer",
+        "multiple _D2rt4util7console8__assertFiZv occurrences _D2rt4util7console8__assertFiZv",
+    ];
+    string[] expected = [
+        "void rt.util.console.__assert(int)",
+        "random initial junk void rt.util.console.__assert(int) random trailer",
+        "multiple void rt.util.console.__assert(int) occurrences void rt.util.console.__assert(int)",
+    ];
+
+    assert(equal(testData.map!ddemangle(), expected));
 }
 
 void main(string[] args)
@@ -50,12 +75,8 @@ void main(string[] args)
     try
     {
         auto f = (args.length==2) ? File(args[1], "r") : stdin;
-        auto r = regex(r"\b(_D[0-9a-zA-Z_]+)\b", "g");
-
-        foreach (line; stdin.byLine())
-        {
-            writeln(replace!((a) => demangle(a.hit))(line, r));
-        }
+        foreach (line; f.byLine())
+            writeln(ddemangle(line));
     }
     catch(Exception e)
     {
