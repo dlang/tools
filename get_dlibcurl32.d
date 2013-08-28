@@ -77,8 +77,8 @@ bool hasImplib;
 
 void showHelp()
 {
-    stderr.writeln("Usage: get-dlibcurl32 LIBCURL_VERSION");
-    stderr.writeln("Ex:    get-dlibcurl32 7.32.0");
+    stderr.writeln("Usage: get_dlibcurl32 LIBCURL_VERSION");
+    stderr.writeln("Ex:    get_dlibcurl32 7.32.0");
 }
 
 int main(string[] args)
@@ -218,15 +218,9 @@ void initDownloader()
 void checkImplib()
 {
     try
-    {
         hasImplib = executeShell("implib /h").output.startsWith("Digital Mars Import Library Manager");
-        writeln("NOCATCH: hasImplib: ", hasImplib);
-    }
     catch(Exception e)
-    {
         hasImplib = false;
-        writeln("DID CATCH: hasImplib: ", hasImplib);
-    }
 }
 
 void run(string cmd)
