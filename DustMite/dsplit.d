@@ -259,9 +259,9 @@ Entity[] parseD(string s)
 	{
 		// Here be dragons.
 
-		enum MAX_SPLITTER_LEVELS = 5;
+		enum MAX_SPLITTER_LEVELS = 6;
 		struct DSplitter { char open, close, sep; }
-		static const DSplitter[MAX_SPLITTER_LEVELS] splitters = [{'{','}',';'}, {'(',')'}, {'[',']'}, {sep:','}, {sep:' '}];
+		static const DSplitter[MAX_SPLITTER_LEVELS] splitters = [{'#','\n'}, {'{','}',';'}, {'(',')'}, {'[',']'}, {sep:','}, {sep:' '}];
 
 		Entity[][MAX_SPLITTER_LEVELS] splitterQueue;
 
