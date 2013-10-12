@@ -855,22 +855,21 @@ version(HAVE_AE)
 }
 else
 {
-	import std.md5;
+	import std.digest.md;
 
 	alias ubyte[16] HASH;
 
 	HASH hash(Reduction reduction)
 	{
 		ubyte[16] digest;
-		MD5_CTX context;
+		MD5 context;
 		context.start();
-		auto writer = cast(void delegate(string))&context.update;
+		auto writer = cast(void delegate(string))&context.put;
 		dump(root, reduction, writer, writer);
-		context.finish(digest);
-		return digest;
+		return context.finish();
 	}
 
-	alias digestToString formatHash;
+	alias toHexString formatHash;
 }
 
 bool[HASH] cache;
