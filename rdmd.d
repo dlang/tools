@@ -39,7 +39,7 @@ else
     static assert(0, "Unsupported operating system.");
 }
 
-private bool chatty, buildOnly, dryRun, force;
+private bool chatty, buildOnly, dryRun, force, preserveOutputPaths;
 private string exe;
 private string[] exclusions = ["std", "core", "tango"]; // packages that are to be excluded
 
@@ -93,7 +93,11 @@ int main(string[] args)
             // -o- passed
             enforce(false, "Option -o- currently not supported by rdmd");
         }
-        else if (value[0] == 'p') { }  // -op
+        else if (value[0] == 'p')
+        {
+            // -op passed
+            preserveOutputPaths = true;
+        }
         else
         {
             enforce(false, "Unrecognized option: "~key~value);
@@ -134,6 +138,11 @@ int main(string[] args)
             "o", &dashOh);
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
+
+    if (preserveOutputPaths)
+    {
+        argsBeforeProgram = argsBeforeProgram[0] ~ ["-op"] ~ argsBeforeProgram[1 .. $];
+    }
 
     // Just evaluate this program!
     if (loop)
