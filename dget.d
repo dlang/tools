@@ -46,7 +46,7 @@ auto resolveRepo(string arg)
 {
     import std.regex;
 
-    enum rule = ctRegex!(r"^(?:([^/:]*)/)?([^/:]*)$");
+    enum rule = regex(r"^(?:([^/:]*)/)?([^/:]*)$");
     auto m = match(arg, rule);
     enforce(!m.empty, fmt("expected 'user/repo' but found '%s'", arg));
 
