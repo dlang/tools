@@ -110,7 +110,7 @@ install: $(TOOLS) $(CURL_TOOLS)
 	install -t $(DESTDIR)$(PREFIX) $(^)
 
 clean:
-	rm -f $(ROOT)/dustmite $(TOOLS) $(DOC_TOOLS) $(TAGS) *.o $(ROOT)/*.o
+	rm -f $(ROOT)/dustmite $(TOOLS) $(CURL_TOOLS) $(DOC_TOOLS) $(TAGS) *.o $(ROOT)/*.o
 
 ifeq ($(WITH_DOC),yes)
 all install: $(DOC_TOOLS)
