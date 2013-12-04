@@ -2,12 +2,5 @@
 *.obj
 *.exe
 *.tag
-/catdoc
-/dman
-/rdmd
-/ddemangle
-/dget
-/tolf
-/findtags
-/detab
 
+/generated
