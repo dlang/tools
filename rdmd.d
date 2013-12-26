@@ -391,10 +391,22 @@ private int rebuild(string root, string fullExe,
         string workDir, string objDir, in string[string] myDeps,
         string[] compilerFlags, bool addStubMain)
 {
+    // Add a random cookie to the executable name while building, and rename
+    // it to its place afterwards. This is so concurrent runs of rdmd with the
+    // same exact arguments don't stomp onto one another.
+    import std.conv : to;
+    import std.random : rndGen;
+    import std.process : thisProcessID;
+    auto rnd = rndGen.front;
+    rndGen.popFront();
+    rnd ^= thisProcessID;
+    immutable cookie = to!string(rnd);
+    immutable fullExeCookie = fullExe ~ cookie;
+
     string[] buildTodo()
     {
         auto todo = compilerFlags
-            ~ [ "-of"~fullExe ]
+            ~ [ "-of"~fullExeCookie ]
             ~ [ "-od"~objDir ]
             ~ [ "-I"~dirName(root) ]
             ~ [ root ];
@@ -447,6 +459,8 @@ private int rebuild(string root, string fullExe,
             // directory. One will fail.
             collectException(rmdirRecurse(objDir));
         }
+        yap("mv ", fullExeCookie, " ", fullExe);
+        rename(fullExeCookie, fullExe);
     }
     return 0;
 }
