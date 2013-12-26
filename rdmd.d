@@ -760,7 +760,7 @@ int eval(string todo)
     {
         if (d.timeLastModified < cutoff)
         {
-            std.file.remove(d.name);
+            collectException(std.file.remove(d.name));
             //break; // only one per call so we don't waste time
         }
     }
@@ -817,4 +817,3 @@ void yap(size_t line = __LINE__, T...)(auto ref T stuff)
     debug stderr.writeln(line, ": ", stuff);
     else stderr.writeln(stuff);
 }
-
