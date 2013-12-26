@@ -151,18 +151,23 @@ void runTests()
     assert(res.status == 0, res.output);  // building with the dependency succeeds
 
     /* Test --loop. */
-    string fooBarText = tempDir().buildPath("fooBarText_.txt");
-    std.file.write(fooBarText, "foo\nbar\ndoo");
+    {
+    auto testLines = "foo\nbar\ndoo".split("\n");
 
+    auto pipes = pipeProcess([rdmdApp, compilerSwitch, "--force", "--loop=writeln(line);"], Redirect.stdin | Redirect.stdout);
+    foreach (input; testLines)
+        pipes.stdin.writeln(input);
+    pipes.stdin.close();
+
+    while (!testLines.empty)
     {
-    auto res2 = executeShell("%s %s --force --loop=writeln(line); < %s".format(rdmdApp, compilerSwitch, fooBarText));
-    assert(res2.status == 0, res2.output);
-    foreach (line; res2.output.split("\n"))
-    {
-        line = line.strip;
+        auto line = pipes.stdout.readln.strip;
         if (line.empty || line.startsWith("DMD v")) continue;  // git-head header
-        assert(line == "foo" || line == "bar" || line == "doo");
+        assert(line == testLines.front, "Expected %s, got %s".format(testLines.front, line));
+        testLines.popFront;
     }
+    auto status = pipes.pid.wait();
+    assert(status == 0);
     }
 
     /* Test --main. */
