@@ -781,7 +781,7 @@ void yap(size_t line = __LINE__, T...)(auto ref T stuff)
 void ensureDirRecurse(in char[] path)
 {
     yap("stat ", path);
-    auto a = path.getAttributes;
+    auto a = path.getAttributesSoft;
     if (!a)
     {
         try
@@ -837,7 +837,7 @@ void softMv(in char[] source, in char[] target)
 
 // Maybe migrate this to std.file? Never throws, returns 0 if no entry,
 // otherwise meaningful attributes
-uint getAttributes(in char[] path)
+uint getAttributesSoft(in char[] path)
 {
     version(Windows)
     {
