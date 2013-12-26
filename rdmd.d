@@ -841,6 +841,7 @@ uint getAttributesSoft(in char[] path)
 {
     version(Windows)
     {
+        import core.sys.windows.windows;
         immutable result = GetFileAttributesW(std.utf.toUTF16z(path));
         if (result == uint.max) return 0;
     }
