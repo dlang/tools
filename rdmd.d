@@ -27,8 +27,6 @@ version (Posix)
 }
 else version (Windows)
 {
-    import std.c.windows.windows;
-    extern(Windows) HINSTANCE ShellExecuteA(HWND, LPCSTR, LPCSTR, LPCSTR, LPCSTR, INT);
     enum objExt = ".obj";
     enum binExt = ".exe";
     enum libExt = ".lib";
@@ -298,7 +296,7 @@ int main(string[] args)
     }
 
     // run
-    return exec([ exe ] ~ programArgs);
+    return run(exe ~ programArgs);
 }
 
 size_t indexOfProgram(string[] args)
@@ -455,35 +453,19 @@ private int rebuild(string root, string fullExe,
 
 // Run a program optionally writing the command line first
 
-private int run(string[] argv, string output = null, bool shell = true)
+private int run(string[] args, string output = null)
 {
-    string command = escapeShellCommand(argv);
-    yap(command);
+    import std.conv;
+    yap(args.text);
     if (dryRun) return 0;
 
+    File outputFile;
     if (output)
-    {
-        shell = true;
-        command ~= " > " ~ escapeShellFileName(output);
-    }
-
-    version (Windows)
-    {
-        shell = true;
-        // Follow CMD's rules for quote parsing (see "cmd /?").
-        command = '"' ~ command ~ '"';
-    }
-
-    if (shell)
-    {
-        return system(command);
-    }
-    return execv(argv[0], argv);
-}
-
-private int exec(string[] argv)
-{
-    return run(argv, null, false);
+        outputFile = File(output, "wb");
+    else
+        outputFile = stdout;
+    auto process = spawnProcess(args, stdin, outputFile);
+    return process.wait();
 }
 
 // Given module rootModule, returns a mapping of all dependees .d
@@ -613,7 +595,7 @@ private string[string] getDependencies(string rootModule, string workDir,
     immutable depsExitCode = run(depsGetter, depsFilename);
     if (depsExitCode)
     {
-        stderr.writeln("Failed: ", escapeShellCommand(depsGetter));
+        stderr.writefln("Failed: %s", depsGetter);
         collectException(std.file.remove(depsFilename));
         exit(depsExitCode);
     }
@@ -749,7 +731,7 @@ int eval(string todo)
     if (!compileFailure)
     {
         // Run it
-        exec([ binName ]);
+        run([ binName ]);
     }
 
     // Clean pathname
