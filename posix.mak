@@ -91,7 +91,7 @@ $(ROOT)/dustmite: DustMite/dustmite.d DustMite/dsplit.d
 #dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
 $(CURL_TOOLS): $(ROOT)/%: %.d
 	$(DMD) -c -of$(@).o $(<)
-	($(DMD) -v -of$(@) $(@).o  2>&1 | grep gcc | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
+	($(DMD) -v -of$(@) $(@).o 2>/dev/null | grep '\-Xlinker' | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
 
 $(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -of$(@) $(<)
