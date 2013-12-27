@@ -423,7 +423,10 @@ private int rebuild(string root, string fullExe,
             // directory. One will fail.
             collectException(rmdirRecurse(objDir));
         }
-        softMv(fullExeCookie, fullExe);
+        // TODO: this works nicely on Linux but fails on Windows if fullExe is
+        // running during the rename. In that case the user would need to build
+        // again.
+        rename(fullExeCookie, fullExe);
     }
     return 0;
 }
