@@ -1,6 +1,6 @@
 DMD ?= dmd
 CC ?= gcc
-PREFIX ?= /usr/local/bin
+INSTALL_DIR = ../install
 
 WITH_DOC ?= no
 DOC ?= ../dlang.org/web
@@ -106,8 +106,8 @@ $(ROOT)/dman: $(TAGS) $(PHOBOS_TAGS)
 $(ROOT)/dman: DFLAGS += -J.
 
 install: $(TOOLS) $(CURL_TOOLS)
-	install -d $(DESTDIR)$(PREFIX)
-	install -t $(DESTDIR)$(PREFIX) $(^)
+	mkdir -p $(INSTALL_DIR)/bin
+	cp -u $^ $(INSTALL_DIR)/bin
 
 clean:
 	rm -f $(ROOT)/dustmite $(TOOLS) $(CURL_TOOLS) $(DOC_TOOLS) $(TAGS) *.o $(ROOT)/*.o
