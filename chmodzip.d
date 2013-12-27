@@ -1,9 +1,9 @@
 
-import std.c.stdio;
-import std.c.stdlib;
+import core.stdc.stdlib;
+import std.conv;
 import std.stdio;
 import std.file;
-import std.date;
+import std.datetime;
 import std.zip;
 import std.zlib;
 
@@ -11,8 +11,8 @@ int main(string[] args)
 {
     if (args.length == 1)
     {
-        writeln("Usage: zip zipfile attr members...");
-        exit(0);
+        stderr.writeln("Usage: zip zipfile attr members...");
+        return EXIT_FAILURE;
     }
 
     if (args.length == 2)
@@ -35,7 +35,8 @@ int main(string[] args)
             writefln("\tcompressedSize = %s", de.compressedSize);
             writefln("\teattr = %03o, %03o", de.externalAttributes >> 16, de.externalAttributes & 0xFFFF);
             writefln("\tiattr = %03o", de.internalAttributes);
-            writefln("\tdate = %s", std.date.toString(std.date.toDtime(de.time)));
+            //writefln("\tdate = %s", std.date.toString(std.date.toDtime(de.time)));
+            writefln("\tdate = %s", SysTime(unixTimeToStdTime((de.time))));
         }
         return 0;
     }
@@ -55,16 +56,15 @@ int main(string[] args)
     auto buffer = cast(byte[])std.file.read(zipname);
     auto zr = new std.zip.ZipArchive(cast(void[])buffer);
 
+L1:
     foreach (member; members)
     {
         foreach (ArchiveMember de; zr.directory)
         {
             if (de.name == member)
-                goto L1;
+                continue L1;
         }
         throw new ZipException(member ~ " not in zipfile " ~ zipname);
-      L1:
-        ;
     }
 
     bool changes;
@@ -74,17 +74,19 @@ int main(string[] args)
 
         foreach (member; members)
         {
-            if (de.name == member && ((de.externalAttributes >> 16) & 07777) != newattr)
-            {   changes = true;
-                de.madeVersion = 0x317; // necessary or linux unzip will ignore attributes
-                de.externalAttributes = (de.externalAttributes & ~(07777 << 16)) | (newattr << 16);
+            if (de.name == member && ((de.externalAttributes >> 16) & octal!7777) != newattr)
+            {
+                changes = true;
+                de._madeVersion = 0x317; // necessary or linux unzip will ignore attributes
+                de.externalAttributes = (de.externalAttributes & ~(octal!7777 << 16)) | (newattr << 16);
                 break;
             }
         }
     }
 
     if (changes)
-    {   void[] data2 = zr.build();
+    {
+        void[] data2 = zr.build();
         std.file.write(zipname, cast(byte[])data2);
     }
     return 0;
