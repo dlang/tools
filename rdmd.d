@@ -187,28 +187,11 @@ int main(string[] args)
 
     // Compute the object directory and ensure it exists
     immutable workDir = getWorkPath(root, compilerFlags);
-    string objDir = buildPath(workDir, "objs");
-    yap("stat ", workDir);
-    if (exists(workDir))
+    string objDir = buildPath(workDir, "objs-" ~ perRunCookie);
+    if (!dryRun)
     {
-        enforce(dryRun || isDir(workDir),
-                "Entry `"~workDir~"' exists but is not a directory.");
-    }
-    else
-    {
-        yap("mkdirRecurse ", workDir);
-        mkdirRecurse(workDir);
-    }
-
-    if (exists(objDir))
-    {
-        enforce(dryRun || isDir(objDir),
-                "Entry `"~objDir~"' exists but is not a directory.");
-    }
-    else
-    {
-        yap("mkdirRecurse ", objDir);
-        mkdirRecurse(objDir);
+        ensureDirRecurse(workDir);
+        ensureDirRecurse(objDir);
     }
 
     if (lib)
@@ -331,7 +314,7 @@ bool inALibrary(string source, string object)
     //return isabs(mod);
 }
 
-private @property string myOwnTmpDir()
+private @property string tmpDirPerScript()
 {
     version (Posix)
     {
@@ -348,16 +331,7 @@ private @property string myOwnTmpDir()
         if (!tmpRoot) tmpRoot = buildPath(".", ".rdmd");
         else tmpRoot = tmpRoot.replace("/", dirSeparator) ~ dirSeparator ~ ".rdmd";
     }
-    yap("stat ", tmpRoot);
-    if (exists(tmpRoot))
-    {
-        enforce(isDir(tmpRoot),
-                "Entry `"~tmpRoot~"' exists but is not a directory.");
-    }
-    else
-    {
-        mkdirRecurse(tmpRoot);
-    }
+    ensureDirRecurse(tmpRoot);
     return tmpRoot;
 }
 
@@ -378,7 +352,7 @@ private string getWorkPath(in string root, in string[] compilerFlags)
     auto digest = context.finish();
     string hash = toHexString(digest);
 
-    const tmpRoot = myOwnTmpDir;
+    const tmpRoot = tmpDirPerScript;
     return buildPath(tmpRoot,
             "rdmd-" ~ baseName(root) ~ '-' ~ hash);
 }
@@ -391,10 +365,12 @@ private int rebuild(string root, string fullExe,
         string workDir, string objDir, in string[string] myDeps,
         string[] compilerFlags, bool addStubMain)
 {
+    immutable fullExeCookie = fullExe ~ "-" ~ perRunCookie;
+
     string[] buildTodo()
     {
         auto todo = compilerFlags
-            ~ [ "-of"~fullExe ]
+            ~ [ "-of"~fullExeCookie ]
             ~ [ "-od"~objDir ]
             ~ [ "-I"~dirName(root) ]
             ~ [ root ];
@@ -405,7 +381,7 @@ private int rebuild(string root, string fullExe,
         // Need to add void main(){}?
         if (addStubMain)
         {
-            auto stubMain = buildPath(myOwnTmpDir, "stubmain.d");
+            auto stubMain = buildPath(tmpDirPerScript, "stubmain.d");
             std.file.write(stubMain, "void main(){}");
             todo ~= [ stubMain ];
         }
@@ -447,6 +423,10 @@ private int rebuild(string root, string fullExe,
             // directory. One will fail.
             collectException(rmdirRecurse(objDir));
         }
+        // TODO: this works nicely on Linux but fails on Windows if fullExe is
+        // running during the rename. In that case the user would need to build
+        // again.
+        rename(fullExeCookie, fullExe);
     }
     return 0;
 }
@@ -581,7 +561,6 @@ private string[string] getDependencies(string rootModule, string workDir,
 
     // Collect dependencies
     auto depsGetter =
-        // "cd "~shellQuote(rootDir)~" && "
         [ compiler ] ~ compilerFlags ~
         ["-v", "-o-", rootModule, "-I"~rootDir];
 
@@ -592,13 +571,15 @@ private string[string] getDependencies(string rootModule, string workDir,
         collectException(std.file.remove(depsFilename));
     }
 
-    immutable depsExitCode = run(depsGetter, depsFilename);
+    immutable depsFilenameCookie = depsFilename ~ perRunCookie;
+    immutable depsExitCode = run(depsGetter, depsFilenameCookie);
     if (depsExitCode)
     {
         stderr.writefln("Failed: %s", depsGetter);
-        collectException(std.file.remove(depsFilename));
+        collectException(std.file.remove(depsFilenameCookie));
         exit(depsExitCode);
     }
+    softMv(depsFilenameCookie, depsFilename);
 
     return dryRun ? null : readDepsFile();
 }
@@ -714,7 +695,7 @@ import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
 
 int eval(string todo)
 {
-    auto pathname = myOwnTmpDir;
+    auto pathname = tmpDirPerScript;
     auto progname = buildPath(pathname,
             "eval." ~ todo.md5Of.toHexString);
     auto binName = progname ~ binExt;
@@ -798,4 +779,83 @@ void yap(size_t line = __LINE__, T...)(auto ref T stuff)
     if (!chatty) return;
     debug stderr.writeln(line, ": ", stuff);
     else stderr.writeln(stuff);
+}
+
+void ensureDirRecurse(in char[] path)
+{
+    yap("stat ", path);
+    auto a = path.getAttributesSoft;
+    if (!a)
+    {
+        try
+        {
+            yap("mkDirRecurse ", path);
+            std.file.mkdirRecurse(path);
+        }
+        catch (Exception e)
+        {
+            yap("Failed: mkDirRecurse, re-stat ", path);
+            if (!path.isDir) throw e;
+        }
+    }
+    else
+    {
+        enforce(a.attrIsDir, path ~ " exists but is not a directory.");
+    }
+}
+
+// A cookie is necessary for some dir entries so that concurrent runs of rdmd
+// with the same exact arguments don't stomp onto one another.
+string perRunCookie()
+{
+    static string result;
+    if (result.length) return result;
+    import std.conv : to;
+    import std.random : rndGen;
+    import std.process : thisProcessID;
+    auto rnd = rndGen.front;
+    rndGen.popFront();
+    rnd ^= thisProcessID;
+    result = to!string(rnd);
+    return result;
+}
+
+// Attempts a move, but makes no noise if the move fails and the source exists
+void softMv(in char[] source, in char[] target)
+{
+    try
+    {
+        yap("mv ", source, " ", target);
+        rename(source, target);
+    }
+    catch (Exception e)
+    {
+        // Maybe someone else created it concurrently
+        yap("Failed mv, re-stat ", target);
+        if (!exists(target)) throw e;
+        yap("rm ", source);
+        remove(source);
+    }
+}
+
+// Maybe migrate this to std.file? Never throws, returns 0 if no entry,
+// otherwise meaningful attributes
+uint getAttributesSoft(in char[] path)
+{
+    version(Windows)
+    {
+        import core.sys.windows.windows;
+        immutable result = GetFileAttributesW(std.utf.toUTF16z(path));
+        if (result == uint.max) return 0;
+    }
+    else version(Posix)
+    {
+        import core.sys.posix.sys.stat;
+        stat_t statbuf = void;
+        if (stat(toStringz(path), &statbuf) != 0) return 0;
+        immutable result = statbuf.st_mode;
+    }
+    // Make the result nonzero by using an otherwise unused bit
+    assert(!(result & (1u << 31)));
+    return result | (1u << 31);
 }
