@@ -108,7 +108,7 @@ function installAnew() {
     for project in $projects; do
         (
             cd $wd &&
-            git clone --quiet -o upstream git://github.com/D-Programming-Language/$project.git &&
+            git clone --quiet git://github.com/D-Programming-Language/$project.git &&
             touch $tempdir/$project
         ) &
     done
@@ -139,8 +139,8 @@ function update() {
         local project=$1
         if ! ( cd "$wd/$project" && \
             git checkout master && \
-            git pull upstream master && \
-            git pull upstream master --tags && \
+            git pull origin master && \
+            git pull origin master --tags && \
             git fetch && \
             git fetch --tags) 2>$tempdir/$project.log
         then
