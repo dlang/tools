@@ -127,7 +127,7 @@ void runTests()
     /* Test --dry-run. */
     res = execute([rdmdApp, compilerSwitch, "--force", "--dry-run", failComptime]);
     assert(res.status == 0, res.output);  // static assert(0) not called since we did not build.
-    assert(res.output.canFind("stat "));  // --dry-run implies chatty, so stat is called.
+    assert(res.output.canFind("mkdirRecurse "), res.output);  // --dry-run implies chatty
 
     /* Test --eval. */
     res = execute([rdmdApp, compilerSwitch, "--force", "--eval=writeln(`eval_works`);"]);

@@ -187,29 +187,11 @@ int main(string[] args)
 
     // Compute the object directory and ensure it exists
     immutable workDir = getWorkPath(root, compilerFlags);
+    lockWorkPath(workDir); // will be released by the OS on process exit
     string objDir = buildPath(workDir, "objs");
-    yap("stat ", workDir);
-    if (exists(workDir))
-    {
-        enforce(dryRun || isDir(workDir),
-                "Entry `"~workDir~"' exists but is not a directory.");
-    }
-    else
-    {
-        yap("mkdirRecurse ", workDir);
-        mkdirRecurse(workDir);
-    }
-
-    if (exists(objDir))
-    {
-        enforce(dryRun || isDir(objDir),
-                "Entry `"~objDir~"' exists but is not a directory.");
-    }
-    else
-    {
-        yap("mkdirRecurse ", objDir);
+    yap("mkdirRecurse ", objDir);
+    if (!dryRun)
         mkdirRecurse(objDir);
-    }
 
     if (lib)
     {
@@ -295,6 +277,9 @@ int main(string[] args)
         return 0;
     }
 
+    // release lock on workDir before launching the user's program
+    unlockWorkPath();
+
     // run
     return run(exe ~ programArgs);
 }
@@ -348,21 +333,18 @@ private @property string myOwnTmpDir()
         if (!tmpRoot) tmpRoot = buildPath(".", ".rdmd");
         else tmpRoot = tmpRoot.replace("/", dirSeparator) ~ dirSeparator ~ ".rdmd";
     }
-    yap("stat ", tmpRoot);
-    if (exists(tmpRoot))
-    {
-        enforce(isDir(tmpRoot),
-                "Entry `"~tmpRoot~"' exists but is not a directory.");
-    }
-    else
-    {
+    yap("mkdirRecurse ", tmpRoot);
+    if (!dryRun)
         mkdirRecurse(tmpRoot);
-    }
     return tmpRoot;
 }
 
 private string getWorkPath(in string root, in string[] compilerFlags)
 {
+    static string workPath;
+    if (workPath)
+        return workPath;
+
     enum string[] irrelevantSwitches = [
         "--help", "-ignore", "-quiet", "-v" ];
 
@@ -379,8 +361,34 @@ private string getWorkPath(in string root, in string[] compilerFlags)
     string hash = toHexString(digest);
 
     const tmpRoot = myOwnTmpDir;
-    return buildPath(tmpRoot,
+    workPath = buildPath(tmpRoot,
             "rdmd-" ~ baseName(root) ~ '-' ~ hash);
+
+    yap("mkdirRecurse ", workPath);
+    if (!dryRun)
+        mkdirRecurse(workPath);
+
+    return workPath;
+}
+
+private File lockFile;
+
+private void lockWorkPath(string workPath)
+{
+    string lockFileName = buildPath(workPath, "rdmd.lock");
+    if (!dryRun) lockFile.open(lockFileName, "w");
+    yap("lock ", lockFile.name);
+    if (!dryRun) lockFile.lock();
+}
+
+private void unlockWorkPath()
+{
+    yap("unlock ", lockFile.name);
+    if (!dryRun)
+    {
+        lockFile.unlock();
+        lockFile.close();
+    }
 }
 
 // Rebuild the executable fullExe starting from modules in myDeps
