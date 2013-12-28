@@ -137,10 +137,11 @@ function update() {
 
     function update_project() {
         local project=$1
+        local gitproject='git://github.com/D-Programming-Language/$project.git'
         if ! ( cd "$wd/$project" && \
             git checkout master && \
-            git pull origin master && \
-            git pull origin master --tags && \
+            git pull --ff-only $gitproject master && \
+            git pull $gitproject master --tags && \
             git fetch && \
             git fetch --tags) 2>$tempdir/$project.log
         then
