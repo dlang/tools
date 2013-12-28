@@ -399,10 +399,11 @@ private int rebuild(string root, string fullExe,
         string workDir, string objDir, in string[string] myDeps,
         string[] compilerFlags, bool addStubMain)
 {
+    auto fullExeTemp = fullExe ~ ".tmp";
     string[] buildTodo()
     {
         auto todo = compilerFlags
-            ~ [ "-of"~fullExe ]
+            ~ [ "-of"~fullExeTemp ]
             ~ [ "-od"~objDir ]
             ~ [ "-I"~dirName(root) ]
             ~ [ root ];
@@ -454,6 +455,20 @@ private int rebuild(string root, string fullExe,
             // concurrently-running scripts may attempt to remove this
             // directory. One will fail.
             collectException(rmdirRecurse(objDir));
+        }
+        yap("mv ", fullExeTemp, " ", fullExe);
+        try
+            rename(fullExeTemp, fullExe);
+        catch (FileException e)
+        {
+            // This can occur on Windows if the executable is locked.
+            // Although we can't delete the file, we can still rename it.
+            auto oldExe = "%s.%s-%s".format(fullExe, Clock.currTime.stdTime,
+                thisProcessID);
+            yap("mv ", fullExe, " ", oldExe);
+            rename(fullExe, oldExe);
+            yap("mv ", fullExeTemp, " ", fullExe);
+            rename(fullExeTemp, fullExe);
         }
     }
     return 0;
