@@ -1,21 +1,6 @@
 // FIXME: output unions too just like structs
 // FIXME: check for compatible types
 
-
-enum usage = 
-"Usage: dtoh [-c] [-h] file.json
-
-To generate a .json file, use dmd -X yourfile.d
-
-Options:
-	-c    generate C instead of C++
-	-h    display this help
-
-The generated .h file can then be included in your
-C or C++ project, giving easy access to extern(C)
-and extern(C++) D functions and interfaces.
-";
-
 import std.stdio;
 import std.string : replace, toUpper, indexOf, strip;
 import std.algorithm : map, startsWith;
@@ -29,300 +14,352 @@ void addLine(ref string s, string line) {
 	s ~= line ~ "\n";
 }
 
-int indexOfArguments(string type) {
-	int parenCount = 0;
-	foreach_reverse(i, c; type) {
-		if(c == ')')
-			parenCount++;
-		if(c == '(')
-			parenCount--;
-		if(parenCount == 0)
-			return i;
+struct FunctionInfo {
+	string name;
+	string callingConvention;
+	string typeMangle;
+	string returnTypeMangle;
+
+	struct Argument {
+		string name;
+		string typeMangle;
+		string[] storageClass;
+	}
+
+	Argument[] arguments;
+
+	static FunctionInfo fromJsonInfo(Variant[string] obj) {
+		FunctionInfo info;
+
+		info.name = obj["name"].get!string;
+		info.typeMangle = obj["deco"].get!string;
+		info.returnTypeMangle = getReturnTypeMangle(info.typeMangle);
+		info.callingConvention = getCallingConvention(info.typeMangle);
+
+		if("parameters" in obj)
+		foreach(arg; map!(a => a.get!(Variant[string]))(obj["parameters"].get!(Variant[]))) {
+			Argument argInfo;
+			argInfo.name = getIfThere(arg, "name");
+			argInfo.typeMangle = getIfThere(arg, "deco");
+			if("storageClass" in arg)
+			foreach(sc; map!(a => a.get!string)(arg["storageClass"].get!(Variant[])))
+				argInfo.storageClass ~= sc;
+
+			info.arguments ~= argInfo;
+		}
+
+		return info;
+	}
+}
+
+string getArguments(FunctionInfo info) {
+	string args = "(";
+	foreach(arg; info.arguments) {
+		if(args.length > 1)
+			args ~= ", ";
+		args ~= mangleToCType(arg.typeMangle);
+		// FIXME: check storage class
+		if(arg.name.length)
+			args ~= " " ~ arg.name;
+	}
+	args ~= ")";
+	return args;
+}
+
+string getReturnTypeMangle(string type) {
+	auto argEnd = type.indexOf("Z");
+	if(argEnd == -1)
+		throw new Exception("Variadics not supported");
+	return type[argEnd + 1 .. $];
+}
+
+string getCallingConvention(string type) {
+	switch(type[0]) {
+		case 'F': return "D";
+		case 'U': return "C";
+		case 'W': return "Windows";
+		case 'V': return "Pascal";
+		case 'R': return "C++";
+		default: assert(0);
+	}
+}
+
+string[] demangleName(string mangledName) {
+	string[] ret;
+
+	import std.conv;
+	while(mangledName.length) {
+		size_t at = 0;
+		while(at < mangledName.length && mangledName[at] >= '0' && mangledName[at] <= '9')
+			at++;
+		auto length = to!int(mangledName[0 .. at]);
+		assert(length);
+		mangledName = mangledName[at .. $];
+		ret ~= mangledName[0 .. length];
+		mangledName = mangledName[length .. $];
+	}
+
+	return ret;
+}
+
+string mangleToCType(string mangle) {
+	assert(mangle.length);
+
+	string[string] basicTypeMapping = [
+		"i"		: "long", // D int is fixed at 32 bit so I think this is more correct than using C int...
+		"k"		: "unsigned long", // D's uint
+		"g"		: "char", // byte
+		"h"		: "unsigned char", // ubyte
+		"s"		: "short",
+		"t"		: "unsigned short",
+		"l"		: "long long", // D's long
+		"m"		: "unsigned long long", // ulong
+
+		"f"		: "float",
+		"d"		: "double",
+		"e"		: "long double", // real
+
+		"a"		: "char",
+		"v"		: "void",
+	];
+
+	switch(mangle[0]) {
+		case 'O': // shared
+			throw new Exception("shared not supported");
+		case 'H': // AA
+			throw new Exception("associative arrays not supported");
+		case 'G': // static array
+			throw new Exception("static arrays not supported");
+		case 'A': // array (slice)
+			throw new Exception("D arrays not supported, instead use a pointer+length pair");
+		case 'x': // const
+		case 'y': // immutable
+			return "const " ~ mangleToCType(mangle[1 .. $]);
+		// 'Ng' == inout
+		case 'P': // pointer
+			return mangleToCType(mangle[1 .. $]) ~ "*";
+		case 'C': // class or interface
+			return demangleName(mangle[1 .. $])[$-1] ~ "*";
+		case 'S': // struct
+			return demangleName(mangle[1 .. $])[$-1];
+		case 'E': // enum
+			return demangleName(mangle[1 .. $])[$-1];
+		case 'D': // delegate
+			throw new Exception("Delegates are not supported");
+		default:
+			if(auto t = mangle in basicTypeMapping)
+				return *t;
+			else
+				assert(0, mangle);
 	}
 
 	assert(0);
 }
 
-string getReturnType(string type, string[string] typeMapping) {
-	if(type.startsWith("extern")) {
-		type = type[type.indexOf(")") + 2 .. $]; // skip the ) and a space
-	}
-
-	auto t = type[0 .. indexOfArguments(type)];
-	if(t in typeMapping)
-		return typeMapping[t];
-	return "void";
-}
-
-string getArguments(string type, string[string] typeMapping) {
-	auto argList = type[indexOfArguments(type) .. $][1 .. $-1]; // cutting the parens
-
-	string newArgList;
-
-	void handleArg(string arg) {
-		if(arg.length > 0 && arg[0] == ' ')
-			arg = arg[1 .. $];
-		if(arg.length == 0)
-			return;
-
-		if(newArgList.length)
-			newArgList ~= ", ";
-
-		auto fullArg = arg;
-		string moreArg;
-		foreach(i, c; fullArg) {
-			if(c == '*' || c == '[' || c == '!') {
-				arg = fullArg[0 .. i];
-				moreArg = fullArg[i .. $];
-				break;
-			}
-		}
-
-		auto cppArg = arg in typeMapping;
-		newArgList ~= cppArg ? *cppArg : "void /* "~arg~" */";
-		newArgList ~= moreArg; // pointer, etc
-	}
-
-	bool gotName;
-	int argStart;
-	int parensCount;
-	foreach(i, c; argList) {
-		if(c == '(' || c == '[')
-			parensCount++;
-
-		if(parensCount) {
-			if(c == ')' || c == ']') {
-				parensCount--;
-			}
-			continue;
-		}
-
-		if(c == ' ') {
-			handleArg(argList[argStart .. i]);
-			gotName = true;
-			argStart = i;
-		}
-
-		if(c == ',') {
-			if(gotName) {
-				newArgList ~= argList[argStart .. i];
-			} else {
-				handleArg(argList[argStart .. i]);
-			}
-
-			gotName = false;
-			argStart = i + 1;
-		}
-	}
-
-	if(gotName) {
-		newArgList ~= argList[argStart .. $];
-	} else {
-		handleArg(argList[argStart .. $]);
-	}
-
-	return "(" ~ newArgList ~ ")";
-}
-
 void main(string[] args) {
-	try {
-		string jsonFilename;
-		bool useC;
-		foreach(arg; args[1 .. $]) {
-			if(arg == "-c")
-				useC = true;
-			else if(arg == "-h") {
-				writef("%s", usage);
-				return;
-			} else
-				jsonFilename = arg;
-		}
+	string jsonFilename;
+	bool useC;
+	foreach(arg; args[1 .. $]) {
+		if(arg == "-c")
+			useC = true;
+		else
+			jsonFilename = arg;
+	}
+	// pointers to any of these should work, as well as static arrays of them
+	// structs and interfaces are added below
+	// FIXME: function pointers composed of allowed types should be ok too
 
-		if(jsonFilename.length == 0) {
-			writeln("No filename given, for help use dtoh -h");
-			return;
-		}
+	import std.file;
+	auto moduleData = jsonToVariant(readText(jsonFilename)).get!(Variant[]);
+	foreach(mod; map!((a) => a.get!(Variant[string]))(moduleData)) {
+		auto filename = replace(mod["file"].get!string, ".d", ".h");
+		auto guard = "D_" ~ toUpper(filename.replace(".", "_"));
+		string fileContents;
 
-		string[string] typeMapping = [
-			"int"		: "int",
-			"uint"		: "unsigned int",
-			"byte"		: "char",
-			"ubyte"		: "unsigned char",
-			"short"		: "short",
-			"ushort"	: "unsigned short",
-			"long"		: "long long",
-			"ulong"		: "unsigned long long",
+		fileContents.addLine("#ifndef " ~ guard);
+		fileContents.addLine("#define " ~ guard);
+		fileContents.addLine("// generated from " ~ mod["file"].get!string);
 
-			"float"		: "float",
-			"double"	: "double",
-			"real"		: "long double",
+		fileContents ~= "\n";
 
-			"char"		: "char",
-			"void"		: "void",
-		];
-		// pointers to any of these should work, as well as static arrays of them
-		// structs and interfaces are added below
-		// FIXME: function pointers composed of allowed types should be ok too
+		auto moduleName = getIfThere(mod, "name");
+		if(moduleName.length == 0)
+			moduleName = filename[0 .. $-2];
 
-		import std.file;
-		auto moduleData = jsonToVariant(readText(jsonFilename)).get!(Variant[]);
-		foreach(mod; map!((a) => a.get!(Variant[string]))(moduleData)) {
-			auto filename = replace(mod["file"].get!string, ".d", ".h");
-			auto guard = "D_" ~ toUpper(filename.replace(".", "_"));
-			string fileContents;
+		// we're going to put all imports first, since C and C++ don't do forward references
+		// also going to forward declare the structs and classes as well.
+		// we might need a struct/class reference, even with just prototypes
+		foreach(member; map!((a) => a.get!(Variant[string]))(mod["members"].get!(Variant[]))) {
+			auto name = member.getIfThere("name");
+			auto kind = member.getIfThere("kind");
 
-			fileContents.addLine("#ifndef " ~ guard);
-			fileContents.addLine("#define " ~ guard);
-
-			fileContents ~= "\n";
-
-			foreach(member; map!((a) => a.get!(Variant[string]))(mod["members"].get!(Variant[]))) {
-				auto name = member.getIfThere("name");
-				auto kind = member.getIfThere("kind");
-
-				if(kind == "struct") {
-					typeMapping[name] = name;
-				} else if(kind == "enum") {
-					// see the note on enum below, in the main switch
-					// we can't output the declarations very well, so we'll just map
-					// these to the base type so we at least have something
-
-					auto base = member.getIfThere("base");
-					if(base.length && base in typeMapping) {
-						typeMapping[name] = typeMapping[base];
-					}
-				} else if(!useC && kind == "interface") {
-					typeMapping[name] = name ~ "*"; // D interfaces are represented as class pointers in C++
-				}
+			switch(kind) {
+				case "import":
+					fileContents.addLine("#include \""~name~".h\"");
+				break;
+				case "struct":
+					fileContents.addLine("struct\t"~name~";");
+				break;
+				case "interface":
+					fileContents.addLine("class\t"~name~";");
+				break;
+				default:
+					// waiting for later
 			}
+		}
 
-			moduleMemberLoop:
-			foreach(member; map!((a) => a.get!(Variant[string]))(mod["members"].get!(Variant[]))) {
-				auto name = member.getIfThere("name");
-				auto kind = member.getIfThere("kind");
-				auto protection = member.getIfThere("protection");
-				auto type = member.getIfThere("type");
+		// now, we'll do the rest of the members
+		moduleMemberLoop:
+		foreach(member; map!((a) => a.get!(Variant[string]))(mod["members"].get!(Variant[]))) {
+			auto name = member.getIfThere("name");
+			auto kind = member.getIfThere("kind");
+			auto protection = member.getIfThere("protection");
+			auto type = member.getIfThere("deco");
 
-				if(protection == "private")
-					continue;
+			if(protection == "private")
+				continue;
 
-				switch(kind) {
-					case "function":
-						string line;
-						if(type.indexOf("extern (C++)") != -1) {
-							if(useC)
-								continue;
-							line ~= "extern \"C++\"\t";
-						} else if(type.indexOf("extern (C)") != -1) {
-							if(useC)
-								line ~= "extern ";
-							else
-								line ~= "extern \"C\"\t";
-						} else {
-							continue;
-						}
+			switch(kind) {
+				case "function":
+					string line;
 
-						auto returnType = getReturnType(type, typeMapping);
-						auto arguments = getArguments(type, typeMapping);
-
-						line ~= returnType ~ " " ~ name ~ arguments ~ ";";
-
-						fileContents.addLine(line);
-					break;
-					case "variable":
-						// both manifest constants and module level variables show up here
-						// if it is extern(C) and __gshared, the global variable should be ok...
-						// but since the dmd json doesn't tell us that information, we have to assume
-						// it isn't accessible.
-
-						// this space intentionally left blank until dmd is fixed
-					break;
-					case "enum":
-						// enums should be ok... but dmd's json doesn't tell us the value of the members,
-						// only the names
-
-						// since the value is important for C++ to get it right, we can't use these either
-
-						// this space intentionally left blank until dmd is fixed
-					break;
-					case "struct":
-						// plain structs are cool. We'll keep them with data members only, no functions.
-						// If it has destructors or postblits, that's no good, C++ won't know. So we'll
-						// output them only as opaque types.... if dmd only told us!
-						// FIXME: when dmd is fixed, check out the destructor dilemma
-
-						string line;
-
-						line ~= "\ntypedef struct " ~ name ~ " {";
-
-						foreach(method; map!((a) => a.get!(Variant[string]))(member["members"].get!(Variant[]))) {
-							auto memName = method.getIfThere("name");
-							auto memType = method.getIfThere("type");
-
-							if(method.getIfThere("kind") != "variable")
-								continue;
-
-							line ~= "\n\t";
-							if(auto cType = (memType in typeMapping))
-								line ~= *cType ~ " " ~ memName ~ ";";
-							else assert(0, memType);
-						}
-
-						line ~= "\n} " ~ name ~ ";\n";
-						fileContents.addLine(line);
-					break;
-					case "interface":
+					auto info = FunctionInfo.fromJsonInfo(member);
+					if(info.callingConvention == "C++") {
 						if(useC)
 							continue;
-						// FIXME: the json doesn't seem to say if interfaces are extern C++ or not
+						line ~= "extern \"C++\"\t";
+					} else if(info.callingConvention == "C") {
+						if(useC)
+							line ~= "extern ";
+						else
+							line ~= "extern \"C\"\t";
+					} else {
+						continue;
+					}
 
-						string line;
+					line ~= mangleToCType(info.returnTypeMangle)
+						~ " " ~ name ~ getArguments(info) ~ ";";
 
-						line ~= "\nclass " ~ name ~ " {\n\tpublic:";
+					fileContents.addLine(line);
+				break;
+				case "variable":
+					// both manifest constants and module level variables show up here
+					// if it is extern(C) and __gshared, the global variable should be ok...
+					// but since the dmd json doesn't tell us that information, we have to assume
+					// it isn't accessible.
 
-						foreach(method; map!((a) => a.get!(Variant[string]))(member["members"].get!(Variant[]))) {
-							line ~= "\n\t\t";
-
-							auto funcName = method.getIfThere("name");
-							auto funcType = method.getIfThere("type");
-
-							if(funcType.indexOf("extern (C++)") == -1) {
-									continue;
+					bool isEnum;
+					bool isGshared;
+					if("storageClass" in member) {
+						auto sc = member["storageClass"].get!(Variant[]);
+						foreach(c; sc)
+							if(c.get!string == "enum") {
+								isEnum = true;
+								break;
+							} else if(c.get!string == "__gshared") {
+								isGshared = true;
 							}
+					}
 
-							auto returnType = getReturnType(funcType, typeMapping);
-							auto arguments = getArguments(funcType, typeMapping);
+					if(isEnum) {
+						auto line = "#define " ~ name ~ " ";
+						line ~= member.getIfThere("init");
+						fileContents.addLine(line);
+					} else {
+						string line = "extern ";
+						if(!isGshared)
+							//line ~= "__declspec(thread) ";
+							continue moduleMemberLoop; // TLS not supported in this
+						fileContents.addLine(line ~ mangleToCType(type) ~ " " ~ name ~ ";");
+					}
 
-							line ~= "virtual " ~ returnType ~ " " ~ funcName ~ arguments ~ " = 0;";
+					// this space intentionally left blank until dmd is fixed
+				break;
+				case "enum":
+					// enums should be ok... but dmd's json doesn't tell us the value of the members,
+					// only the names
+
+					// since the value is important for C++ to get it right, we can't use these either
+
+					// this space intentionally left blank until dmd is fixed
+				break;
+				case "struct":
+					// plain structs are cool. We'll keep them with data members only, no functions.
+					// If it has destructors or postblits, that's no good, C++ won't know. So we'll
+					// output them only as opaque types.... if dmd only told us!
+					// FIXME: when dmd is fixed, check out the destructor dilemma
+
+					string line;
+
+					line ~= "\ntypedef struct " ~ name ~ " {";
+
+					foreach(method; map!((a) => a.get!(Variant[string]))(member["members"].get!(Variant[]))) {
+						auto memName = method.getIfThere("name");
+						auto memType = method.getIfThere("deco");
+						auto memKind = method.getIfThere("kind");
+
+						// if it has a dtor, we want this to be an opaque type only since
+						// otherwise it won't be used correctly in C++
+						if(memKind == "destructor")
+							continue moduleMemberLoop;
+
+						if(memKind != "variable")
+							continue;
+
+						line ~= "\n\t";
+						line ~= mangleToCType(memType) ~ " " ~ memName ~ ";";
+					}
+
+					line ~= "\n} " ~ name ~ ";\n";
+					fileContents.addLine(line);
+				break;
+				case "interface":
+					if(useC)
+						continue;
+					// FIXME: the json doesn't seem to say if interfaces are extern C++ or not
+
+					string line;
+
+					line ~= "\nclass " ~ name ~ " {\n\tpublic:";
+
+					foreach(method; map!((a) => a.get!(Variant[string]))(member["members"].get!(Variant[]))) {
+						line ~= "\n\t\t";
+
+						auto info = FunctionInfo.fromJsonInfo(method);
+
+						if(info.callingConvention != "C++") {
+								continue;
 						}
 
-						line ~= "\n};\n";
+						auto returnType = mangleToCType(info.returnTypeMangle);
+						auto arguments = getArguments(info);
 
-						fileContents.addLine(line);
-					break;
-					default: // do nothing
-				}
+						line ~= "virtual " ~ returnType ~ " " ~ info.name ~ arguments ~ " = 0;";
+					}
+
+					line ~= "\n};\n";
+
+					fileContents.addLine(line);
+				break;
+				default: // do nothing
 			}
-
-			fileContents.addLine("\n#endif");
-
-			if(exists(filename)) {
-				auto existingFile = readText(filename);
-				if(existingFile == fileContents)
-					continue;
-			}
-
-			std.file.write(filename, fileContents);
 		}
-	} catch(Throwable t) {
-		writeln(t.toString());
-		writef("%s", usage);
+
+		fileContents.addLine("\n#endif");
+
+		if(exists(filename)) {
+			auto existingFile = readText(filename);
+			if(existingFile == fileContents)
+				continue;
+		}
+
+		std.file.write(filename, fileContents);
 	}
 }
 
 
 
-
+// helpers tomake std.json easier to use
 import std.variant;
 import std.json;
 
