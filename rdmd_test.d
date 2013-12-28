@@ -45,7 +45,12 @@ string compiler = "dmd";  // e.g. dmd/gdmd/ldmd
 void main(string[] args)
 {
     string rdmd = "rdmd.d";
-    getopt(args, "compiler", &compiler, "rdmd", &rdmd);
+    bool concurrencyTest;
+    getopt(args,
+        "compiler", &compiler,
+        "rdmd", &rdmd,
+        "concurrency", &concurrencyTest,
+    );
 
     enforce(rdmd.exists, "Path to rdmd does not exist: %s".format(rdmd));
 
@@ -58,7 +63,11 @@ void main(string[] args)
     enforce(rdmdApp.exists);
 
     runTests();
+    if (concurrencyTest)
+        runConcurrencyTest();
 }
+
+@property string compilerSwitch() { return "--compiler=" ~ compiler; }
 
 void runTests()
 {
@@ -71,8 +80,6 @@ void runTests()
     res = execute([rdmdApp, "--help"]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("Usage: rdmd [RDMD AND DMD OPTIONS]... program [PROGRAM OPTIONS]..."));
-
-    immutable compilerSwitch = "--compiler=" ~ compiler;
 
     /* Test --force. */
     string forceSrc = tempDir().buildPath("force_src_.d");
@@ -196,4 +203,32 @@ void runTests()
 
     res = execute([rdmdApp, compilerSwitch, "-I" ~ packRoot, "--makedepend", depMod]);
     assert(res.output.canFind("depMod_.d : "));  // simplistic check
+
+}
+
+void runConcurrencyTest()
+{
+    string sleep100 = tempDir().buildPath("delay_.d");
+    std.file.write(sleep100, "void main() { import core.thread; Thread.sleep(100.msecs); }");
+    auto argsVariants =
+    [
+        [rdmdApp, compilerSwitch, sleep100],
+        [rdmdApp, compilerSwitch, "--force", sleep100],
+    ];
+    import std.parallelism, std.range, std.random;
+    foreach (rnd; rndGen.parallel(1))
+    {
+        try
+        {
+            auto args = argsVariants[rnd % $];
+            auto res = execute(args);
+            assert(res.status == 0, res.output);
+        }
+        catch (Exception e)
+        {
+            import std.stdio;
+            writeln(e);
+            break;
+        }
+    }
 }
