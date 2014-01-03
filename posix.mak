@@ -118,7 +118,7 @@ $(ROOT)/dman: DFLAGS += -J.
 
 install: $(TOOLS) $(CURL_TOOLS)
 	mkdir -p $(INSTALL_DIR)/bin
-	cp -u $^ $(INSTALL_DIR)/bin
+	cp $^ $(INSTALL_DIR)/bin
 
 clean:
 	rm -f $(ROOT)/dustmite $(TOOLS) $(CURL_TOOLS) $(DOC_TOOLS) $(TAGS) *.o $(ROOT)/*.o
