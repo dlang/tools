@@ -190,7 +190,7 @@ int main(string[] args)
     lockWorkPath(workDir); // will be released by the OS on process exit
     string objDir = buildPath(workDir, "objs");
     yap("mkdirRecurse ", objDir);
-    if (!dryRun)
+    if (!dryRun && !exists(objDir))
         mkdirRecurse(objDir);
 
     if (lib)
@@ -334,7 +334,7 @@ private @property string myOwnTmpDir()
         else tmpRoot = tmpRoot.replace("/", dirSeparator) ~ dirSeparator ~ ".rdmd";
     }
     yap("mkdirRecurse ", tmpRoot);
-    if (!dryRun)
+    if (!dryRun && !exists(tmpRoot))
         mkdirRecurse(tmpRoot);
     return tmpRoot;
 }
@@ -365,7 +365,7 @@ private string getWorkPath(in string root, in string[] compilerFlags)
             "rdmd-" ~ baseName(root) ~ '-' ~ hash);
 
     yap("mkdirRecurse ", workPath);
-    if (!dryRun)
+    if (!dryRun && !exists(workPath))
         mkdirRecurse(workPath);
 
     return workPath;
