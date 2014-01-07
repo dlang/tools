@@ -4,11 +4,12 @@
 
 module dsplit;
 
+import std.ascii;
+import std.algorithm;
+import std.array;
 import std.file;
 import std.path;
 import std.string;
-import std.ascii;
-import std.array;
 debug import std.stdio;
 
 class Entity
@@ -106,6 +107,12 @@ void optimize(Entity set)
 
 private:
 
+/// Override std.string nonsense, which does UTF-8 decoding
+bool startsWith(in char[] big, in char[] small) { return big.length >= small.length && big[0..small.length] == small; }
+bool startsWith(in char[] big, char c) { return big.length && big[0] == c; }
+
+const DExtensions = [".d", ".di"];
+
 Entity loadFile(string name, string path, ParseOptions options)
 {
 	debug writeln("Loading ", path);
@@ -114,110 +121,123 @@ Entity loadFile(string name, string path, ParseOptions options)
 	result.contents = cast(string)read(path);
 
 	if (options.stripComments)
-		if (extension(path) == ".d" || extension(path) == ".di")
+		if (DExtensions.canFind(path.extension.toLower))
 			result.contents = stripDComments(result.contents);
 
 	final switch (options.mode)
 	{
 	case ParseOptions.Mode.Source:
-		switch (extension(path))
-		{
-		case ".d":
-		case ".di":
-			result.children = parseD(result.contents); return result;
+		if (DExtensions.canFind(path.extension.toLower) && !result.contents.startsWith("Ddoc"))
+			result.children = parseD(result.contents);
+		else
 		// One could add custom splitters for other languages here - for example, a simple line/word/character splitter for most text-based formats
-		default:
-			result.children = [new Entity(result.contents, null, null)]; return result;
-		}
+			result.children = [new Entity(result.contents, null, null)];
+		break;
 	case ParseOptions.Mode.Words:
-		result.children = parseToWords(result.contents); return result;
+		result.children = parseToWords(result.contents);
+		break;
 	}
+	return result;
+}
+
+class EndOfInput : Throwable { this() { super(null); } }
+void lchop(ref string r, size_t n = 1)
+{
+	if (r.length < n)
+		throw new EndOfInput;
+	r = r[n..$];
 }
 
 string skipSymbol(string s, ref size_t i)
 {
-	auto start = i;
-	switch (s[i])
-	{
-	case '\'':
-		i++;
-		if (s[i] == '\\')
-			i+=2;
-		while (s[i] != '\'')
-			i++;
-		i++;
-		break;
-	case '\\':
-		i+=2;
-		break;
-	case '"':
-		if (i && s[i-1] == 'r')
+	auto r = s[i..$];
+
+	try
+		switch (r[0])
 		{
-			i++;
-			while (s[i] != '"')
-				i++;
-			i++;
-		}
-		else
-		{
-			i++;
-			while (s[i] != '"')
-			{
-				if (s[i] == '\\')
-					i+=2;
-				else
-					i++;
-			}
-			i++;
-		}
-		break;
-	case '`':
-		i++;
-		while (s[i] != '`')
-			i++;
-		i++;
-		break;
-	case '/':
-		i++;
-		if (i==s.length)
+		case '\'':
+			r.lchop();
+			if (r.startsWith('\\'))
+				r.lchop(2);
+			while (!r.startsWith('\''))
+				r.lchop();
+			r.lchop();
 			break;
-		else
-		if (s[i] == '/')
-		{
-			while (i < s.length && s[i] != '\r' && s[i] != '\n')
-				i++;
-		}
-		else
-		if (s[i] == '*')
-		{
-			i+=3;
-			while (s[i-2] != '*' || s[i-1] != '/')
-				i++;
-		}
-		else
-		if (s[i] == '+')
-		{
-			i++;
-			int commentLevel = 1;
-			while (commentLevel)
+		case '\\':
+			r.lchop(2);
+			break;
+		case '"':
+			r.lchop();
+			while (!r.startsWith('"'))
 			{
-				if (s[i] == '/' && s[i+1]=='+')
-					commentLevel++, i+=2;
+				if (r.startsWith('\\'))
+					r.lchop(2);
 				else
-				if (s[i] == '+' && s[i+1]=='/')
-					commentLevel--, i+=2;
-				else
-					i++;
+					r.lchop();
 			}
+			r.lchop();
+			break;
+		case 'r':
+			if (r.startsWith(`r"`))
+			{
+				r.lchop(2);
+				while (!r.startsWith('"'))
+					r.lchop();
+				r.lchop();
+				break;
+			}
+			else
+				goto default;
+		case '`':
+			r.lchop();
+			while (!r.startsWith('`'))
+				r.lchop();
+			r.lchop();
+			break;
+		case '/':
+			r.lchop();
+			if (r.startsWith('/'))
+			{
+				while (!r.startsWith('\r') && !r.startsWith('\n'))
+					r.lchop();
+			}
+			else
+			if (r.startsWith('*'))
+			{
+				r.lchop();
+				while (!r.startsWith("*/"))
+					r.lchop();
+				r.lchop(2);
+			}
+			else
+			if (r.startsWith('+'))
+			{
+				r.lchop();
+				int commentLevel = 1;
+				while (commentLevel)
+				{
+					if (r.startsWith("/+"))
+						commentLevel++, r.lchop(2);
+					else
+					if (r.startsWith("+/"))
+						commentLevel--, r.lchop(2);
+					else
+						r.lchop();
+				}
+			}
+			else
+				r.lchop();
+			break;
+		default:
+			r.lchop();
+			break;
 		}
-		else
-			i++;
-		break;
-	default:
-		i++;
-		break;
-	}
-	return s[start..i];
+	catch (EndOfInput)
+		r = null;
+
+	auto len = s.length - i - r.length;
+	i += len;
+	return s[i-len..i];
 }
 
 /// Moves i forward over first series of EOL characters, or until first non-whitespace character
@@ -364,13 +384,13 @@ string stripDComments(string s)
 	return result.data;
 }
 
-void postProcessD(ref Entity[] entities)
+void postProcessD(ref Entity[] entities, int depth=0)
 {
 	for (int i=0; i<entities.length;)
 	{
 		// Process comma-separated lists. Nest later items and add a dependency for the comma.
 
-		if (i+2 <= entities.length && entities[i].children.length >= 1 && entities[i].tail.stripD() == ",")
+		if (i+2 <= entities.length && entities[i].children.length >= 1 && entities[i].tail.stripD() == "," && depth < 100)
 		{
 			// Put the comma in its own entity, so it can have a dependency
 			auto comma = new Entity(entities[i].tail);
@@ -404,9 +424,9 @@ void postProcessD(ref Entity[] entities)
 		{
 			entities.replaceInPlace(i, i+2, [new Entity(null, entities[i..i+2].dup, null)]);
 			continue;
-		}	
+		}
 
-		postProcessD(entities[i].children);
+		postProcessD(entities[i].children, depth+1);
 		i++;
 	}
 }
