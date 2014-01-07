@@ -21,13 +21,16 @@ import std.random;
 
 import dsplit;
 
+// Issue 314 workarounds
 alias std.string.join join;
+alias std.string.startsWith startsWith;
 
 string dir, resultDir, tester, globalCache;
 string dirSuffix(string suffix) { return (dir.absolutePath().buildNormalizedPath() ~ "." ~ suffix).relativePath(); }
 
 size_t maxBreadth;
 Entity root;
+size_t origDescendants;
 bool concatPerformed;
 int tests; bool foundAnything;
 bool noSave, trace;
@@ -75,12 +78,13 @@ struct Reduction
 				foreach (i, a; address)
 				{
 					segments[i] = binary ? text(a) : format("%d/%d", e.children.length-a, e.children.length);
-					foreach (c; e.children[a+1..$])
+					foreach (c; e.children[0..a])
 						progress += c.descendants;
 					progress++; // account for this node
 					e = e.children[a];
 				}
-				return format("[%5.1f%%] %s [%s]", progress * 100.0 / root.descendants, name, segments.join(binary ? "" : ", "));
+				progress += e.descendants;
+				return format("[%5.1f%%] %s [%s]", (origDescendants-progress) * 100.0 / origDescendants, name, segments.join(binary ? "" : ", "));
 		}
 	}
 }
@@ -190,6 +194,7 @@ EOS");
 		optimize(root);
 	maxBreadth = getMaxBreadth(root);
 	countDescendants(root);
+	resetProgress();
 	assignID(root);
 
 	if (dump)
@@ -290,9 +295,15 @@ bool testAddress(size_t[] address)
 		return false;
 }
 
+void resetProgress()
+{
+	origDescendants = root.descendants;
+}
+
 void testLevel(int testDepth, out bool tested, out bool changed)
 {
 	tested = changed = false;
+	resetProgress();
 
 	enum MAX_DEPTH = 1024;
 	size_t[MAX_DEPTH] address;
@@ -328,6 +339,12 @@ void testLevel(int testDepth, out bool tested, out bool changed)
 	//writefln("Scan results: tested=%s, changed=%s", tested, changed);
 }
 
+void startIteration(int iterCount)
+{
+	writefln("############### ITERATION %d ################", iterCount);
+	resetProgress();
+}
+
 /// Keep going deeper until we find a successful reduction.
 /// When found, finish tests at current depth and restart from top depth (new iteration).
 /// If we reach the bottom (depth with no nodes on it), we're done.
@@ -337,7 +354,7 @@ void reduceCareful()
 	int iterCount;
 	do
 	{
-		writefln("############### ITERATION %d ################", iterCount++);
+		startIteration(iterCount++);
 		bool changed;
 		int depth = 0;
 		do
@@ -364,7 +381,7 @@ void reduceLookback()
 	do
 	{
 		iterationChanged = false;
-		writefln("############### ITERATION %d ################", iterCount++);
+		startIteration(iterCount++);
 
 		int depth = 0, maxDepth = 0;
 		bool depthTested;
@@ -404,7 +421,7 @@ void reduceInDepth()
 	do
 	{
 		changed = false;
-		writefln("############### ITERATION %d ################", iterCount++);
+		startIteration(iterCount++);
 
 		enum MAX_DEPTH = 1024;
 		size_t[MAX_DEPTH] address;
@@ -1000,7 +1017,7 @@ void applyNoRemoveRegex(string[] noRemoveStr)
 	foreach (f; files)
 	{
 		assert(f.isFile);
-		if (canFind!((a){return !match(f.filename, a).empty;})(noRemove))
+		if (noRemove.any!(a => !match(f.filename, a).empty))
 		{
 			mark(f);
 			root.noRemove = true;
