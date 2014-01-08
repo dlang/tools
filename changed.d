@@ -17,6 +17,10 @@ Example usage:
 rdmd changed.d --start=2013-01-01 --end=2013-04-01
 rdmd changed.d --start=2013-01-01 (end date implicitly set to current date)
 ---
+
+$(B Note:) The script will cache the results of an invocation, to avoid
+re-querying bugzilla when invoked with the same arguments.
+Use the --nocache option to override this behavior.
 */
 
 // NOTE: this script requires libcurl to be linked in (usually done by default).
@@ -162,9 +166,11 @@ int main(string[] args)
 {
     string start_date, end_date;
     bool ddoc = false;
+    bool nocache;  // don't read from cache
     getopt(args,
-        "start",  &start_date,    // numeric
-        "end",    &end_date);     // string
+        "nocache", &nocache,
+        "start",   &start_date,    // numeric
+        "end",     &end_date);     // string
 
     if (start_date.empty)
     {
@@ -181,7 +187,7 @@ int main(string[] args)
     string cachePath = getCachePath(to!string(start), to!string(end));
     debug stderr.writefln("Cache file: %s\nCache file found: %s", cachePath, cachePath.exists);
     string changeLog;
-    if (cachePath.exists)
+    if (!nocache && cachePath.exists)
     {
         changeLog = (cast(string)read(cachePath)).strip;
     }
