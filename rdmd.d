@@ -257,11 +257,7 @@ int main(string[] args)
         immutable result = rebuild(root, exe, workDir, objDir,
                                    myDeps, compilerFlags, addStubMain);
         if (result)
-        {
-            if (exists(exe))
-                remove(exe);
             return result;
-        }
 
         // Touch the build witness to track the build time
         if (buildWitness != exe)
@@ -399,7 +395,26 @@ private int rebuild(string root, string fullExe,
         string workDir, string objDir, in string[string] myDeps,
         string[] compilerFlags, bool addStubMain)
 {
+    // Delete the old executable before we start building.
+    yap("stat ", fullExe);
+    if (!dryRun && exists(fullExe))
+    {
+        yap("rm ", fullExe);
+        try
+            remove(fullExe);
+        catch (FileException e)
+        {
+            // This can occur on Windows if the executable is locked.
+            // Although we can't delete the file, we can still rename it.
+            auto oldExe = "%s.%s-%s.old".format(fullExe,
+                Clock.currTime.stdTime, thisProcessID);
+            yap("mv ", fullExe, " ", oldExe);
+            rename(fullExe, oldExe);
+        }
+    }
+
     auto fullExeTemp = fullExe ~ ".tmp";
+
     string[] buildTodo()
     {
         auto todo = compilerFlags
@@ -457,19 +472,7 @@ private int rebuild(string root, string fullExe,
             collectException(rmdirRecurse(objDir));
         }
         yap("mv ", fullExeTemp, " ", fullExe);
-        try
-            rename(fullExeTemp, fullExe);
-        catch (FileException e)
-        {
-            // This can occur on Windows if the executable is locked.
-            // Although we can't delete the file, we can still rename it.
-            auto oldExe = "%s.%s-%s".format(fullExe, Clock.currTime.stdTime,
-                thisProcessID);
-            yap("mv ", fullExe, " ", oldExe);
-            rename(fullExe, oldExe);
-            yap("mv ", fullExeTemp, " ", fullExe);
-            rename(fullExeTemp, fullExe);
-        }
+        rename(fullExeTemp, fullExe);
     }
     return 0;
 }
