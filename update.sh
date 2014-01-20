@@ -137,7 +137,7 @@ function update() {
 
     function update_project() {
         local project=$1
-        local gitproject='git://github.com/D-Programming-Language/$project.git'
+        local gitproject="git://github.com/D-Programming-Language/$project.git"
         if ! ( cd "$wd/$project" && \
             git checkout master && \
             git pull --ff-only $gitproject master && \
