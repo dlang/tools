@@ -456,6 +456,8 @@ private int rebuild(string root, string fullExe,
     if (result)
     {
         // build failed
+        if (exists(fullExeTemp))
+            remove(fullExeTemp);
         return result;
     }
     // clean up the dir containing the object file, just not in dry
