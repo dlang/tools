@@ -479,7 +479,11 @@ private int rebuild(string root, string fullExe,
     return 0;
 }
 
-// Run a program optionally writing the command line first
+/**
+ * Run a program optionally writing the command line first
+ * Returns:
+ *      exit code
+ */
 
 private int run(string[] args, string output = null)
 {
@@ -493,7 +497,14 @@ private int run(string[] args, string output = null)
     else
         outputFile = stdout;
     auto process = spawnProcess(args, stdin, outputFile);
-    return process.wait();
+    auto result = process.wait();
+    // If negative number, -result is the signal it failed with
+    if (result < 0)
+    {   stderr.writefln("Terminated by signal %s", -result);
+        result = 1;
+    }
+
+    return result;
 }
 
 // Given module rootModule, returns a mapping of all dependees .d
