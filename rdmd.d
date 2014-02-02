@@ -480,12 +480,25 @@ private int rebuild(string root, string fullExe,
 }
 
 // Run a program optionally writing the command line first
+// If "replace" is true and the OS supports it, replace the current process.
 
-private int run(string[] args, string output = null)
+private int run(string[] args, string output = null, bool replace = false)
 {
     import std.conv;
-    yap(args.text);
+    yap(replace ? "exec " : "spawn ", args.text);
     if (dryRun) return 0;
+
+    if (replace && !output)
+    {
+        version (Windows)
+            { /* Windows doesn't have exec, fall back to spawnProcess+wait */ }
+        else
+        {
+            import std.c.process;
+            auto argv = args.map!toStringz.chain(null.only).array;
+            return execv(argv[0], argv.ptr);
+        }
+    }
 
     File outputFile;
     if (output)
@@ -496,19 +509,9 @@ private int run(string[] args, string output = null)
     return process.wait();
 }
 
-// Replace the current process with another, on supported systems.
-// Otherwise, run the command, wait for completion, and return its exit code.
-
 private int exec(string[] args)
 {
-    version (Windows)
-        return run(args);
-    else
-    {
-        import std.c.process;
-        auto argv = args.map!toStringz.chain(null.only).array;
-        return execv(argv[0], argv.ptr);
-    }
+    return run(args, null, true);
 }
 
 // Given module rootModule, returns a mapping of all dependees .d
