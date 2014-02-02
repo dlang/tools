@@ -277,7 +277,7 @@ int main(string[] args)
     unlockWorkPath();
 
     // run
-    return run(exe ~ programArgs);
+    return exec(exe ~ programArgs);
 }
 
 size_t indexOfProgram(string[] args)
@@ -494,6 +494,21 @@ private int run(string[] args, string output = null)
         outputFile = stdout;
     auto process = spawnProcess(args, stdin, outputFile);
     return process.wait();
+}
+
+// Replace the current process with another, on supported systems.
+// Otherwise, run the command, wait for completion, and return its exit code.
+
+private int exec(string[] args)
+{
+    version (Windows)
+        return run(args);
+    else
+    {
+        import std.c.process;
+        auto argv = args.map!toStringz.chain(null.only).array;
+        return execv(argv[0], argv.ptr);
+    }
 }
 
 // Given module rootModule, returns a mapping of all dependees .d
@@ -759,7 +774,7 @@ int eval(string todo)
     if (!compileFailure)
     {
         // Run it
-        run([ binName ]);
+        exec([ binName ]);
     }
 
     // Clean pathname
