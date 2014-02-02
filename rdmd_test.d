@@ -204,6 +204,16 @@ void runTests()
     res = execute([rdmdApp, compilerSwitch, "-I" ~ packRoot, "--makedepend", depMod]);
     assert(res.output.canFind("depMod_.d : "));  // simplistic check
 
+    /* Test signal propagation through exit codes */
+
+    version (Posix)
+    {
+        import core.sys.posix.signal;
+        string crashSrc = tempDir().buildPath("crash_src_.d");
+        std.file.write(crashSrc, `void main() { int *p; *p = 0; }`);
+        res = execute([rdmdApp, compilerSwitch, crashSrc]);
+        assert(res.status == -SIGSEGV, format("%s", res));
+    }
 }
 
 void runConcurrencyTest()
