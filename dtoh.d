@@ -1,6 +1,9 @@
 // FIXME: output unions too just like structs
 // FIXME: check for compatible types
 
+// nice idea: convert modules to namespaces, but it won't work since then
+// the mangles won't be right
+
 import std.stdio;
 import std.string : replace, toUpper, indexOf, strip;
 import std.algorithm : map, startsWith;
@@ -195,7 +198,8 @@ void main(string[] args) {
 
 			switch(kind) {
 				case "import":
-					fileContents.addLine("#include \""~name~".h\"");
+					if(!name.startsWith("std.") && !name.startsWith("core."))
+						fileContents.addLine("#include \""~name~".h\"");
 				break;
 				case "struct":
 					fileContents.addLine("struct\t"~name~";");
