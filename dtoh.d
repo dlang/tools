@@ -6,7 +6,7 @@
 
 import std.stdio;
 import std.string : replace, toUpper, indexOf, strip;
-import std.algorithm : map, startsWith;
+import std.algorithm : map, startsWith, canFind;
 
 string getIfThere(Variant[string] obj, string key) {
 	auto ptr = key in obj;
@@ -61,7 +61,15 @@ string getArguments(FunctionInfo info) {
 		if(args.length > 1)
 			args ~= ", ";
 		args ~= mangleToCType(arg.typeMangle);
-		// FIXME: check storage class
+
+		// FIXME: check other storage classes
+		bool isRef = false;
+		foreach(sc; arg.storageClass)
+			if(sc == "ref" || sc == "out")
+				isRef = true;
+
+		if(isRef)
+			args ~= "&";
 		if(arg.name.length)
 			args ~= " " ~ arg.name;
 	}
@@ -109,8 +117,8 @@ string mangleToCType(string mangle) {
 	assert(mangle.length);
 
 	string[string] basicTypeMapping = [
-		"i"		: "long", // D int is fixed at 32 bit so I think this is more correct than using C int...
-		"k"		: "unsigned long", // D's uint
+		"i"		: "int",
+		"k"		: "unsigned int", // D's uint
 		"g"		: "char", // byte
 		"h"		: "unsigned char", // ubyte
 		"s"		: "short",
@@ -138,7 +146,12 @@ string mangleToCType(string mangle) {
 		case 'x': // const
 		case 'y': // immutable
 			return "const " ~ mangleToCType(mangle[1 .. $]);
-		// 'Ng' == inout
+		case 'N': // "Ng" == inout
+			mangle = mangle[1 .. $];
+			if(mangle.length && mangle[0] == 'g') {
+				goto case 'x'; // treat it as const
+			}
+			else goto _default; // case default;
 		case 'P': // pointer
 			return mangleToCType(mangle[1 .. $]) ~ "*";
 		case 'C': // class or interface
@@ -150,6 +163,7 @@ string mangleToCType(string mangle) {
 		case 'D': // delegate
 			throw new Exception("Delegates are not supported");
 		default:
+		_default:
 			if(auto t = mangle in basicTypeMapping)
 				return *t;
 			else
@@ -182,6 +196,12 @@ void main(string[] args) {
 		fileContents.addLine("#ifndef " ~ guard);
 		fileContents.addLine("#define " ~ guard);
 		fileContents.addLine("// generated from " ~ mod["file"].get!string);
+
+		fileContents ~= "\n";
+		if(useC)
+			fileContents.addLine("#include <math.h> // for NAN");
+		else
+			fileContents.addLine("#include <limits> // for NAN");
 
 		fileContents ~= "\n";
 
@@ -297,6 +317,10 @@ void main(string[] args) {
 
 					line ~= "\ntypedef struct " ~ name ~ " {";
 
+					string defaultCtor = name~"::"~name~"() :";
+					bool defaultCtorNeedsComma = false;
+					bool hasDefaultCtor = false;
+
 					foreach(method; map!((a) => a.get!(Variant[string]))(member["members"].get!(Variant[]))) {
 						auto memName = method.getIfThere("name");
 						auto memType = method.getIfThere("deco");
@@ -310,12 +334,41 @@ void main(string[] args) {
 						if(memKind != "variable")
 							continue;
 
+						auto ct = mangleToCType(memType);
+
 						line ~= "\n\t";
-						line ~= mangleToCType(memType) ~ " " ~ memName ~ ";";
+						line ~= ct ~ " " ~ memName ~ ";";
+
+						string init;
+						if(ct.canFind("float") || ct.canFind("double")) {
+							init = useC ? "NAN" : "std::numeric_limits<"~ct~">::signaling_NaN()";
+						}
+
+						if(auto i = method.getIfThere("init"))
+							init = i;
+
+						if(init.length) {
+							if(defaultCtorNeedsComma)
+								defaultCtor ~= ", ";
+							defaultCtor ~= "\n\t"~memName~"("~init~")";
+							defaultCtorNeedsComma = true;
+
+							hasDefaultCtor = true;
+						}
+					}
+
+					if(hasDefaultCtor) {
+						defaultCtor ~= " {}";
+						line ~= "\n\t" ~ name ~ "();";
 					}
 
 					line ~= "\n} " ~ name ~ ";\n";
 					fileContents.addLine(line);
+
+					if(hasDefaultCtor) {
+						fileContents.addLine(defaultCtor);
+						fileContents.addLine("");
+					}
 				break;
 				case "interface":
 					if(useC)
