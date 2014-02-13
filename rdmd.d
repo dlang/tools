@@ -395,6 +395,9 @@ private int rebuild(string root, string fullExe,
         string workDir, string objDir, in string[string] myDeps,
         string[] compilerFlags, bool addStubMain)
 {
+    version (Windows)
+        fullExe = fullExe.defaultExtension(".exe");
+    
     // Delete the old executable before we start building.
     yap("stat ", fullExe);
     if (!dryRun && exists(fullExe))
