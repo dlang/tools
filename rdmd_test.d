@@ -214,6 +214,15 @@ void runTests()
         res = execute([rdmdApp, compilerSwitch, crashSrc]);
         assert(res.status == -SIGSEGV, format("%s", res));
     }
+
+    version (Windows)
+    {
+        /* -of doesn't append .exe on Windows: https://d.puremagic.com/issues/show_bug.cgi?id=12149 */
+        string outPath = tempDir().buildPath("test_of_app");
+        string exePath = outPath ~ ".exe";
+        res = execute([rdmdApp, "--build-only", "-of" ~ outPath, voidMain]);
+        enforce(exePath.exists(), exePath);
+    }
 }
 
 void runConcurrencyTest()
