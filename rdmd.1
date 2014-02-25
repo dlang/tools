@@ -38,6 +38,40 @@ Specify compiler [default = \fBdmd\fR]
 Specify directory to store cached program and other
 temporaries [default = \fI/tmp\fR]
 
+.IP --build-only
+Just build the executable, don't run it
+
+.IP --chatty
+Write compiler commands to stdout before executing them
+
+.IP --compiler=\fIcomp\fR
+Use the specified compiler (e.g. gdmd) instead of dmd
+
+.IP --dry-run
+Do not compile, just show what commands would be run
+(implies --chatty)
+
+.IP --eval=\fIcode\fR
+Evaluate code as in perl -e (multiple --eval allowed)
+
+.IP --exclude=\fIpackage\fR
+Exclude a package from the build (multiple --exclude allowed)
+
+.IP --loop
+Assume \fI"foreach (line; stdin.byLine()) { ... }"\fR for eval
+
+.IP --main
+Add a stub main program to the mix (e.g. for unittesting)
+
+.IP --makedepend
+Print dependencies in makefile format and exit
+
+.IP --man
+Open web browser on manual page
+
+.IP --shebang
+\fBrdmd\fR is in a shebang line (put as first argument)
+
 .SH NOTES
 .B dmd
 or
