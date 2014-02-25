@@ -202,7 +202,9 @@ void runTests()
     std.file.write(depMod, "module depMod_; import dsubpack.submod; void main() { }");
 
     res = execute([rdmdApp, compilerSwitch, "-I" ~ packRoot, "--makedepend", depMod]);
-    assert(res.output.canFind("depMod_.d : "));  // simplistic check
+    // simplistic checks
+    assert(res.output.canFind("depMod_.d : "));
+    assert(res.output.replace(r"\", "/").canFind("dsubpack/submod.d"));
 
     /* Test signal propagation through exit codes */
 
