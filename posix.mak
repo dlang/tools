@@ -1,6 +1,8 @@
 DMD = ../dmd/src/dmd
 CC = gcc
 INSTALL_DIR = ../install
+DRUNTIME_PATH = ../druntime
+PHOBOS_PATH = ../phobos
 
 WITH_DOC = no
 DOC = ../dlang.org/web
@@ -47,6 +49,25 @@ MODEL_FLAG=-m$(MODEL)
 
 ROOT_OF_THEM_ALL = generated
 ROOT = $(ROOT_OF_THEM_ALL)/$(OS)/$(MODEL)
+
+# Set DRUNTIME name and full path
+ifeq (,$(findstring win,$(OS)))
+	DRUNTIME = $(DRUNTIME_PATH)/lib/libdruntime-$(OS)$(MODEL).a
+	DRUNTIMESO = $(DRUNTIME_PATH)/lib/libdruntime-$(OS)$(MODEL)so.a
+else
+	DRUNTIME = $(DRUNTIME_PATH)/lib/druntime.lib
+endif
+
+# Set PHOBOS name and full path
+ifeq (,$(findstring win,$(OS)))
+	PHOBOS = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.a
+	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.so
+endif
+
+# Set DFLAGS
+ifneq (dmd,$(DMD))
+	DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) -L--no-warn-search-mismatch $(DMDEXTRAFLAGS) -w
+endif
 
 TOOLS = \
     $(ROOT)/rdmd \
@@ -97,12 +118,12 @@ dman:      $(ROOT)/dman
 dustmite:  $(ROOT)/dustmite
 
 $(ROOT)/dustmite: DustMite/dustmite.d DustMite/dsplit.d
-	$(DMD) $(MODEL_FLAG) DustMite/dustmite.d DustMite/dsplit.d -of$(@)
+	$(DMD) $(MODEL_FLAG) $(DFLAGS) DustMite/dustmite.d DustMite/dsplit.d -of$(@)
 
 #dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
 $(CURL_TOOLS): $(ROOT)/%: %.d
-	$(DMD) -c -of$(@).o $(<)
-	($(DMD) -v -of$(@) $(@).o 2>/dev/null | grep '\-Xlinker' | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
+	$(DMD) $(MODEL_FLAG) $(DFLAGS) -c -of$(@).o $(<)
+	($(DMD) $(MODEL_FLAG) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep '\-Xlinker' | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
 
 $(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -of$(@) $(<)
