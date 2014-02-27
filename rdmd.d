@@ -118,6 +118,7 @@ int main(string[] args)
     bool addStubMain;// set by --main
     string[] eval;     // set by --eval
     bool makeDepend;
+    string makeDepFile;
     getopt(argsBeforeProgram,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
@@ -132,6 +133,7 @@ int main(string[] args)
             "help", { writeln(helpString); bailout = true; },
             "main", &addStubMain,
             "makedepend", &makeDepend,
+            "makedepfile", &makeDepFile,
             "man", { man(); bailout = true; },
             "o", &dashOh);
     if (bailout) return 0;
@@ -208,14 +210,18 @@ int main(string[] args)
     // --makedepend mode. Just print dependencies and exit.
     if (makeDepend)
     {
-        stdout.write(root, " :");
-        foreach (mod, _; myDeps)
-        {
-            stdout.write(' ', mod);
-        }
-        stdout.writeln();
+        writeDeps(root, myDeps, stdout);
         return 0;
     }
+
+    // --makedepfile mode. Print dependencies to a file and continue.
+    // This is similar to GCC's -MF option, very useful to update the
+    // dependencies file and compile in one go:
+    // -include .deps.mak
+    // prog:
+    //      rdmd --makedepfile=.deps.mak --build-only prog.d
+    if (makeDepFile !is null)
+        writeDeps(root, myDeps, File(makeDepFile, "w"));
 
     // Compute executable name, check for freshness, rebuild
     /*
@@ -292,6 +298,16 @@ size_t indexOfProgram(string[] args)
     }
 
     return args.length;
+}
+
+void writeDeps(string root, in string[string] myDeps, File fo)
+{
+    fo.write(root, " :");
+    foreach (mod, _; myDeps)
+    {
+        fo.write(' ', mod);
+    }
+    fo.writeln();
 }
 
 bool inALibrary(string source, string object)
@@ -725,20 +741,21 @@ Example: rdmd -release myprog --myprogparm 5
 
 Any option to be passed to the compiler must occur before the program name. In
 addition to compiler options, rdmd recognizes the following options:
-  --build-only      just build the executable, don't run it
-  --chatty          write compiler commands to stdout before executing them
-  --compiler=comp   use the specified compiler (e.g. gdmd) instead of %s
-  --dry-run         do not compile, just show what commands would be run
+  --build-only       just build the executable, don't run it
+  --chatty           write compiler commands to stdout before executing them
+  --compiler=comp    use the specified compiler (e.g. gdmd) instead of %s
+  --dry-run          do not compile, just show what commands would be run
                       (implies --chatty)
-  --eval=code       evaluate code as in perl -e (multiple --eval allowed)
-  --exclude=package exclude a package from the build (multiple --exclude allowed)
-  --force           force a rebuild even if apparently not necessary
-  --help            this message
-  --loop            assume \"foreach (line; stdin.byLine()) { ... }\" for eval
-  --main            add a stub main program to the mix (e.g. for unittesting)
-  --makedepend      print dependencies in makefile format and exit
-  --man             open web browser on manual page
-  --shebang         rdmd is in a shebang line (put as first argument)
+  --eval=code        evaluate code as in perl -e (multiple --eval allowed)
+  --exclude=package  exclude a package from the build (multiple --exclude allowed)
+  --force            force a rebuild even if apparently not necessary
+  --help             this message
+  --loop             assume \"foreach (line; stdin.byLine()) { ... }\" for eval
+  --main             add a stub main program to the mix (e.g. for unittesting)
+  --makedepend       print dependencies in makefile format and exit
+  --makedepfile=file print dependencies in makefile format to file and continue
+  --man              open web browser on manual page
+  --shebang          rdmd is in a shebang line (put as first argument)
 ".format(defaultCompiler);
 }
 

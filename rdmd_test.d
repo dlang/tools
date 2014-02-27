@@ -202,7 +202,24 @@ void runTests()
     std.file.write(depMod, "module depMod_; import dsubpack.submod; void main() { }");
 
     res = execute([rdmdApp, compilerSwitch, "-I" ~ packRoot, "--makedepend", depMod]);
-    assert(res.output.canFind("depMod_.d : "));  // simplistic check
+    // simplistic checks
+    assert(res.output.canFind("depMod_.d : "));
+    assert(res.output.replace(r"\", "/").canFind("dsubpack/submod.d"));
+
+    /* Test --makedepfile. */
+
+    string depModFail = packRoot.buildPath("depModFail_.d");
+    std.file.write(depModFail, "module depMod_; import dsubpack.submod; void main() { assert(0); }");
+
+    string depMak = packRoot.buildPath("depMak_.mak");
+    res = execute([rdmdApp, compilerSwitch, "--force", "--build-only", "-I" ~ packRoot, "--makedepfile=" ~ depMak, depModFail]);
+    scope (exit) std.file.remove(depMak);
+
+    string output = std.file.readText(depMak);
+    // simplistic checks
+    assert(output.canFind("depModFail_.d : "));
+    assert(output.replace(r"\", "/").canFind("dsubpack/submod.d"));
+    assert(res.status == 0, res.output);  // only built, assert(0) not called.
 
     /* Test signal propagation through exit codes */
 
