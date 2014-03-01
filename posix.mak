@@ -64,9 +64,19 @@ ifeq (,$(findstring win,$(OS)))
 	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.so
 endif
 
-# Set DFLAGS
-ifneq (dmd,$(DMD))
-	DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) -L--no-warn-search-mismatch $(DMDEXTRAFLAGS) -w
+# Set DFLAGS for the default choice of local-built compiler.
+# It is assumed the user will specify DFLAGS to go with any
+# custom DMD.
+ifeq ($(DMD),../dmd/src/dmd)
+	DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(DMDEXTRAFLAGS) -w
+endif
+
+# Set linker LDFLAGS dependent on target operating system.
+ifeq ($(OS),linux)
+	LDFLAGS = -L--no-warn-search-mismatch
+endif
+ifeq ($(OS), osx)
+	LDFLAGS = -L-no_arch_warnings
 endif
 
 TOOLS = \
@@ -123,7 +133,7 @@ $(ROOT)/dustmite: DustMite/dustmite.d DustMite/dsplit.d
 #dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
 $(CURL_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -c -of$(@).o $(<)
-	($(DMD) $(MODEL_FLAG) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep '\-Xlinker' | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
+	($(DMD) $(MODEL_FLAG) $(DFLAGS) $(LDFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep '\-Xlinker' | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
 
 $(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -of$(@) $(<)
