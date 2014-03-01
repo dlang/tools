@@ -66,7 +66,7 @@ endif
 
 # Set DFLAGS
 ifneq (dmd,$(DMD))
-	DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) -L--no-warn-search-mismatch $(DMDEXTRAFLAGS) -w
+	DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(DMDEXTRAFLAGS) -w
 endif
 
 TOOLS = \
