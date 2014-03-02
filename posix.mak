@@ -124,7 +124,8 @@ $(ROOT)/dustmite: DustMite/dustmite.d DustMite/dsplit.d
 $(CURL_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -c -of$(@).o $(<)
 # grep for the linker invocation and append -lcurl
-	($(DMD) $(MODEL_FLAG) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep $(@).o | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
+	LINKCMD=$$($(DMD) $(MODEL_FLAG) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep $(@).o); \
+	$${LINKCMD} -lcurl
 
 $(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -of$(@) $(<)
