@@ -123,7 +123,8 @@ $(ROOT)/dustmite: DustMite/dustmite.d DustMite/dsplit.d
 #dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
 $(CURL_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -c -of$(@).o $(<)
-	($(DMD) $(MODEL_FLAG) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep '\-Xlinker' | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
+# grep for the linker invocation and append -lcurl
+	($(DMD) $(MODEL_FLAG) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep $(@).o | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
 
 $(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -of$(@) $(<)
