@@ -64,10 +64,10 @@ ifeq (,$(findstring win,$(OS)))
 	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.so
 endif
 
-# Set DFLAGS
-ifneq (dmd,$(DMD))
-	DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) -L--no-warn-search-mismatch $(DMDEXTRAFLAGS) -w
-endif
+# default include/link paths, override by setting DMD (e.g. make -f posix.mak DMD=dmd)
+DMD += -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)
+
+DFLAGS = -w
 
 TOOLS = \
     $(ROOT)/rdmd \
@@ -123,7 +123,9 @@ $(ROOT)/dustmite: DustMite/dustmite.d DustMite/dsplit.d
 #dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
 $(CURL_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -c -of$(@).o $(<)
-	($(DMD) $(MODEL_FLAG) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep '\-Xlinker' | cut -f2- -d' ' ; echo -lcurl  ) | xargs $(CC)
+# grep for the linker invocation and append -lcurl
+	LINKCMD=$$($(DMD) $(MODEL_FLAG) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep $(@).o); \
+	$${LINKCMD} -lcurl
 
 $(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -of$(@) $(<)
