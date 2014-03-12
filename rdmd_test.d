@@ -207,6 +207,7 @@ void runTests()
     assert(res.output.canFind("depMod_ : "));
     assert(res.output.canFind("depMod_.d"));
     assert(res.output.replace(r"\", "/").canFind("dsubpack/submod.d"));
+    assert(res.output.replace(r"\", "/").canFind("dsubpack/submod.d :"));
 
     /* Test --makedepfile. */
 
@@ -224,6 +225,7 @@ void runTests()
     assert(output.canFind("depModFail_ : "));
     assert(output.canFind("depModFail_.d"));
     assert(output.replace(r"\", "/").canFind("dsubpack/submod.d"));
+    assert(output.replace(r"\", "/").canFind("dsubpack/submod.d :"));
     assert(res.status == 0, res.output);  // only built, assert(0) not called.
 
     /* Test signal propagation through exit codes */
