@@ -201,9 +201,11 @@ void runTests()
     string depMod = packRoot.buildPath("depMod_.d");
     std.file.write(depMod, "module depMod_; import dsubpack.submod; void main() { }");
 
-    res = execute([rdmdApp, compilerSwitch, "-I" ~ packRoot, "--makedepend", depMod]);
+    res = execute([rdmdApp, compilerSwitch, "-I" ~ packRoot, "--makedepend",
+            "-of" ~ depMod[0..$-2], depMod]);
     // simplistic checks
-    assert(res.output.canFind("depMod_.d : "));
+    assert(res.output.canFind("depMod_ : "));
+    assert(res.output.canFind("depMod_.d"));
     assert(res.output.replace(r"\", "/").canFind("dsubpack/submod.d"));
 
     /* Test --makedepfile. */
@@ -212,12 +214,15 @@ void runTests()
     std.file.write(depModFail, "module depMod_; import dsubpack.submod; void main() { assert(0); }");
 
     string depMak = packRoot.buildPath("depMak_.mak");
-    res = execute([rdmdApp, compilerSwitch, "--force", "--build-only", "-I" ~ packRoot, "--makedepfile=" ~ depMak, depModFail]);
+    res = execute([rdmdApp, compilerSwitch, "--force", "--build-only",
+            "-I" ~ packRoot, "--makedepfile=" ~ depMak,
+            "-of" ~ depModFail[0..$-2], depModFail]);
     scope (exit) std.file.remove(depMak);
 
     string output = std.file.readText(depMak);
     // simplistic checks
-    assert(output.canFind("depModFail_.d : "));
+    assert(output.canFind("depModFail_ : "));
+    assert(output.canFind("depModFail_.d"));
     assert(output.replace(r"\", "/").canFind("dsubpack/submod.d"));
     assert(res.status == 0, res.output);  // only built, assert(0) not called.
 
