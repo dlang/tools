@@ -317,17 +317,18 @@ size_t indexOfProgram(string[] args)
 
 void writeDeps(string exe, string root, in string[string] myDeps, File fo)
 {
-    fo.write(exe, " : ", root);
+    fo.writeln(exe, r": \");
+    fo.writeln(" ", root, r" \");
     foreach (mod, _; myDeps)
     {
-        fo.write(' ', mod);
+        fo.writeln(" ", mod, r" \");
     }
     fo.writeln();
-    fo.writeln();
-    fo.writeln(root, " :");
+    fo.writeln(root, ":");
     foreach (mod, _; myDeps)
     {
-        fo.writeln(mod, " :");
+        fo.writeln();
+        fo.writeln(mod, ":");
     }
 }
 
