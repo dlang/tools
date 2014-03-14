@@ -142,8 +142,8 @@ function update() {
             git checkout master && \
             git pull --ff-only $gitproject master && \
             git pull $gitproject master --tags && \
-            git fetch && \
-            git fetch --tags) 2>$tempdir/$project.log
+            git fetch $gitproject && \
+            git fetch --tags $gitproject) 2>$tempdir/$project.log
         then
             echo "Failure updating $wd/$project." >>$tempdir/errors
             exit 1
