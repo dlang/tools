@@ -5,12 +5,12 @@
 module dget;
 
 import std.algorithm, std.exception, std.file, std.range, std.net.curl;
+static import std.stdio;
 pragma(lib, "curl");
 
 void usage()
 {
-    import std.stdio;
-    writeln("usage: dget [--clone|-c] [--help|-h] <repo>...");
+    std.stdio.writeln("usage: dget [--clone|-c] [--help|-h] <repo>...");
 }
 
 int main(string[] args)
