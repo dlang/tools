@@ -10,6 +10,7 @@ module catdoc;
 import std.file;
 import std.getopt;
 import std.stdio;
+import std.string;
 
 int main(string[] args)
 {
