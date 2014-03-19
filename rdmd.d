@@ -139,6 +139,21 @@ int main(string[] args)
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
 
+    /* Only -of is supported because Make is very susceptible to file names, and
+     * it doesn't do a good job resolving them. One option would be to use
+     * std.path.buildNormalizedPath(), but some corner cases will break, so it
+     * has been decided to only allow -of for now.
+     * To see the full discussion please refer to:
+     * https://github.com/D-Programming-Language/tools/pull/122
+     */
+    if ((makeDepend || makeDepFile) && (!exe || exe.endsWith(dirSeparator)))
+    {
+        stderr.write(helpString);
+        stderr.writeln();
+        stderr.writeln("Missing option: --makedepend and --makedepfile need -of");
+        return 1;
+    }
+
     if (preserveOutputPaths)
     {
         argsBeforeProgram = argsBeforeProgram[0] ~ ["-op"] ~ argsBeforeProgram[1 .. $];
@@ -210,7 +225,7 @@ int main(string[] args)
     // --makedepend mode. Just print dependencies and exit.
     if (makeDepend)
     {
-        writeDeps(root, myDeps, stdout);
+        writeDeps(exe, root, myDeps, stdout);
         return 0;
     }
 
@@ -221,7 +236,7 @@ int main(string[] args)
     // prog:
     //      rdmd --makedepfile=.deps.mak --build-only prog.d
     if (makeDepFile !is null)
-        writeDeps(root, myDeps, File(makeDepFile, "w"));
+        writeDeps(exe, root, myDeps, File(makeDepFile, "w"));
 
     // Compute executable name, check for freshness, rebuild
     /*
@@ -300,14 +315,21 @@ size_t indexOfProgram(string[] args)
     return args.length;
 }
 
-void writeDeps(string root, in string[string] myDeps, File fo)
+void writeDeps(string exe, string root, in string[string] myDeps, File fo)
 {
-    fo.write(root, " :");
+    fo.writeln(exe, r": \");
+    fo.writeln(" ", root, r" \");
     foreach (mod, _; myDeps)
     {
-        fo.write(' ', mod);
+        fo.writeln(" ", mod, r" \");
     }
     fo.writeln();
+    fo.writeln(root, ":");
+    foreach (mod, _; myDeps)
+    {
+        fo.writeln();
+        fo.writeln(mod, ":");
+    }
 }
 
 bool inALibrary(string source, string object)
@@ -753,7 +775,9 @@ addition to compiler options, rdmd recognizes the following options:
   --loop             assume \"foreach (line; stdin.byLine()) { ... }\" for eval
   --main             add a stub main program to the mix (e.g. for unittesting)
   --makedepend       print dependencies in makefile format and exit
+                     (needs dmd's option `-of` to be present)
   --makedepfile=file print dependencies in makefile format to file and continue
+                     (needs dmd's option `-of` to be present)
   --man              open web browser on manual page
   --shebang          rdmd is in a shebang line (put as first argument)
 ".format(defaultCompiler);
