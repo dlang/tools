@@ -19,7 +19,7 @@ import std.conv;
 import std.ascii;
 import std.random;
 
-import dsplit;
+import splitter;
 
 // Issue 314 workarounds
 alias std.string.join join;
@@ -34,6 +34,7 @@ size_t origDescendants;
 bool concatPerformed;
 int tests; bool foundAnything;
 bool noSave, trace;
+string strategy = "inbreadth";
 
 struct Times { StopWatch total, load, testSave, resultSave, test, clean, cacheHash, globalCache, misc; }
 Times times;
@@ -93,7 +94,7 @@ auto nullReduction = Reduction(Reduction.Type.None);
 
 int main(string[] args)
 {
-	bool force, dump, showTimes, stripComments, obfuscate, keepLength, showHelp, noOptimize;
+	bool force, dump, dumpHtml, showTimes, stripComments, obfuscate, keepLength, showHelp, noOptimize;
 	string coverageDir;
 	string[] noRemoveStr;
 
@@ -104,7 +105,9 @@ int main(string[] args)
 		"coverage", &coverageDir,
 		"obfuscate", &obfuscate,
 		"keep-length", &keepLength,
+		"strategy", &strategy,
 		"dump", &dump,
+		"dump-html", &dumpHtml,
 		"times", &showTimes,
 		"cache", &globalCache, // for research
 		"trace", &trace, // for debugging
@@ -143,7 +146,9 @@ EOS");
 			stderr.write(q"EOS
   --help             Show this message
 Less interesting options:
+  --strategy STRAT   Set strategy (careful/lookback/pingpong/indepth/inbreadth)
   --dump             Dump parsed tree to DIR.dump file
+  --dump-html        Dump parsed tree to DIR.html file
   --times            Display verbose spent time breakdown
   --cache DIR        Use DIR as persistent disk cache
                        (in addition to memory cache)
@@ -182,7 +187,7 @@ EOS");
 
 	ParseOptions parseOptions;
 	parseOptions.stripComments = stripComments;
-	parseOptions.mode = obfuscate ? ParseOptions.Mode.Words : ParseOptions.Mode.Source;
+	parseOptions.mode = obfuscate ? ParseOptions.Mode.words : ParseOptions.Mode.source;
 	measure!"load"({root = loadFiles(dir, parseOptions);});
 	enforce(root.children.length, "No files in specified directory");
 
@@ -199,6 +204,8 @@ EOS");
 
 	if (dump)
 		dumpSet(dirSuffix("dump"));
+	if (dumpHtml)
+		dumpToHtml(dirSuffix("html"));
 
 	if (tester is null)
 	{
@@ -409,6 +416,74 @@ void reduceLookback()
 	} while (iterationChanged); // stop when we couldn't reduce anything this iteration
 }
 
+/// Keep going deeper until we find a successful reduction.
+/// When found, go up a depth level.
+/// Keep going up while we find new reductions. Repeat topmost depth level as necessary.
+/// Once no new reductions are found at higher depths, start going downwards again.
+/// If we reach the bottom (depth with no nodes on it), start a new iteration.
+/// If we finish an iteration without finding any reductions, we're done.
+void reducePingPong()
+{
+	bool iterationChanged;
+	int iterCount;
+	do
+	{
+		iterationChanged = false;
+		startIteration(iterCount++);
+
+		int depth = 0;
+		bool depthTested;
+
+		do
+		{
+			writefln("============= Depth %d =============", depth);
+			bool depthChanged;
+
+			testLevel(depth, depthTested, depthChanged);
+
+			if (depthChanged)
+			{
+				iterationChanged = true;
+				depth--;
+				if (depth < 0)
+					depth = 0;
+			}
+			else
+				depth++;
+		} while (depthTested); // keep going up/down while we found something to test
+	} while (iterationChanged); // stop when we couldn't reduce anything this iteration
+}
+
+/// Keep going deeper.
+/// If we reach the bottom (depth with no nodes on it), start a new iteration.
+/// If we finish an iteration without finding any reductions, we're done.
+void reduceInBreadth()
+{
+	bool iterationChanged;
+	int iterCount;
+	do
+	{
+		iterationChanged = false;
+		startIteration(iterCount++);
+
+		int depth = 0;
+		bool depthTested;
+
+		do
+		{
+			writefln("============= Depth %d =============", depth);
+			bool depthChanged;
+
+			testLevel(depth, depthTested, depthChanged);
+
+			if (depthChanged)
+				iterationChanged = true;
+
+			depth++;
+		} while (depthTested); // keep going down while we found something to test
+	} while (iterationChanged); // stop when we couldn't reduce anything this iteration
+}
+
 /// Look at every entity in the tree.
 /// If we can reduce this entity, continue looking at its siblings.
 /// Otherwise, recurse and look at its children.
@@ -459,10 +534,24 @@ void reduce()
 	if (countFiles(root) < 2)
 		concatPerformed = true;
 
-	//reduceCareful();
-	//reduceLookback();
-	reduceInDepth();
+	switch (strategy)
+	{
+		case "careful":
+			return reduceCareful();
+		case "lookback":
+			return reduceLookback();
+		case "pingpong":
+			return reducePingPong();
+		case "indepth":
+			return reduceInDepth();
+		case "inbreadth":
+			return reduceInBreadth();
+		default:
+			throw new Exception("Unknown strategy");
+	}
 }
+
+Mt19937 rng;
 
 void obfuscate(bool keepLength)
 {
@@ -489,7 +578,7 @@ void obfuscate(bool keepLength)
 		{
 			auto result = new char[length];
 			foreach (i, ref c; result)
-				c = (i==0 ? first : other)[uniform(0, $)];
+				c = (i==0 ? first : other)[uniform(0, $, rng)];
 
 			return assumeUnique(result);
 		}
@@ -550,13 +639,16 @@ void dump(Entity root, ref Reduction reduction, void delegate(string) handleFile
 					dumpEntity(c);
 			}
 			else
-			if (e.head)
+			if (e.head || e.tail)
 			{
 				assert(e.children.length==0);
-				if (e.head == reduction.from)
-					handleText(reduction.to);
-				else
-					handleText(e.head);
+				if (e.head)
+				{
+					if (e.head == reduction.from)
+						handleText(reduction.to);
+					else
+						handleText(e.head);
+				}
 				handleText(e.tail);
 			}
 			else
@@ -934,7 +1026,7 @@ bool test(Reduction reduction)
 				return true;
 			}
 			auto result = fallback;
-			measure!"globalCache"({ std.file.write(cacheBase ~ (result ? "1" : "0"), ""); });
+			measure!"globalCache"({ autoRetry({ std.file.write(cacheBase ~ (result ? "1" : "0"), ""); }, "save result to disk cache"); });
 			return result;
 		}
 		else
@@ -1172,34 +1264,96 @@ void dumpSet(string fn)
 		// if (!fileLevel) { f.writeln(prefix, "[ ... ]"); continue; }
 
 		f.write(prefix);
-		if (e.id in dependents || trace)
-			f.write("#", e.id, " ");
-		if (e.dependencies.length)
-		{
-			f.write(" => ");
-			foreach (d; e.dependencies)
-				f.write(d.id, " ");
-		}
-
 		if (e.children.length == 0)
 		{
-			f.writeln("[", e.noRemove ? "!" : "", " ", e.isFile ? e.filename ? printableFN(e.filename) ~ " " : null : e.head ? printable(e.head) ~ " " : null, e.tail ? printable(e.tail) ~ " " : null, "]");
+			f.write(
+				"[",
+				e.noRemove ? "!" : "",
+				" ",
+				e.isFile ? e.filename ? printableFN(e.filename) ~ " " : null : e.head ? printable(e.head) ~ " " : null,
+				e.tail ? printable(e.tail) ~ " " : null,
+				e.comment ? "/* " ~ e.comment ~ " */ " : null,
+				"]"
+			);
 		}
 		else
 		{
-			f.writeln("[", e.noRemove ? "!" : "", e.isPair ? " // Pair" : null);
+			f.writeln("[", e.noRemove ? "!" : "", e.comment ? " // " ~ e.comment : null);
 			if (e.isFile) f.writeln(prefix, "  ", printableFN(e.filename));
 			if (e.head) f.writeln(prefix, "  ", printable(e.head));
 			foreach (c; e.children)
 				print(c, depth+1);
 			if (e.tail) f.writeln(prefix, "  ", printable(e.tail));
-			f.writeln(prefix, "]");
+			f.write(prefix, "]");
 		}
+		if (e.id in dependents || trace)
+			f.write(" =", e.id);
+		if (e.dependencies.length)
+		{
+			f.write(" =>");
+			foreach (d; e.dependencies)
+				f.write(" ", d.id);
+		}
+		f.writeln();
 	}
 
 	print(root, 0);
 
 	f.close();
+}
+
+void dumpToHtml(string fn)
+{
+	auto buf = appender!string();
+
+	void dumpText(string s)
+	{
+		foreach (c; s)
+			switch (c)
+			{
+				case '<':
+					buf.put("&lt;");
+					break;
+				case '>':
+					buf.put("&gt;");
+					break;
+				case '&':
+					buf.put("&amp;");
+					break;
+				default:
+					buf.put(c);
+			}
+	}
+
+	void dump(Entity e)
+	{
+		if (e.isFile)
+		{
+			buf.put("<h1>");
+			dumpText(e.filename);
+			buf.put("</h1><pre>");
+			foreach (c; e.children)
+				dump(c);
+			buf.put("</pre>");
+		}
+		else
+		{
+			buf.put("<span>");
+			dumpText(e.head);
+			foreach (c; e.children)
+				dump(c);
+			dumpText(e.tail);
+			buf.put("</span>");
+		}
+	}
+
+	buf.put(q"EOT
+<style> pre span:hover { outline: 1px solid rgba(0,0,0,0.2); background-color: rgba(100,100,100,0.1	); } </style>
+EOT");
+
+	dump(root);
+
+	std.file.write(fn, buf.data());
 }
 
 void dumpText(string fn, ref Reduction r = nullReduction)

@@ -117,8 +117,8 @@ findtags:  $(ROOT)/findtags
 dman:      $(ROOT)/dman
 dustmite:  $(ROOT)/dustmite
 
-$(ROOT)/dustmite: DustMite/dustmite.d DustMite/dsplit.d
-	$(DMD) $(MODEL_FLAG) $(DFLAGS) DustMite/dustmite.d DustMite/dsplit.d -of$(@)
+$(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
+	$(DMD) $(MODEL_FLAG) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
 
 #dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
 $(CURL_TOOLS): $(ROOT)/%: %.d
