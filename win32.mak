@@ -134,8 +134,8 @@ $(ROOT)\rdmd.exe : rdmd.d
 $(ROOT)\ddemangle.exe : ddemangle.d
 	$(DMD) $(DFLAGS) -of$@ ddemangle.d
 
-$(ROOT)\dustmite.exe : DustMite/dustmite.d DustMite/dsplit.d
-	$(DMD) $(DFLAGS) -of$@ DustMite/dustmite.d DustMite/dsplit.d
+$(ROOT)\dustmite.exe : DustMite/dustmite.d DustMite/splitter.d
+	$(DMD) $(DFLAGS) -of$@ DustMite/dustmite.d DustMite/splitter.d
 
 $(ROOT)\changed.exe : changed.d
 	$(DMD) $(DFLAGS) -of$@ changed.d
