@@ -203,11 +203,14 @@ void runTests()
 
     res = execute([rdmdApp, compilerSwitch, "-I" ~ packRoot, "--makedepend",
             "-of" ~ depMod[0..$-2], depMod]);
+
+    import std.ascii : newline;
+
     // simplistic checks
-    assert(res.output.canFind(depMod[0..$-2] ~ ": \\\n"));
-    assert(res.output.canFind("\n " ~ depMod ~ " \\\n"));
-    assert(res.output.canFind("\n " ~ subModSrc ~ " \\\n"));
-    assert(res.output.canFind("\n" ~ subModSrc ~ ":\n"));
+    assert(res.output.canFind(depMod[0..$-2] ~ ": \\" ~ newline));
+    assert(res.output.canFind(newline ~ " " ~ depMod ~ " \\" ~ newline));
+    assert(res.output.canFind(newline ~ " " ~ subModSrc ~ " \\" ~ newline));
+    assert(res.output.canFind(newline ~  subModSrc ~ ":" ~ newline));
 
     /* Test --makedepfile. */
 
@@ -221,11 +224,12 @@ void runTests()
     scope (exit) std.file.remove(depMak);
 
     string output = std.file.readText(depMak);
+
     // simplistic checks
-    assert(output.canFind(depModFail[0..$-2] ~ ": \\\n"));
-    assert(output.canFind("\n " ~ depModFail ~ " \\\n"));
-    assert(output.canFind("\n " ~ subModSrc ~ " \\\n"));
-    assert(output.canFind("\n" ~ subModSrc ~ ":\n"));
+    assert(output.canFind(depModFail[0..$-2] ~ ": \\" ~ newline));
+    assert(output.canFind(newline ~ " " ~ depModFail ~ " \\" ~ newline));
+    assert(output.canFind(newline ~ " " ~ subModSrc ~ " \\" ~ newline));
+    assert(output.canFind(newline ~ "" ~ subModSrc ~ ":" ~ newline));
     assert(res.status == 0, res.output);  // only built, assert(0) not called.
 
     /* Test signal propagation through exit codes */
