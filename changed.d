@@ -52,7 +52,7 @@ string getCachePath(string start_date, string end_date)
 }
 
 auto templateRequest =
-    `http://d.puremagic.com/issues/buglist.cgi?username=crap2crap%40yandex.ru&password=powerlow7&chfieldto={to}&query_format=advanced&chfield=resolution&chfieldfrom={from}&bug_status=RESOLVED&resolution=FIXED&product=D&ctype=csv&columnlist=component%2Cbug_severity%2Cshort_desc`;
+    `https://issues.dlang.org/buglist.cgi?username=crap2crap%40yandex.ru&password=powerlow7&chfieldto={to}&query_format=advanced&chfield=resolution&chfieldfrom={from}&bug_status=RESOLVED&resolution=FIXED&product=D&ctype=csv&columnlist=component%2Cbug_severity%2Cshort_desc`;
 
 auto generateRequest(string templ, Date start, Date end)
 {
