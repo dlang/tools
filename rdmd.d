@@ -39,7 +39,7 @@ else
 
 private bool chatty, buildOnly, dryRun, force, preserveOutputPaths;
 private string exe;
-private string[] exclusions = ["std", "etc", "core", "tango"]; // packages that are to be excluded
+private string[] exclusions = ["std", "etc", "core"]; // packages that are to be excluded
 
 version (DigitalMars)
     private enum defaultCompiler = "dmd";
