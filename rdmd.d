@@ -342,6 +342,16 @@ bool inALibrary(string source, string object)
         if (source.startsWith(exclusion~'.'))
             return true;
 
+    // https://issues.dlang.org/show_bug.cgi?id=13178
+    // print a warning about `tango` removal for one release cycle
+    if (source.startsWith("tango."))
+    {
+        stderr.writeln(
+            "Warning: 'tango' package is no longer automatically excluded from compilation.\n" ~
+            "Warning:  modify your build script to mention --exclude=tango to keep the old behaviour"
+        );
+    }
+
     return false;
 
     // another crude heuristic: if a module's path is absolute, it's
