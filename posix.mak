@@ -140,8 +140,9 @@ $(ROOT)/dman: $(TAGS) $(PHOBOS_TAGS)
 $(ROOT)/dman: DFLAGS += -J.
 
 install: $(TOOLS) $(CURL_TOOLS)
-	mkdir -p $(INSTALL_DIR)/bin
-	cp $^ $(INSTALL_DIR)/bin
+	$(eval bin_dir=$(if $(filter $(OS),osx), bin, bin$(MODEL)))
+	mkdir -p $(INSTALL_DIR)/$(bin_dir)
+	cp $^ $(INSTALL_DIR)/$(bin_dir)
 
 clean:
 	rm -f $(ROOT)/dustmite $(TOOLS) $(CURL_TOOLS) $(DOC_TOOLS) $(TAGS) *.o $(ROOT)/*.o
