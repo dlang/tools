@@ -344,8 +344,10 @@ bool inALibrary(string source, string object)
 
     // https://issues.dlang.org/show_bug.cgi?id=13178
     // print a warning about `tango` removal for one release cycle
-    if (source.startsWith("tango."))
+    static bool seenTango;
+    if (!seenTango && source.startsWith("tango."))
     {
+        seenTango = true;
         stderr.writeln(
             "Warning: 'tango' package is no longer automatically excluded from compilation.\n" ~
             "Warning:  modify your build script to mention --exclude=tango to keep the old behaviour"
