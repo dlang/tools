@@ -7,10 +7,13 @@ module splitter;
 import std.ascii;
 import std.algorithm;
 import std.array;
+import std.conv;
 import std.file;
+import std.functional;
 import std.path;
 import std.range;
 import std.string;
+import std.traits;
 debug import std.stdio;
 
 /// Represents a slice of the original code.
@@ -54,6 +57,11 @@ class Entity
 		else
 			return null;
 	}
+
+	override string toString()
+	{
+		return "%(%s%) %s %(%s%)".format([head], children, [tail]);
+	}
 }
 
 enum Mode
@@ -64,10 +72,12 @@ enum Mode
 
 enum Splitter
 {
-	D,         /// Parse D source code
-	words,     /// Split by whitespace
 	files,     /// Load entire files only
+	lines,     /// Split by line ends
+	words,     /// Split by whitespace
+	D,         /// Parse D source code
 }
+immutable string[] splitterNames = [EnumMembers!Splitter].map!(e => e.text().toLower()).array();
 
 struct ParseRule
 {
@@ -115,7 +125,10 @@ void optimize(Entity set)
 	static void group(ref Entity[] set, size_t start, size_t end)
 	{
 		//set = set[0..start] ~ [new Entity(removable, set[start..end])] ~ set[end..$];
-		set.replaceInPlace(start, end, [new Entity(null, set[start..end].dup, null)]);
+		auto children = set[start..end].dup;
+		auto e = new Entity(null, children, null);
+		e.noRemove = children.any!(c => c.noRemove)();
+		set.replaceInPlace(start, end, [e]);
 	}
 
 	static void clusterBy(ref Entity[] set, size_t binSize)
@@ -169,6 +182,15 @@ Entity loadFile(string name, string path, ParseOptions options)
 		{
 			final switch (rule.splitter)
 			{
+				case Splitter.files:
+					result.children = [new Entity(result.contents, null, null)];
+					return result;
+				case Splitter.lines:
+					result.children = parseToLines(result.contents);
+					return result;
+				case Splitter.words:
+					result.children = parseToWords(result.contents);
+					return result;
 				case Splitter.D:
 				{
 					if (result.contents.startsWith("Ddoc"))
@@ -188,12 +210,6 @@ Entity loadFile(string name, string path, ParseOptions options)
 							return result;
 					}
 				}
-				case Splitter.words:
-					result.children = parseToWords(result.contents);
-					return result;
-				case Splitter.files:
-					result.children = [new Entity(result.contents, null, null)];
-					return result;
 			}
 		}
 	assert(false); // default * rule should match everything
@@ -396,58 +412,66 @@ struct DSplitter
 	{
 		if (eos)
 			return Token.end;
+
+		Token result = Token.other;
 		try
 		{
 			auto c = advance();
 			switch (c)
 			{
 			case '\'':
+				result = Token.other;
 				if (consume('\\'))
 					advance();
 				while (advance() != '\'')
 					continue;
-				return Token.other;
+				break;
 			case '\\':  // D1 naked escaped string
+				result = Token.other;
 				advance();
-				return Token.other;
+				break;
 			case '"':
+				result = Token.other;
 				while (peek() != '"')
 				{
 					if (advance() == '\\')
 						advance();
 				}
 				advance();
-				return Token.other;
+				break;
 			case 'r':
 				if (consume(`r"`))
 				{
+					result = Token.other;
 					while (advance() != '"')
 						continue;
-					return Token.other;
+					break;
 				}
 				else
 					goto default;
 			case '`':
+				result = Token.other;
 				while (advance() != '`')
 					continue;
-				return Token.other;
+				break;
 			case '/':
 				if (consume('/'))
 				{
+					result = Token.comment;
 					while (peek() != '\r' && peek() != '\n')
 						advance();
-					return Token.comment;
 				}
 				else
 				if (consume('*'))
 				{
+					result = Token.comment;
 					while (!consume("*/"))
 						advance();
-					return Token.comment;
 				}
 				else
 				if (consume('+'))
 				{
+					result = Token.comment;
 					int commentLevel = 1;
 					while (commentLevel)
 					{
@@ -459,10 +483,10 @@ struct DSplitter
 						else
 							advance();
 					}
-					return Token.comment;
 				}
 				else
 					goto default;
+				break;
 			case '@':
 				if (consume("disable")
 				 || consume("property")
@@ -473,6 +497,7 @@ struct DSplitter
 					return Token.other;
 				goto default;
 			case '#':
+				result = Token.other;
 				do
 				{
 					c = advance();
@@ -480,7 +505,7 @@ struct DSplitter
 						c = advance();
 				}
 				while (c != '\n');
-				return Token.other;
+				break;
 			default:
 				{
 					i--;
@@ -511,26 +536,24 @@ struct DSplitter
 				}
 				if (c.isWhite())
 				{
+					result = Token.whitespace;
 					while (peek().isWhite())
 						advance();
-					return Token.whitespace;
 				}
 				else
 				if (isWordChar(c))
 				{
+					result = Token.other;
 					while (isWordChar(peek()))
 						advance();
-					return Token.other;
 				}
 				else
-					return Token.other;
+					result = Token.other;
 			}
 		}
 		catch (EndOfInput)
-		{
 			i = s.length;
-			return Token.other;
-		}
+		return result;
 	}
 
 	/// Skips leading and trailing whitespace/comments, too.
@@ -682,7 +705,7 @@ struct DSplitter
 		parseScope(entity, Token.none);
 		assert(!entity.head && !entity.tail);
 		postProcess(entity.children);
-		return entity.children;
+		return [entity];
 	}
 
 	Entity[] parseToWords(string code)
@@ -952,24 +975,33 @@ struct DSplitter
 	}
 }
 
-public Entity[] parseToWords(string text)
+public:
+
+/// Split the text into sequences for each fun is always true, and then always false
+Entity[] parseSplit(alias fun)(string text)
 {
 	Entity[] result;
 	size_t i, wordStart, wordEnd;
 	for (i = 1; i <= text.length; i++)
-		if (i==text.length || (!isAlphaNum(text[i-1]) && isAlphaNum(text[i])))
+		if (i==text.length || (fun(text[i-1]) && !fun(text[i])))
 		{
 			if (wordStart != i)
 				result ~= new Entity(text[wordStart..wordEnd], null, text[wordEnd..i]);
 			wordStart = wordEnd = i;
 		}
 		else
-		if ((isAlphaNum(text[i-1]) && !isAlphaNum(text[i])))
+		if ((!fun(text[i-1]) && fun(text[i])))
 			wordEnd = i;
 	return result;
 }
 
+alias parseToWords = parseSplit!isNotAlphaNum;
+alias parseToLines = parseSplit!isNewline;
+
 private:
+
+bool isNewline(char c) { return c == '\r' || c == '\n'; }
+alias isNotAlphaNum = not!isAlphaNum;
 
 // https://d.puremagic.com/issues/show_bug.cgi?id=11824
 auto arrayMap(alias fun, T)(T[] arr)

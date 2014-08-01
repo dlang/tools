@@ -21,6 +21,8 @@ import std.random;
 
 import splitter;
 
+alias Splitter = splitter.Splitter;
+
 // Issue 314 workarounds
 alias std.string.join join;
 alias std.string.startsWith startsWith;
@@ -96,23 +98,24 @@ int main(string[] args)
 {
 	bool force, dump, dumpHtml, showTimes, stripComments, obfuscate, keepLength, showHelp, noOptimize;
 	string coverageDir;
-	string[] noRemoveStr;
+	string[] noRemoveStr, splitRules;
 
 	getopt(args,
 		"force", &force,
-		"noremove", &noRemoveStr,
+		"noremove|no-remove", &noRemoveStr,
 		"strip-comments", &stripComments,
 		"coverage", &coverageDir,
 		"obfuscate", &obfuscate,
 		"keep-length", &keepLength,
 		"strategy", &strategy,
+		"split", &splitRules,
 		"dump", &dump,
 		"dump-html", &dumpHtml,
 		"times", &showTimes,
 		"cache", &globalCache, // for research
 		"trace", &trace, // for debugging
 		"nosave|no-save", &noSave, // for research
-		"no-optimize", &noOptimize, // for research
+		"nooptimize|no-optimize", &noOptimize, // for research
 		"h|help", &showHelp
 	);
 
@@ -126,14 +129,17 @@ TESTER should be a shell command which returns 0 for a correct reduction,
 and anything else otherwise.
 Supported options:
   --force            Force reduction of unusual files
-  --noremove REGEXP  Do not reduce blocks containing REGEXP
+  --no-remove REGEXP Do not reduce blocks containing REGEXP
                        (may be used multiple times)
   --strip-comments   Attempt to remove comments from source code.
   --coverage DIR     Load .lst files corresponding to source files from DIR
   --obfuscate        Instead of reducing, obfuscate the input by replacing
                        words with random substitutions
   --keep-length      Preserve word length when obfuscating
-EOS", args[0]);
+  --split MASK:MODE  Parse and reduce files specified by MASK using the given
+                       splitter. Can be repeated. MODE must be one of:
+                       %-(%s, %)
+EOS", args[0], splitterNames);
 
 		if (!showHelp)
 		{
@@ -185,9 +191,21 @@ EOS");
 				return 1;
 			}
 
+	ParseRule parseSplitRule(string rule)
+	{
+		auto p = rule.lastIndexOf(':');
+		enforce(p > 0, "Invalid parse rule: " ~ rule);
+		auto pattern = rule[0..p];
+		auto splitterName = rule[p+1..$];
+		auto splitterIndex = splitterNames.countUntil(splitterName);
+		enforce(splitterIndex >= 0, "Unknown splitter: " ~ splitterName);
+		return ParseRule(pattern, cast(Splitter)splitterIndex);
+	}
+
 	ParseOptions parseOptions;
 	parseOptions.stripComments = stripComments;
 	parseOptions.mode = obfuscate ? ParseOptions.Mode.words : ParseOptions.Mode.source;
+	parseOptions.rules = splitRules.map!parseSplitRule().array();
 	measure!"load"({root = loadFiles(dir, parseOptions);});
 	enforce(root.children.length, "No files in specified directory");
 
@@ -1041,8 +1059,15 @@ bool test(Reduction reduction)
 		auto lastdir = getcwd(); scope(exit) chdir(lastdir);
 		chdir(testdir);
 
+		File nul;
+		version (Windows)
+			nul.open("nul", "w+");
+		else
+			nul.open("/dev/null", "w+");
+		auto pid = spawnShell(tester, nul, nul, nul);
+
 		bool result;
-		measure!"test"({result = system(tester) == 0;});
+		measure!"test"({result = pid.wait() == 0;});
 		writeln(result ? "Yes" : "No");
 		return result;
 	}
