@@ -75,7 +75,7 @@ bool hasRepo(string user, string repo)
 void cloneRepo(string user, string repo)
 {
     import std.process;
-    enforce(!system(fmt("git clone git://github.com/%s/%s", user, repo)));
+    enforce(executeShell(fmt("git clone git://github.com/%s/%s", user, repo)).status == 0);
 }
 
 //::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
