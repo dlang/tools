@@ -334,10 +334,9 @@ size_t indexOfEval(string[] args)
     {
         if (arg == "--")
             break;
-        if (arg.startsWith("--eval=") || arg.startsWith("--loop="))
+        if (arg.startsWith("--eval=") || arg.startsWith("--loop=")
+                || arg == "--eval" || arg == "--loop")
             return i + 1;
-        if (arg == "--eval" || arg == "--loop")
-            return i + 2;
     }
 
     return args.length;
