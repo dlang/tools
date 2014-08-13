@@ -110,7 +110,35 @@ int main(string[] args)
 
     auto programPos = indexOfProgram(args);
     assert(programPos > 0);
-    auto argsBeforeProgram = args[0 .. programPos];
+    auto evalPos = indexOfEval(args);
+
+    string[] argsBeforeProgram = args;
+    string root = "";
+    string[] programArgs = [];
+    if (programPos < evalPos)
+    {
+        argsBeforeProgram = args[0 .. programPos];
+        root = args[programPos].chomp(".d") ~ ".d";
+        programArgs = args[programPos + 1 .. $];
+    }
+    else if (evalPos < programPos)
+    {
+        auto doubleDashPos = args.countUntil("--");
+        if (doubleDashPos < 0) doubleDashPos = args.length;
+
+        if (programPos < doubleDashPos)
+        {
+            argsBeforeProgram = args[0 .. programPos];
+            programArgs = args[programPos .. $];
+        }
+        else if (doubleDashPos < programPos)
+        {
+            argsBeforeProgram = args[0 .. doubleDashPos];
+            programArgs = args[doubleDashPos + 1 .. $];
+        }
+        /* root will be generated from --eval/--loop which are handled by getopt
+        below */
+    }
 
     bool bailout;    // bailout set by functions called in getopt if
                      // program should exit
@@ -160,31 +188,30 @@ int main(string[] args)
     }
 
     // Just evaluate this program!
+    enforce(!(loop && eval), "Cannot mix --eval and --loop.");
     if (loop)
     {
-        return .eval(importWorld ~ "void main(char[][] args) { "
+        assert(root == "");
+        root = makeEvalFile(importWorld ~ "void main(char[][] args) { "
                 ~ "foreach (line; std.stdio.stdin.byLine()) {\n"
                 ~ std.string.join(loop, "\n")
                 ~ ";\n} }");
     }
-    if (eval)
+    else if (eval)
     {
-        return .eval(importWorld ~ "void main(char[][] args) {\n"
+        assert(root == "");
+        root = makeEvalFile(importWorld ~ "void main(char[][] args) {\n"
                 ~ std.string.join(eval, "\n") ~ ";\n}");
     }
-
-    // no code on command line => require a source file
-    if (programPos == args.length)
+    else if (root == "") // no code to run
     {
         write(helpString);
         return 1;
     }
 
     auto
-        root = args[programPos].chomp(".d") ~ ".d",
         exeBasename = root.baseName(".d"),
-        exeDirname = root.dirName,
-        programArgs = args[programPos + 1 .. $];
+        exeDirname = root.dirName;
 
     assert(argsBeforeProgram.length >= 1);
     auto compilerFlags = argsBeforeProgram[1 .. $];
@@ -301,6 +328,20 @@ int main(string[] args)
     return exec(exe ~ programArgs);
 }
 
+size_t indexOfEval(string[] args)
+{
+    foreach(i, arg; args[1 .. $])
+    {
+        if (arg == "--")
+            break;
+        if (arg.startsWith("--eval=") || arg.startsWith("--loop="))
+            return i + 1;
+        if (arg == "--eval" || arg == "--loop")
+            return i + 2;
+    }
+
+    return args.length;
+}
 size_t indexOfProgram(string[] args)
 {
     foreach(i, arg; args[1 .. $])
@@ -814,26 +855,15 @@ import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
     std.zlib;
 ";
 
-int eval(string todo)
+string makeEvalFile(string todo)
 {
     auto pathname = myOwnTmpDir;
-    auto progname = buildPath(pathname,
-            "eval." ~ todo.md5Of.toHexString);
-    auto binName = progname ~ binExt;
+    auto srcfile = buildPath(pathname,
+            "eval." ~ todo.md5Of.toHexString ~ ".d");
 
-    bool compileFailure = false;
-    if (force || !exists(binName))
+    if (force || !exists(srcfile))
     {
-        // Compile it
-        std.file.write(progname~".d", todo);
-        if( run([ compiler, progname ~ ".d", "-of" ~ binName ]) != 0 )
-            compileFailure = true;
-    }
-
-    if (!compileFailure)
-    {
-        // Run it
-        exec([ binName ]);
+        std.file.write(srcfile, todo);
     }
 
     // Clean pathname
@@ -849,7 +879,7 @@ int eval(string todo)
         }
     }
 
-    return 0;
+    return srcfile;
 }
 
 @property string thisVersion()
