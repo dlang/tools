@@ -134,6 +134,11 @@ void runTests()
     assert(res.status == 0, res.output);
     assert(res.output.canFind("eval_works"));  // there could be a "DMD v2.xxx header in the output"
 
+    // alternative option value style
+    res = execute([rdmdApp, compilerSwitch, "--force", "--eval", "writeln(`eval_works`);"]);
+    assert(res.status == 0, res.output);
+    assert(res.output.canFind("eval_works"));  // there could be a "DMD v2.xxx header in the output"
+
     // compiler flags
     res = execute([rdmdApp, compilerSwitch, "--force", "-debug",
         "--eval=debug {} else assert(false);"]);

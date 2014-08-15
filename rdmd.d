@@ -17,6 +17,7 @@ import std.algorithm, std.array, std.c.stdlib, std.datetime,
     std.digest.md, std.exception, std.file, std.getopt,
     std.parallelism, std.path, std.process, std.range, std.regex,
     std.stdio, std.string, std.typetuple;
+import std.functional: toDelegate;
 
 version (Posix)
 {
@@ -108,38 +109,6 @@ int main(string[] args)
         std.process.browse("http://dlang.org/rdmd.html");
     }
 
-    auto programPos = indexOfProgram(args);
-    assert(programPos > 0);
-    auto evalPos = indexOfEval(args);
-
-    string[] argsBeforeProgram = args;
-    string root = "";
-    string[] programArgs = [];
-    if (programPos < evalPos)
-    {
-        argsBeforeProgram = args[0 .. programPos];
-        root = args[programPos].chomp(".d") ~ ".d";
-        programArgs = args[programPos + 1 .. $];
-    }
-    else if (evalPos < programPos)
-    {
-        auto doubleDashPos = args.countUntil("--");
-        if (doubleDashPos < 0) doubleDashPos = args.length;
-
-        if (programPos < doubleDashPos)
-        {
-            argsBeforeProgram = args[0 .. programPos];
-            programArgs = args[programPos .. $];
-        }
-        else if (doubleDashPos < programPos)
-        {
-            argsBeforeProgram = args[0 .. doubleDashPos];
-            programArgs = args[doubleDashPos + 1 .. $];
-        }
-        /* root will be generated from --eval/--loop which are handled by getopt
-        below */
-    }
-
     bool bailout;    // bailout set by functions called in getopt if
                      // program should exit
     string[] loop;       // set by --loop
@@ -147,7 +116,8 @@ int main(string[] args)
     string[] eval;     // set by --eval
     bool makeDepend;
     string makeDepFile;
-    getopt(argsBeforeProgram,
+    std.getopt.endOfOptionsPred = toDelegate(&isProgram);
+    auto getoptResult = getopt(args,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
             "build-only", &buildOnly,
@@ -182,28 +152,36 @@ int main(string[] args)
         return 1;
     }
 
+    auto compilerFlags = args[1 .. getoptResult.stoppedAt];
     if (preserveOutputPaths)
     {
-        argsBeforeProgram = argsBeforeProgram[0] ~ ["-op"] ~ argsBeforeProgram[1 .. $];
+        compilerFlags = ["-op"] ~ compilerFlags;
     }
 
+    string root;
+    string[] programArgs;
     // Just evaluate this program!
     enforce(!(loop && eval), "Cannot mix --eval and --loop.");
     if (loop)
     {
-        assert(root == "");
         root = makeEvalFile(importWorld ~ "void main(char[][] args) { "
                 ~ "foreach (line; std.stdio.stdin.byLine()) {\n"
                 ~ std.string.join(loop, "\n")
                 ~ ";\n} }");
+        programArgs = args[getoptResult.stoppedAt .. $];
     }
     else if (eval)
     {
-        assert(root == "");
         root = makeEvalFile(importWorld ~ "void main(char[][] args) {\n"
                 ~ std.string.join(eval, "\n") ~ ";\n}");
+        programArgs = args[getoptResult.stoppedAt .. $];
     }
-    else if (root == "") // no code to run
+    else if (getoptResult.stoppedAt < args.length) // program file given
+    {
+        root = args[getoptResult.stoppedAt];
+        programArgs = args[getoptResult.stoppedAt + 1 .. $];
+    }
+    else // no code to run
     {
         write(helpString);
         return 1;
@@ -212,9 +190,6 @@ int main(string[] args)
     auto
         exeBasename = root.baseName(".d"),
         exeDirname = root.dirName;
-
-    assert(argsBeforeProgram.length >= 1);
-    auto compilerFlags = argsBeforeProgram[1 .. $];
 
     bool lib = compilerFlags.canFind("-lib");
     string outExt = lib ? libExt : binExt;
@@ -328,31 +303,10 @@ int main(string[] args)
     return exec(exe ~ programArgs);
 }
 
-size_t indexOfEval(string[] args)
+bool isProgram(string arg)
 {
-    foreach(i, arg; args[1 .. $])
-    {
-        if (arg == "--")
-            break;
-        if (arg.startsWith("--eval=") || arg.startsWith("--loop=")
-                || arg == "--eval" || arg == "--loop")
-            return i + 1;
-    }
-
-    return args.length;
-}
-size_t indexOfProgram(string[] args)
-{
-    foreach(i, arg; args[1 .. $])
-    {
-        if (!arg.startsWith('-', '@') &&
-                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map", ".res"))
-        {
-            return i + 1;
-        }
-    }
-
-    return args.length;
+    return (!arg.startsWith('-', '@') &&
+        !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map", ".res"));
 }
 
 void writeDeps(string exe, string root, in string[string] myDeps, File fo)
