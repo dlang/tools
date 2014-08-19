@@ -134,6 +134,18 @@ void runTests()
     assert(res.status == 0, res.output);
     assert(res.output.canFind("eval_works"));  // there could be a "DMD v2.xxx header in the output"
 
+    // compiler flags
+    res = execute([rdmdApp, compilerSwitch, "--force", "-debug",
+        "--eval=debug {} else assert(false);"]);
+    assert(res.status == 0, res.output);
+
+    // vs program file
+    res = execute([rdmdApp, compilerSwitch, "--force",
+        "--eval=assert(true);", voidMain]);
+    assert(res.status != 0);
+    assert(res.output.canFind("Cannot have both --eval and a program file ('" ~
+            voidMain ~ "')."));
+
     /* Test --exclude. */
     string packFolder = tempDir().buildPath("dsubpack");
     if (packFolder.exists) packFolder.rmdirRecurse();
@@ -176,6 +188,13 @@ void runTests()
     auto status = pipes.pid.wait();
     assert(status == 0);
     }
+
+    // vs program file
+    res = execute([rdmdApp, compilerSwitch, "--force",
+        "--loop=assert(true);", voidMain]);
+    assert(res.status != 0);
+    assert(res.output.canFind("Cannot have both --loop and a program file ('" ~
+            voidMain ~ "')."));
 
     /* Test --main. */
     string noMain = tempDir().buildPath("no_main_.d");
