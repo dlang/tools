@@ -17,6 +17,7 @@ import std.algorithm, std.array, std.c.stdlib, std.datetime,
     std.digest.md, std.exception, std.file, std.getopt,
     std.parallelism, std.path, std.process, std.range, std.regex,
     std.stdio, std.string, std.typetuple;
+import std.functional: toDelegate;
 
 version (Posix)
 {
@@ -108,10 +109,6 @@ int main(string[] args)
         std.process.browse("http://dlang.org/rdmd.html");
     }
 
-    auto programPos = indexOfProgram(args);
-    assert(programPos > 0);
-    auto argsBeforeProgram = args[0 .. programPos];
-
     bool bailout;    // bailout set by functions called in getopt if
                      // program should exit
     string[] loop;       // set by --loop
@@ -119,7 +116,8 @@ int main(string[] args)
     string[] eval;     // set by --eval
     bool makeDepend;
     string makeDepFile;
-    getopt(argsBeforeProgram,
+    std.getopt.endOfOptionsPred = toDelegate(&isProgram);
+    auto getoptResult = getopt(args,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
             "build-only", &buildOnly,
@@ -154,40 +152,44 @@ int main(string[] args)
         return 1;
     }
 
+    auto compilerFlags = args[1 .. getoptResult.stoppedAt];
     if (preserveOutputPaths)
     {
-        argsBeforeProgram = argsBeforeProgram[0] ~ ["-op"] ~ argsBeforeProgram[1 .. $];
+        compilerFlags = ["-op"] ~ compilerFlags;
     }
 
+    string root;
+    string[] programArgs;
     // Just evaluate this program!
+    enforce(!(loop && eval), "Cannot mix --eval and --loop.");
     if (loop)
     {
-        return .eval(importWorld ~ "void main(char[][] args) { "
+        root = makeEvalFile(importWorld ~ "void main(char[][] args) { "
                 ~ "foreach (line; std.stdio.stdin.byLine()) {\n"
                 ~ std.string.join(loop, "\n")
                 ~ ";\n} }");
+        programArgs = args[getoptResult.stoppedAt .. $];
     }
-    if (eval)
+    else if (eval)
     {
-        return .eval(importWorld ~ "void main(char[][] args) {\n"
+        root = makeEvalFile(importWorld ~ "void main(char[][] args) {\n"
                 ~ std.string.join(eval, "\n") ~ ";\n}");
+        programArgs = args[getoptResult.stoppedAt .. $];
     }
-
-    // no code on command line => require a source file
-    if (programPos == args.length)
+    else if (getoptResult.stoppedAt < args.length) // program file given
+    {
+        root = args[getoptResult.stoppedAt];
+        programArgs = args[getoptResult.stoppedAt + 1 .. $];
+    }
+    else // no code to run
     {
         write(helpString);
         return 1;
     }
 
     auto
-        root = args[programPos].chomp(".d") ~ ".d",
         exeBasename = root.baseName(".d"),
-        exeDirname = root.dirName,
-        programArgs = args[programPos + 1 .. $];
-
-    assert(argsBeforeProgram.length >= 1);
-    auto compilerFlags = argsBeforeProgram[1 .. $];
+        exeDirname = root.dirName;
 
     bool lib = compilerFlags.canFind("-lib");
     string outExt = lib ? libExt : binExt;
@@ -301,18 +303,10 @@ int main(string[] args)
     return exec(exe ~ programArgs);
 }
 
-size_t indexOfProgram(string[] args)
+bool isProgram(string arg)
 {
-    foreach(i, arg; args[1 .. $])
-    {
-        if (!arg.startsWith('-', '@') &&
-                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map", ".res"))
-        {
-            return i + 1;
-        }
-    }
-
-    return args.length;
+    return (!arg.startsWith('-', '@') &&
+        !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map", ".res"));
 }
 
 void writeDeps(string exe, string root, in string[string] myDeps, File fo)
@@ -814,26 +808,15 @@ import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
     std.zlib;
 ";
 
-int eval(string todo)
+string makeEvalFile(string todo)
 {
     auto pathname = myOwnTmpDir;
-    auto progname = buildPath(pathname,
-            "eval." ~ todo.md5Of.toHexString);
-    auto binName = progname ~ binExt;
+    auto srcfile = buildPath(pathname,
+            "eval." ~ todo.md5Of.toHexString ~ ".d");
 
-    bool compileFailure = false;
-    if (force || !exists(binName))
+    if (force || !exists(srcfile))
     {
-        // Compile it
-        std.file.write(progname~".d", todo);
-        if( run([ compiler, progname ~ ".d", "-of" ~ binName ]) != 0 )
-            compileFailure = true;
-    }
-
-    if (!compileFailure)
-    {
-        // Run it
-        exec([ binName ]);
+        std.file.write(srcfile, todo);
     }
 
     // Clean pathname
@@ -849,7 +832,7 @@ int eval(string todo)
         }
     }
 
-    return 0;
+    return srcfile;
 }
 
 @property string thisVersion()

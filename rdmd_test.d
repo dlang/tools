@@ -134,6 +134,46 @@ void runTests()
     assert(res.status == 0, res.output);
     assert(res.output.canFind("eval_works"));  // there could be a "DMD v2.xxx header in the output"
 
+    // alternative option value style
+    res = execute([rdmdApp, compilerSwitch, "--force", "--eval", "writeln(`eval_works`);"]);
+    assert(res.status == 0, res.output);
+    assert(res.output.canFind("eval_works"));  // there could be a "DMD v2.xxx header in the output"
+
+    // compiler flags
+    res = execute([rdmdApp, compilerSwitch, "--force", "-debug",
+        "--eval=debug {} else assert(false);"]);
+    assert(res.status == 0, res.output);
+
+    // program args
+    res = execute([rdmdApp, compilerSwitch, "--force",
+        "--eval=assert(args[1 .. $] == [\"arg\", \"--eval\"]);",
+        "arg", "--eval"]);
+    assert(res.status == 0, res.output);
+
+    // using -- to signal start of program args
+    res = execute([rdmdApp, compilerSwitch, "--force",
+        "--eval=assert(args[1 .. $] == [\"--eval\"]);", "--", "--eval"]);
+    assert(res.status == 0, res.output);
+
+    // vs program file
+    string printFirstArg = tempDir().buildPath("print_first_arg.d");
+    std.file.write(printFirstArg, q{import std.stdio;
+        void main(string[] args) {assert(args[1 .. $] == ["--eval"]);}});
+    res = execute([rdmdApp, compilerSwitch, "--force",
+        printFirstArg, "--eval"]);
+    assert(res.status == 0, res.output);
+
+    // vs --loop
+    {
+        auto pipes = pipeProcess([rdmdApp, compilerSwitch, "--force",
+            "--eval=assert(false);", "--loop=assert(false);"],
+            Redirect.stdin | Redirect.stderr);
+        pipes.stdin.close();
+        assert(pipes.stderr.byLine(KeepTerminator.yes).joiner.array
+            .canFind("Cannot mix --eval and --loop."));
+        assert(wait(pipes.pid) != 0);
+    }
+
     /* Test --exclude. */
     string packFolder = tempDir().buildPath("dsubpack");
     if (packFolder.exists) packFolder.rmdirRecurse();
