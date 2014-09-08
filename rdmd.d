@@ -396,8 +396,7 @@ private string getWorkPath(in string root, in string[] compilerFlags)
 
     MD5 context;
     context.start();
-    context.put(getcwd().representation);
-    context.put(root.representation);
+    context.put(root.absolutePath().representation);
     foreach (flag; compilerFlags)
     {
         if (irrelevantSwitches.canFind(flag)) continue;
