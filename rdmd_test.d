@@ -243,13 +243,30 @@ void runTests()
         assert(res.status == -SIGSEGV, format("%s", res));
     }
 
+    /* -of doesn't append .exe on Windows: https://d.puremagic.com/issues/show_bug.cgi?id=12149 */
+
     version (Windows)
     {
-        /* -of doesn't append .exe on Windows: https://d.puremagic.com/issues/show_bug.cgi?id=12149 */
         string outPath = tempDir().buildPath("test_of_app");
         string exePath = outPath ~ ".exe";
         res = execute([rdmdApp, "--build-only", "-of" ~ outPath, voidMain]);
         enforce(exePath.exists(), exePath);
+    }
+
+    /* Current directory change should not trigger rebuild */
+
+    res = execute([rdmdApp, compilerSwitch, forceSrc]);
+    assert(res.status == 0, res.output);
+    assert(!res.output.canFind("compile_force_src"));
+
+    {
+        auto cwd = getcwd();
+        scope(exit) chdir(cwd);
+        chdir(tempDir);
+
+        res = execute([rdmdApp, compilerSwitch, forceSrc.baseName()]);
+        assert(res.status == 0, res.output);
+        assert(!res.output.canFind("compile_force_src"));
     }
 }
 
