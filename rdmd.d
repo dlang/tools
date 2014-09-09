@@ -159,32 +159,40 @@ int main(string[] args)
         argsBeforeProgram = argsBeforeProgram[0] ~ ["-op"] ~ argsBeforeProgram[1 .. $];
     }
 
+    string root;
+    string[] programArgs;
     // Just evaluate this program!
+    enforce(!(loop && eval), "Cannot mix --eval and --loop.");
     if (loop)
     {
-        return .eval(importWorld ~ "void main(char[][] args) { "
+        enforce(programPos == args.length, "Cannot have both --loop and a " ~
+                "program file ('" ~ args[programPos] ~ "').");
+        root = makeEvalFile(importWorld ~ "void main(char[][] args) { "
                 ~ "foreach (line; std.stdio.stdin.byLine()) {\n"
                 ~ std.string.join(loop, "\n")
                 ~ ";\n} }");
     }
-    if (eval)
+    else if (eval)
     {
-        return .eval(importWorld ~ "void main(char[][] args) {\n"
+        enforce(programPos == args.length, "Cannot have both --eval and a " ~
+                "program file ('" ~ args[programPos] ~ "').");
+        root = makeEvalFile(importWorld ~ "void main(char[][] args) {\n"
                 ~ std.string.join(eval, "\n") ~ ";\n}");
     }
-
-    // no code on command line => require a source file
-    if (programPos == args.length)
+    else if (programPos < args.length)
+    {
+        root = args[programPos].chomp(".d") ~ ".d";
+        programArgs = args[programPos + 1 .. $];
+    }
+    else // no code to run
     {
         write(helpString);
         return 1;
     }
 
     auto
-        root = args[programPos].chomp(".d") ~ ".d",
         exeBasename = root.baseName(".d"),
-        exeDirname = root.dirName,
-        programArgs = args[programPos + 1 .. $];
+        exeDirname = root.dirName;
 
     assert(argsBeforeProgram.length >= 1);
     auto compilerFlags = argsBeforeProgram[1 .. $];
@@ -813,26 +821,15 @@ import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
     std.zlib;
 ";
 
-int eval(string todo)
+string makeEvalFile(string todo)
 {
     auto pathname = myOwnTmpDir;
-    auto progname = buildPath(pathname,
-            "eval." ~ todo.md5Of.toHexString);
-    auto binName = progname ~ binExt;
+    auto srcfile = buildPath(pathname,
+            "eval." ~ todo.md5Of.toHexString ~ ".d");
 
-    bool compileFailure = false;
-    if (force || !exists(binName))
+    if (force || !exists(srcfile))
     {
-        // Compile it
-        std.file.write(progname~".d", todo);
-        if( run([ compiler, progname ~ ".d", "-of" ~ binName ]) != 0 )
-            compileFailure = true;
-    }
-
-    if (!compileFailure)
-    {
-        // Run it
-        exec([ binName ]);
+        std.file.write(srcfile, todo);
     }
 
     // Clean pathname
@@ -848,7 +845,7 @@ int eval(string todo)
         }
     }
 
-    return 0;
+    return srcfile;
 }
 
 @property string thisVersion()
