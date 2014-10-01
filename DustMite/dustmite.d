@@ -1126,8 +1126,8 @@ void applyNoRemoveRegex(string[] noRemoveStr)
 				ends ~= c.hit.ptr + c.hit.length;
 			}
 
-		starts.sort;
-		ends.sort;
+		starts.sort();
+		ends.sort();
 
 		int noRemoveLevel = 0;
 
