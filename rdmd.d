@@ -372,21 +372,15 @@ bool inALibrary(string source, string object)
 
 private @property string myOwnTmpDir()
 {
+    auto tmpRoot = tempDir();
     version (Posix)
     {
         import core.sys.posix.unistd;
-        auto tmpRoot = format("/tmp/.rdmd-%d", getuid());
+        tmpRoot = buildPath(tmpRoot, ".rdmd-%d".format(getuid()));
     }
-    else version (Windows)
-    {
-        auto tmpRoot = std.process.getenv("TEMP");
-        if (!tmpRoot)
-        {
-            tmpRoot = std.process.getenv("TMP");
-        }
-        if (!tmpRoot) tmpRoot = buildPath(".", ".rdmd");
-        else tmpRoot = tmpRoot.replace("/", dirSeparator) ~ dirSeparator ~ ".rdmd";
-    }
+    else
+        tmpRoot = tmpRoot.replace("/", dirSeparator).buildPath(".rdmd");
+
     yap("mkdirRecurse ", tmpRoot);
     if (!dryRun)
         mkdirRecurse(tmpRoot);
