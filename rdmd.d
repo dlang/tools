@@ -721,7 +721,7 @@ bool anyNewerThan(in string[] files, in string file)
 bool anyNewerThan(in string[] files, SysTime t)
 {
     // Experimental: running newerThan in separate threads, one per file
-    if (true)
+    if (false)
     {
         foreach (source; files)
         {
