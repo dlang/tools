@@ -270,6 +270,7 @@ int main(string[] args)
             // Both exe and buildWitness exist, and exe is older than
             // buildWitness. This is the only situation in which we
             // may NOT need to recompile.
+            yap("stat ", buildWitness);
             lastBuildTime = buildWitness.timeLastModified(SysTime.min);
         }
     }
@@ -277,6 +278,7 @@ int main(string[] args)
     {
         exe = buildPath(workDir, exeBasename) ~ outExt;
         buildWitness = exe;
+        yap("stat ", buildWitness);
         lastBuildTime = buildWitness.timeLastModified(SysTime.min);
     }
 
@@ -325,18 +327,15 @@ size_t indexOfProgram(string[] args)
 
 void writeDeps(string exe, string root, in string[string] myDeps, File fo)
 {
-    fo.writeln(exe, r": \");
-    fo.writeln(" ", root, r" \");
+    fo.writeln(exe, ": \\\n ", root, " \\\n");
     foreach (mod, _; myDeps)
     {
-        fo.writeln(" ", mod, r" \");
+        fo.writeln(" ", mod, " \\");
     }
-    fo.writeln();
-    fo.writeln(root, ":");
+    fo.writeln('\n', root, ":");
     foreach (mod, _; myDeps)
     {
-        fo.writeln();
-        fo.writeln(mod, ":");
+        fo.writeln('\n', mod, ":");
     }
 }
 
@@ -448,7 +447,7 @@ private int rebuild(string root, string fullExe,
 {
     version (Windows)
         fullExe = fullExe.defaultExtension(".exe");
-    
+
     // Delete the old executable before we start building.
     yap("stat ", fullExe);
     if (!dryRun && exists(fullExe))
@@ -639,7 +638,14 @@ private string[string] getDependencies(string rootModule, string workDir,
                 break;
 
             case "config":
-                result[captures[2].strip()] = null;
+                auto confFile = captures[2].strip;
+                // The config file is special: if missing, that's fine too. So
+                // add it as a dependency only if it actually exists.
+                yap("stat ", confFile);
+                if (confFile.exists)
+                {
+                    result[confFile] = null;
+                }
                 break;
 
             case "library":
@@ -662,12 +668,13 @@ private string[string] getDependencies(string rootModule, string workDir,
     if (!force)
     {
         yap("stat ", depsFilename);
-        if (exists(depsFilename))
+        auto depsT = depsFilename.timeLastModified(SysTime.min);
+        if (depsT > SysTime.min)
         {
             // See if the deps file is still in good shape
             auto deps = readDepsFile();
             auto allDeps = chain(rootModule.only, deps.byKey).array;
-            bool mustRebuildDeps = allDeps.anyNewerThan(timeLastModified(depsFilename));
+            bool mustRebuildDeps = allDeps.anyNewerThan(depsT);
             if (!mustRebuildDeps)
             {
                 // Cool, we're in good shape
@@ -714,7 +721,7 @@ bool anyNewerThan(in string[] files, in string file)
 bool anyNewerThan(in string[] files, SysTime t)
 {
     // Experimental: running newerThan in separate threads, one per file
-    if (false)
+    if (true)
     {
         foreach (source; files)
         {
@@ -730,6 +737,7 @@ bool anyNewerThan(in string[] files, SysTime t)
         bool result;
         foreach (source; taskPool.parallel(files))
         {
+            yap("stat ", source);
             if (!result && source.newerThan(t))
             {
                 result = true;
@@ -748,7 +756,7 @@ private bool newerThan(string source, string target)
 {
     if (force) return true;
     yap("stat ", target);
-    return source.newerThan(timeLastModified(target, SysTime(0)));
+    return source.newerThan(target.timeLastModified(SysTime.min));
 }
 
 private bool newerThan(string source, SysTime target)
@@ -832,6 +840,7 @@ string makeEvalFile(string todo)
     yap("dirEntries ", pathname);
     foreach (DirEntry d; dirEntries(pathname, SpanMode.shallow))
     {
+        yap("stat ", d.name);
         if (d.timeLastModified < cutoff)
         {
             collectException(std.file.remove(d.name));
