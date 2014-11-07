@@ -1,7 +1,0 @@
-{
-	"name": "dpl-docs",
-	"dependencies": {
-		"ddox": "~>0.9.21"
-	},
-	"versions": ["VibeCustomMain"]
-}
