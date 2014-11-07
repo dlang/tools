@@ -40,6 +40,7 @@ else
 private bool chatty, buildOnly, dryRun, force, preserveOutputPaths;
 private string exe;
 private string[] exclusions = ["std", "etc", "core"]; // packages that are to be excluded
+private string[] extraFiles = [];
 
 version (DigitalMars)
     private enum defaultCompiler = "dmd";
@@ -129,6 +130,7 @@ int main(string[] args)
             "eval", &eval,
             "loop", &loop,
             "exclude", &exclusions,
+            "extra-file", &extraFiles,
             "force", &force,
             "help", { writeln(helpString); bailout = true; },
             "main", &addStubMain,
@@ -665,6 +667,9 @@ private string[string] getDependencies(string rootModule, string workDir,
             default: assert(0);
             }
         }
+        // All dependencies specified through --extra-file
+        foreach (immutable moduleSrc; extraFiles)
+            result[moduleSrc] = d2obj(moduleSrc);
         return result;
     }
 
@@ -795,6 +800,8 @@ addition to compiler options, rdmd recognizes the following options:
                       (implies --chatty)
   --eval=code        evaluate code as in perl -e (multiple --eval allowed)
   --exclude=package  exclude a package from the build (multiple --exclude allowed)
+  --extra-file=file  include an extra source or object in the compilation
+                     (multiple --extra-file allowed)
   --force            force a rebuild even if apparently not necessary
   --help             this message
   --loop             assume \"foreach (line; stdin.byLine()) { ... }\" for eval
