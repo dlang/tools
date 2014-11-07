@@ -228,7 +228,7 @@ void runTests()
     // simplistic checks
     assert(res.output.canFind(depMod[0..$-2] ~ ": \\" ~ newline));
     assert(res.output.canFind(newline ~ " " ~ depMod ~ " \\" ~ newline));
-    assert(res.output.canFind(newline ~ " " ~ subModSrc ~ " \\" ~ newline));
+    assert(res.output.canFind(newline ~ " " ~ subModSrc));
     assert(res.output.canFind(newline ~  subModSrc ~ ":" ~ newline));
 
     /* Test --makedepfile. */
@@ -247,7 +247,7 @@ void runTests()
     // simplistic checks
     assert(output.canFind(depModFail[0..$-2] ~ ": \\" ~ newline));
     assert(output.canFind(newline ~ " " ~ depModFail ~ " \\" ~ newline));
-    assert(output.canFind(newline ~ " " ~ subModSrc ~ " \\" ~ newline));
+    assert(output.canFind(newline ~ " " ~ subModSrc));
     assert(output.canFind(newline ~ "" ~ subModSrc ~ ":" ~ newline));
     assert(res.status == 0, res.output);  // only built, assert(0) not called.
 

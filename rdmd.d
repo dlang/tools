@@ -330,9 +330,12 @@ void writeDeps(string exe, string root, in string[string] myDeps, File fo)
     fo.writeln(exe, ": \\\n ", root, " \\\n");
     foreach (mod, _; myDeps)
     {
-        fo.writeln(" ", mod, " \\");
+        fo.writeln(" \\");
+        fo.write(" ", mod);
     }
-    fo.writeln('\n', root, ":");
+    fo.writeln();
+    fo.writeln();
+    fo.writeln(root, ":");
     foreach (mod, _; myDeps)
     {
         fo.writeln('\n', mod, ":");
