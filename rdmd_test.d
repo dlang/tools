@@ -230,6 +230,7 @@ void runTests()
     assert(res.output.canFind(newline ~ " " ~ depMod ~ " \\" ~ newline));
     assert(res.output.canFind(newline ~ " " ~ subModSrc));
     assert(res.output.canFind(newline ~  subModSrc ~ ":" ~ newline));
+    assert(!res.output.canFind("\\" ~ newline ~ newline));
 
     /* Test --makedepfile. */
 
@@ -249,6 +250,7 @@ void runTests()
     assert(output.canFind(newline ~ " " ~ depModFail ~ " \\" ~ newline));
     assert(output.canFind(newline ~ " " ~ subModSrc));
     assert(output.canFind(newline ~ "" ~ subModSrc ~ ":" ~ newline));
+    assert(!output.canFind("\\" ~ newline ~ newline));
     assert(res.status == 0, res.output);  // only built, assert(0) not called.
 
     /* Test signal propagation through exit codes */

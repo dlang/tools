@@ -327,7 +327,8 @@ size_t indexOfProgram(string[] args)
 
 void writeDeps(string exe, string root, in string[string] myDeps, File fo)
 {
-    fo.writeln(exe, ": \\\n ", root, " \\\n");
+    fo.writeln(exe, ": \\");
+    fo.write(" ", root);
     foreach (mod, _; myDeps)
     {
         fo.writeln(" \\");
