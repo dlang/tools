@@ -57,6 +57,16 @@ Evaluate code as in perl -e (multiple --eval allowed)
 .IP --exclude=\fIpackage\fR
 Exclude a package from the build (multiple --exclude allowed)
 
+.IP --extra-file=\fIfile\fR
+Include an extra source or object in the compilation. Useful
+if you need to add an extra object (compiled by another
+language maybe) or an extra source (when rdmd picked up the
+.B "\&.di"
+file rather than the
+.B "\&.d"
+file) when compiling the program (multiple --extra-file
+allowed).
+
 .IP --loop
 Assume \fI"foreach (line; stdin.byLine()) { ... }"\fR for eval
 

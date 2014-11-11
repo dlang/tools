@@ -169,6 +169,23 @@ void runTests()
     res = execute([rdmdApp, compilerSwitch, "--force", "--exclude=dsubpack", subModObj, subModUser]);
     assert(res.status == 0, res.output);  // building with the dependency succeeds
 
+    /* Test --extra-file. */
+
+    string extraFileDi = tempDir().buildPath("extraFile_.di");
+    std.file.write(extraFileDi, "module extraFile_; void f();");
+    string extraFileD = tempDir().buildPath("extraFile_.d");
+    std.file.write(extraFileD, "module extraFile_; void f() { return; }");
+    string extraFileMain = tempDir().buildPath("extraFileMain_.d");
+    std.file.write(extraFileMain,
+            "module extraFileMain_; import extraFile_; void main() { f(); }");
+
+    res = execute([rdmdApp, compilerSwitch, "--force", extraFileMain]);
+    assert(res.status == 1, res.output); // undefined reference to f()
+
+    res = execute([rdmdApp, compilerSwitch, "--force",
+            "--extra-file=" ~ extraFileD, extraFileMain]);
+    assert(res.status == 0, res.output); // now OK
+
     /* Test --loop. */
     {
     auto testLines = "foo\nbar\ndoo".split("\n");
@@ -228,8 +245,9 @@ void runTests()
     // simplistic checks
     assert(res.output.canFind(depMod[0..$-2] ~ ": \\" ~ newline));
     assert(res.output.canFind(newline ~ " " ~ depMod ~ " \\" ~ newline));
-    assert(res.output.canFind(newline ~ " " ~ subModSrc ~ " \\" ~ newline));
+    assert(res.output.canFind(newline ~ " " ~ subModSrc));
     assert(res.output.canFind(newline ~  subModSrc ~ ":" ~ newline));
+    assert(!res.output.canFind("\\" ~ newline ~ newline));
 
     /* Test --makedepfile. */
 
@@ -247,8 +265,9 @@ void runTests()
     // simplistic checks
     assert(output.canFind(depModFail[0..$-2] ~ ": \\" ~ newline));
     assert(output.canFind(newline ~ " " ~ depModFail ~ " \\" ~ newline));
-    assert(output.canFind(newline ~ " " ~ subModSrc ~ " \\" ~ newline));
+    assert(output.canFind(newline ~ " " ~ subModSrc));
     assert(output.canFind(newline ~ "" ~ subModSrc ~ ":" ~ newline));
+    assert(!output.canFind("\\" ~ newline ~ newline));
     assert(res.status == 0, res.output);  // only built, assert(0) not called.
 
     /* Test signal propagation through exit codes */
