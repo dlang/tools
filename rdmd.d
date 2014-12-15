@@ -13,7 +13,7 @@
 
 // Written in the D programming language.
 
-import std.algorithm, std.array, std.c.stdlib, std.datetime,
+import std.algorithm, std.array, core.stdc.stdlib, std.datetime,
     std.digest.md, std.exception, std.file, std.getopt,
     std.parallelism, std.path, std.process, std.range, std.regex,
     std.stdio, std.string, std.typetuple;
