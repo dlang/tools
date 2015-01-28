@@ -47,8 +47,12 @@ function handleCmdLine() {
     	    (--tag=*)
             tag="`echo $arg | sed 's/[-a-zA-Z0-9]*=//'`"
             ;;
+            (install)
+            install="yes"
+            ;;
             (*)
-            echo "Error: $arg not recognized." >&2exit 1
+            echo "Error: $arg not recognized." >&2
+            exit 1
             ;;
         esac
     done
@@ -170,11 +174,13 @@ function makeWorld() {
     )
 
 # Update the running dmd version
-    local old=$(which dmd)
-    if [ -f "$old" ]; then
-        echo "Copying "$wd/dmd/src/dmd" over $old"
-        [ ! -w "$old" ] && local sudo="sudo"
-        $sudo cp "$wd/dmd/src/dmd" "$old"
+    if [[ ! -z $install ]]; then
+        local old=$(which dmd)
+        if [ -f "$old" ]; then
+            echo "Copying "$wd/dmd/src/dmd" over $old"
+            [ ! -w "$old" ] && local sudo="sudo"
+            $sudo cp "$wd/dmd/src/dmd" "$old"
+        fi
     fi
 
 # Then make druntime
@@ -198,7 +204,7 @@ function makeWorld() {
 }
 
 # main
-handleCmdLine
+handleCmdLine $*
 confirmChoices
 installAnew $toInstall
 update $toUpdate
