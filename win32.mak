@@ -36,7 +36,6 @@ ROOT_OF_THEM_ALL = generated
 ROOT = $(ROOT_OF_THEM_ALL)\windows\32
 
 TARGETS=	$(ROOT)\dman.exe \
-	$(ROOT)\findtags.exe \
 	$(ROOT)\rdmd.exe \
 	$(ROOT)\ddemangle.exe \
 	$(ROOT)\changed.exe \
@@ -44,89 +43,26 @@ TARGETS=	$(ROOT)\dman.exe \
 
 MAKEFILES=win32.mak posix.mak
 
-SRCS=dman.d findtags.d rdmd.d ddemangle.d
-
-TAGS=	expression.tag \
-	statement.tag \
-	std_algorithm.tag \
-	std_array.tag \
-	std_file.tag \
-	std_format.tag \
-	std_math.tag \
-	std_parallelism.tag \
-	std_path.tag \
-	std_random.tag \
-	std_range.tag \
-	std_regex.tag \
-	std_stdio.tag \
-	std_string.tag \
-	std_traits.tag \
-	std_typetuple.tag
+SRCS=dman.d rdmd.d ddemangle.d
 
 targets : $(TARGETS)
 
 dman:      $(ROOT)\dman.exe
-findtags:  $(ROOT)\findtags.exe
 rdmd:      $(ROOT)\rdmd.exe
 ddemangle: $(ROOT)\ddemangle.exe
 changed:   $(ROOT)\changed.exe
 dustmite:  $(ROOT)\dustmite.exe
 
-expression.tag : $(ROOT)\findtags.exe $(DOC)\expression.html
-	+$(ROOT)\findtags $(DOC)\expression.html >expression.tag
+ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
 
+$(DOC)\d.tag : $(DOC)\chmgen.exe $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
+	cmd /C "cd $(DOC) && chmgen.exe --only-tags"
 
-statement.tag : $(ROOT)\findtags.exe $(DOC)\statement.html
-	+$(ROOT)\findtags $(DOC)\statement.html >statement.tag
+$(DOC)\chmgen.exe : $(DOC)\chmgen.d
+	$(DMD) -g -of$@ $(DOC)\chmgen.d
 
-std_algorithm.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_algorithm.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_algorithm.html >std_algorithm.tag
-
-std_array.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_array.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_array.html >std_array.tag
-
-std_file.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_file.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_file.html >std_file.tag
-
-std_format.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_format.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_format.html >std_format.tag
-
-std_math.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_math.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_math.html >std_math.tag
-
-std_parallelism.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_parallelism.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_parallelism.html >std_parallelism.tag
-
-std_path.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_path.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_path.html >std_path.tag
-
-std_random.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_random.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_random.html >std_random.tag
-
-std_range.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_range.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_range.html >std_range.tag
-
-std_regex.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_regex.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_regex.html >std_regex.tag
-
-std_stdio.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_stdio.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_stdio.html >std_stdio.tag
-
-std_string.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_string.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_string.html >std_string.tag
-
-std_traits.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_traits.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_traits.html >std_traits.tag
-
-std_typetuple.tag : $(ROOT)\findtags.exe $(PHOBOSDOC)\std_typetuple.html
-	+$(ROOT)\findtags $(PHOBOSDOC)\std_typetuple.html >std_typetuple.tag
-
-
-$(ROOT)\findtags.exe : findtags.d
-	$(DMD) -of$@ findtags.d
-
-$(ROOT)\dman.exe : dman.d $(TAGS)
-	$(DMD) $(DFLAGS) -of$@ dman.d -J.
+$(ROOT)\dman.exe : dman.d $(DOC)\d.tag
+	$(DMD) $(DFLAGS) -of$@ dman.d -J$(DOC)
 
 $(ROOT)\rdmd.exe : rdmd.d
 	$(DMD) $(DFLAGS) -of$@ rdmd.d advapi32.lib
@@ -155,6 +91,3 @@ zip: detab tolf $(MAKEFILES)
 
 scp: detab tolf $(MAKEFILES)
 	$(SCP) $(SRCS) $(MAKEFILES) $(SCPDIR)
-
-
-
