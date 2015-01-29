@@ -155,7 +155,7 @@ ResultType confirmChoices(ref Params params)
     import std.algorithm : map;
     import std.path : dirSeparator;
     import std.string : toLower,strip;
-    import std.file : exists, isDir;
+    import std.file : exists, isDir, File;
     import std.array : array, join;
 
 	if (params.onlyInstall)
@@ -254,7 +254,7 @@ ResultType installAnew(ref Params params)
 	import std.process : executeShell;
 	import std.path : dirSeparator;
 	import std.string : canFind;
-	import std.file : exists,chdir;
+	import std.file : exists,chdir,isDir;
 
 	string[] failedInstalls;
 
