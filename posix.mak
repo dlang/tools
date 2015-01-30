@@ -104,7 +104,7 @@ PHOBOS_TAGS:= \
 	std_traits.tag \
 	std_typetuple.tag
 
-all: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
+all: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite $(ROOT)/fetchdlang
 
 rdmd:      $(ROOT)/rdmd
 ddemangle: $(ROOT)/ddemangle
@@ -116,9 +116,13 @@ changed:   $(ROOT)/changed
 findtags:  $(ROOT)/findtags
 dman:      $(ROOT)/dman
 dustmite:  $(ROOT)/dustmite
+fetchdlang: $(ROOT)/fetchdlang
 
 $(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
+
+$(ROOT)/fetchdlang: FetchDlang/fetchdlang.d FetchDlang/scriptutil.d
+	$(DMD) $(MODEL_FLAG) $(DFLAGS) FetchDlang/fetchdlang.d FetchDlang/scriptutil.d -of$(@)
 
 #dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
 $(CURL_TOOLS): $(ROOT)/%: %.d
@@ -144,7 +148,7 @@ install: $(TOOLS) $(CURL_TOOLS)
 	cp $^ $(INSTALL_DIR)/bin
 
 clean:
-	rm -f $(ROOT)/dustmite $(TOOLS) $(CURL_TOOLS) $(DOC_TOOLS) $(TAGS) *.o $(ROOT)/*.o
+	rm -f $(ROOT)/dustmite $(ROOT)/fetchdlang $(TOOLS) $(CURL_TOOLS) $(DOC_TOOLS) $(TAGS) *.o $(ROOT)/*.o
 
 ifeq ($(WITH_DOC),yes)
 all install: $(DOC_TOOLS)
