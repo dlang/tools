@@ -122,7 +122,7 @@ $(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
 
 $(ROOT)/fetchdlang: FetchDlang/fetchdlang.d FetchDlang/scriptutil.d
-    $(DMD) $(MODEL_FLAG) $(DFLAGS) FetchDlang/fetchdlang.d Fetchdlang/scriptutil.d -of$(@)
+	$(DMD) $(MODEL_FLAG) $(DFLAGS) FetchDlang/fetchdlang.d FetchDlang/scriptutil.d -of$(@)
 
 #dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
 $(CURL_TOOLS): $(ROOT)/%: %.d
