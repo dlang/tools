@@ -2,167 +2,131 @@ module scriptutil;
 static import std.ascii;
 import std.typecons : Tuple, tuple;
 import std.conv : to;
-import std.stdio : writefln,stdout;
-// shamelessly nicked from http://www.mktemp.org/repos/mktemp/file/e4089ef40fd0/mkdtemp.c
+import std.stdio : writefln, stdout;
+
+/**
+    Script utilities written 2015 by Laeeth Isharc to accompany fetchdlang script
+    Boost license - do as you wish with this, but at your own risk
+*/
+
+enum maxTries = 100_000;
 
 
-private string makeHash(immutable string path)
+private string makeHash(string path)
 {
-	import std.digest.digest : digest;
-	import std.digest.crc : crcHexString,CRC32;
-	import std.datetime : Clock,SysTime;
-	return digest!CRC32(path).crcHexString ~ digest!CRC32((Clock.currTime.toISOExtString)).crcHexString;
+    import std.digest.digest : digest;
+    import std.digest.crc : crcHexString,CRC32;
+    import std.datetime : Clock,SysTime;
+    return digest!CRC32(path).crcHexString ~ digest!CRC32((Clock.currTime.toISOExtString)).crcHexString;
 }
 
-private enum permittedCharacters= std.ascii.letters ~ std.ascii.digits;
+private enum permittedCharacters = std.ascii.letters ~ std.ascii.digits;
 
 private string makeRandomAlphaNumeric(size_t numChars)
 {
-	import std.random : uniform;
-	string ret="";
-	foreach(i;0..numChars)
-	{
-		auto r=uniform(0,permittedCharacters.length);
-		ret~=to!char(r);
-	}
-	return ret;
+    import std.random : uniform;
+    string ret = "";
+    foreach(i; 0 .. numChars)
+    {
+        auto r = uniform(0,permittedCharacters.length);
+        ret ~= to!char(r);
+    }
+    return ret;
 }
 
+// shamelessly nicked from http://www.mktemp.org/repos/mktemp/file/e4089ef40fd0/mkdtemp.c
 
-enum TempDirMode
+string makeTempDir(string path)
 {
-	createFile,
-	createDirectory,
-}
+    import std.algorithm : max;
+    import std.math : pow;
+    import std.file : exists, isDir, File;
+    import std.string : strip, indexOf;
 
-enum MaxTries=100_000;
+    if (path.length == 0)
+        throw new Exception("makeTempDir: trying to create directory in empty path");
 
-string makeTempEntry(string path, TempDirMode mode)
-{
-	import std.algorithm : max;
-	import std.math : pow;
-	import std.file : exists,isDir,File;
-	import std.string : strip,indexOf;
+    auto firstindex = path.indexOf("X"); // just add the temp junk to the end if no X specified
+    size_t lastindex = -1;
+    string frontStub,backStub;
+    auto numVarChars = ((lastindex - firstindex) > 2) ? (lastindex-firstindex) : 2;
 
-	if (path.length==0)
-		throw new Exception("makeTempEntry: trying to create directory in empty path");
+    if (firstindex != -1)
+        lastindex = path[firstindex .. $].indexOf("X")+firstindex;
+    frontStub = (firstindex != -1)?path[0 .. firstindex] : "";
+    backStub = (lastindex != -1)?path[lastindex .. $] : "";
+    File f;
 
-	auto firstindex=path.indexOf("X"); // just add the temp junk to the end if no X specified
-	size_t lastindex=-1;
-	string frontStub,backStub;
-	auto numVarChars=((lastindex-firstindex)>2)?(lastindex-firstindex):2;
+    foreach(trycount; 0 .. max(maxTries,pow(permittedCharacters.length,numVarChars)/5))
+    {
+        auto tempPath = frontStub ~ ((numVarChars>8) ? makeHash(path) : "") ~ makeRandomAlphaNumeric(lastindex-firstindex);
+        debug
+        {
+            writefln("%s trying to make temp entry in %s",tempPath);
+            stdout.flush();
+        }
+        if (exists(tempPath))
+            continue;
 
-	if (firstindex!=-1)
-		lastindex=path[firstindex..$].indexOf("X")+firstindex;
-	frontStub=(firstindex!=-1)?path[0..firstindex]:"";
-	backStub=(lastindex!=-1)?path[lastindex..$]:"";
-	File f;
-
-	foreach(trycount;0..max(MaxTries,pow(permittedCharacters.length,numVarChars)/5))
-	{
-		auto tempPath=frontStub~((numVarChars>8)?makeHash(path):"")~makeRandomAlphaNumeric(lastindex-firstindex);
-		debug
-		{
-			writefln("%s trying to make temp entry in %s",tempPath);
-			stdout.flush();
-		}
-		if (exists(tempPath))
-			continue;
-
-		if (mode==TempDirMode.createFile)
-		{
-			throw new Exception("safe create file not yet supported");
-			/*if safeCreateFile(tempPath)
-				return tempPath;*/
-		}
-		else
-		{
-			if (safeCreateDir(tempPath))
-				return tempPath;
-		}
-	}
-	
-	throw new Exception ("makeTempEntry unable to  "~ to!string(mode) ~"  in generic path " ~ path );
-	assert(0);
+        if (safeCreateDir(tempPath))
+            return tempPath;
+    }
+    
+    throw new Exception ("makeTempDir unable to make temporary directory in generic path " ~ path );
+    assert(0);
 }
 
 bool safeCreateDir(string path)
 {
-	import std.file : mkdir;
-	try
-	{
-		debug
-		{
-			writefln("safeCreateDir testing %s",path);
-			stdout.flush();
-		}
-		mkdir(path);
-	}
-	catch(Exception e)
-	{
-		return false;
-	}
-	return true;
-}
-/*
-bool safeCreateFile(in char[] name)
-{
-			f=File(tempPath,"wb");
-				write(tempPath,"wb");
-    bool ret;
-    version(Windows)
+    import std.file : mkdir;
+    try
     {
-        alias defaults =
-            TypeTuple!(GENERIC_WRITE, 0, null, CREATE_ALWAYS,
-                FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
-                HANDLE.init);
-        auto h = CreateFileW(name.tempCStringW(), defaults);
-
-        ret=(h != INVALID_HANDLE_VALUE);
-        CloseHandle(h);
-        return ret;
+        debug
+        {
+            writefln("safeCreateDir testing %s",path);
+            stdout.flush();
+        }
+        mkdir(path);
     }
-    else version(Posix)
+    catch(Exception e)
     {
-        ret=writeImpl(name, buffer, O_CREAT|O_EXCL|O_RDWR, S_IRUSR|S_IWUSR);
+        return false;
     }
+    return true;
 }
-		error = mkdir(template, S_IRUSR|S_IWUSR|S_IXUSR);
 
-*/
-
-alias universalWhichReturn=Tuple!(bool,"success",string,"result");
+alias universalWhichReturn = Tuple!(bool,"success",string,"result");
 
 universalWhichReturn universalWhich(string arg)
 {
-	import std.process : executeShell;
-	import std.string : strip;
+    import std.process : executeShell;
+    import std.string : strip;
 
-	version(Posix)
-	{
-		auto which=executeShell("which "~arg);
-		return universalWhichReturn((which.status==0),strip(which.output));
-	}
+    version(Posix)
+    {
+        auto which = executeShell("which " ~ arg);
+        return universalWhichReturn((which.status == 0),strip(which.output));
+    }
 
-	else version(Windows)
-	{
-		auto which=executeShell("where "~arg~".exe");
-		return universalWhichReturn((which.status==0),strip(which.output));
-	}
+    else version(Windows)
+    {
+        auto which = executeShell("where " ~ arg ~ ".exe");
+        return universalWhichReturn((which.status == 0),strip(which.output));
+    }
 }
 
 
 bool fileExists(string path)
 {
-	import std.file : exists,isDir;
+    import std.file : exists, isDir;
 
-	return (exists(path)&&(!isDir(path)));
+    return (exists(path) && (!isDir(path)));
 }
 string joinPath(string[] args)
 {
-	import std.file : dirSeparator;
-	import std.array : join;
-	return join(args,dirSeparator);
+    import std.file : dirSeparator;
+    import std.array : join;
+    return join(args,dirSeparator);
 }
 
 // I don't know how to get the file permissions bit to see if our process
@@ -173,19 +137,20 @@ string joinPath(string[] args)
 
 bool fileIsWritable(string path)
 {
-	try
-	{
-		auto f=File(path,"w+");
-	}
-	catch(Exception e) // not checking properly for other exceptions eg memory
-	{
-		return false;
-	}
-	return true;
+    import std.file : File;
+    try
+    {
+        auto f = File(path,"w+");
+    }
+    catch(Exception e) // not checking properly for other exceptions eg memory
+    {
+        return false;
+    }
+    return true;
 }
 
 bool amIRoot()
 {
-	import core.sys.posix.unistd : geteuid;
-	return (geteuid()==0);
+    import core.sys.posix.unistd : geteuid;
+    return (geteuid() == 0);
 }
