@@ -131,5 +131,3 @@ void main(string[] args)
          .reIndent(inputIndent, outputIndent)
          .copy(stdout.lockingTextWriter());
 }
-
-// vim:ai sw=4 ts=4 et:
