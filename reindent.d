@@ -37,19 +37,15 @@ auto reIndent(R)(R range, size_t inputIndent, size_t outputIndent)
     import std.array;
     import std.regex;
 
-    auto reSplitInitialSpace = regex(`^( +)(.*)`, "s");
+    auto reSplitInitialSpace = regex(`^( *)(.*)`, "s");
     auto reReindent = regex(" ".replicate(inputIndent));
     string outIndent = " ".replicate(outputIndent);
 
     return range.map!((line) {
         auto m = line.match(reSplitInitialSpace);
-        if (m)
-        {
-            auto newIndent = m.captures[1].replaceAll(reReindent, outIndent);
-            return newIndent ~ m.captures[2];
-        }
-        else
-            return line;
+        assert(m);
+        auto newIndent = m.captures[1].replaceAll(reReindent, outIndent);
+        return newIndent ~ m.captures[2];
     });
 }
 
