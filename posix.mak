@@ -5,7 +5,7 @@ DRUNTIME_PATH = ../druntime
 PHOBOS_PATH = ../phobos
 
 WITH_DOC = no
-DOC = ../dlang.org/web
+DOC = ../dlang.org
 
 ifeq (,$(OS))
     uname_S:=$(shell uname -s)
@@ -81,28 +81,7 @@ CURL_TOOLS = \
     $(ROOT)/changed
 
 DOC_TOOLS = \
-    $(ROOT)/findtags \
     $(ROOT)/dman
-
-TAGS:= \
-	expression.tag \
-	statement.tag
-
-PHOBOS_TAGS:= \
-	std_algorithm.tag \
-	std_array.tag \
-	std_file.tag \
-	std_format.tag \
-	std_math.tag \
-	std_parallelism.tag \
-	std_path.tag \
-	std_random.tag \
-	std_range.tag \
-	std_regex.tag \
-	std_stdio.tag \
-	std_string.tag \
-	std_traits.tag \
-	std_typetuple.tag
 
 all: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 
@@ -113,7 +92,6 @@ detab:     $(ROOT)/detab
 tolf:      $(ROOT)/tolf
 dget:      $(ROOT)/dget
 changed:   $(ROOT)/changed
-findtags:  $(ROOT)/findtags
 dman:      $(ROOT)/dman
 dustmite:  $(ROOT)/dustmite
 
@@ -130,14 +108,16 @@ $(CURL_TOOLS): $(ROOT)/%: %.d
 $(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -of$(@) $(<)
 
-$(TAGS): %.tag: $(DOC)/%.html $(ROOT)/findtags
-	$(ROOT)/findtags $< > $@
+$(DOC)/chmgen : $(DOC)/chmgen.d
+	$(DMD) -g -of$@ $<
 
-$(PHOBOS_TAGS): %.tag: $(DOC)/phobos/%.html $(ROOT)/findtags
-	$(ROOT)/findtags $< > $@
+ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
 
-$(ROOT)/dman: $(TAGS) $(PHOBOS_TAGS)
-$(ROOT)/dman: DFLAGS += -J.
+$(DOC)/d.tag : $(DOC)/chmgen $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
+	cd $(DOC) && ./chmgen --only-tags
+
+$(ROOT)/dman: $(DOC)/d.tag
+$(ROOT)/dman: DFLAGS += -J$(DOC)
 
 install: $(TOOLS) $(CURL_TOOLS)
 	mkdir -p $(INSTALL_DIR)/bin

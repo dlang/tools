@@ -85,11 +85,9 @@ string topic2url(char dman, string topic)
     {
         url = DmcCommands(topic);
         if (!url)
-            url = Ddoc(topic);
-        if (!url)
             url = Misc(topic);
         if (!url)
-            url = Phobos(topic);
+            url = D(topic);
         if (!url)
             url = CHeader(topic);
         if (!url)
@@ -127,21 +125,15 @@ string DmcCommands(string topic)
     return null;
 }
 
-string Ddoc(string topic)
+string D(string topic)
 {
-    static string[] etags = mixin (import("expression.tag"));
+    static struct IndexEntry { string keyword; string[] urls; }
+    static IndexEntry[] entries = mixin (import("d.tag"));
 
-    if (find(etags, topic).length)
-    {
-        return "http://dlang.org/expression.html#" ~ topic;
-    }
+    foreach (entry; entries)
+        if (entry.keyword == topic && entry.urls.length)
+            return entry.urls[0];
 
-    static string[] stags = mixin (import("statement.tag"));
-
-    if (find(stags, topic).length)
-    {
-        return "http://dlang.org/statement.html#" ~ topic;
-    }
     return null;
 }
 
@@ -890,42 +882,5 @@ string Misc(string topic)
     auto purl = topic in misc;
     if (purl)
         return *purl;
-    return null;
-}
-
-string moduleTag(string modulename)
-{
-    return
-    "static string[] " ~ modulename ~ "_tags = mixin (import(\"std_" ~ modulename ~ ".tag\"));
-    if (find(" ~ modulename ~ "_tags, topic).length)
-    {
-        return \"http://dlang.org/phobos/std_" ~ modulename ~ ".html#\" ~ topic;
-    }
-    ";
-}
-
-string Phobos(string topic)
-{
-    mixin(moduleTag("algorithm"));
-    mixin(moduleTag("array"));
-    mixin(moduleTag("file"));
-    mixin(moduleTag("format"));
-    mixin(moduleTag("math"));
-    mixin(moduleTag("parallelism"));
-    mixin(moduleTag("path"));
-    mixin(moduleTag("random"));
-    mixin(moduleTag("range"));
-    mixin(moduleTag("regex"));
-    mixin(moduleTag("stdio"));
-    mixin(moduleTag("string"));
-    mixin(moduleTag("traits"));
-    mixin(moduleTag("typetuple"));
-
-    string phobos = "http://dlang.org/phobos/";
-    if (find(topic, '.').length)
-    {
-        topic = replace(topic, regex("\\.", "g"), "_");
-        return phobos ~ topic ~ ".html";
-    }
     return null;
 }
