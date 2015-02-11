@@ -74,6 +74,7 @@ TOOLS = \
     $(ROOT)/ddemangle \
     $(ROOT)/catdoc \
     $(ROOT)/detab \
+    $(ROOT)/reindent \
     $(ROOT)/tolf
 
 CURL_TOOLS = \
