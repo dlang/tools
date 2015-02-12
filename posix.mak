@@ -108,13 +108,10 @@ $(CURL_TOOLS): $(ROOT)/%: %.d
 $(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -of$(@) $(<)
 
-$(DOC)/chmgen : $(DOC)/chmgen.d
-	$(DMD) -g -of$@ $<
-
 ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
 
-$(DOC)/d.tag : $(DOC)/chmgen $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
-	cd $(DOC) && ./chmgen --only-tags
+$(DOC)/d.tag : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
+	${MAKE} --directory=${DOC}/src -f posix.mak d.tag
 
 $(ROOT)/dman: $(DOC)/d.tag
 $(ROOT)/dman: DFLAGS += -J$(DOC)

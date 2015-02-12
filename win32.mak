@@ -55,11 +55,8 @@ dustmite:  $(ROOT)\dustmite.exe
 
 ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
 
-$(DOC)\d.tag : $(DOC)\chmgen.exe $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
-	cmd /C "cd $(DOC) && chmgen.exe --only-tags"
-
-$(DOC)\chmgen.exe : $(DOC)\chmgen.d
-	$(DMD) -g -of$@ $(DOC)\chmgen.d
+$(DOC)\d.tag : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
+	cmd /C "cd $(DOC) && $(MAKE) -f win32.mak d.tag"
 
 $(ROOT)\dman.exe : dman.d $(DOC)\d.tag
 	$(DMD) $(DFLAGS) -of$@ dman.d -J$(DOC)
