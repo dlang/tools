@@ -111,7 +111,7 @@ $(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
 ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
 
 $(DOC)/d.tag : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
-	${MAKE} --directory=${DOC}/src -f posix.mak d.tag
+	${MAKE} --directory=${DOC} -f posix.mak d.tag
 
 $(ROOT)/dman: $(DOC)/d.tag
 $(ROOT)/dman: DFLAGS += -J$(DOC)
