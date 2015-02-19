@@ -829,8 +829,10 @@ struct DSplitter
 					j++;
 				j++; // ; or {
 				if (j <= entities.length)
+				{
 					entities = entities[0..i] ~ group(group(entities[i..j-1]) ~ entities[j-1..j]) ~ entities[j..$];
-				continue;
+					continue;
+				}
 			}
 
 			i++;

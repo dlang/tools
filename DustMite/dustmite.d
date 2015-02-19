@@ -35,7 +35,7 @@ Entity root;
 size_t origDescendants;
 bool concatPerformed;
 int tests; bool foundAnything;
-bool noSave, trace;
+bool noSave, trace, noRedirect;
 string strategy = "inbreadth";
 
 struct Times { StopWatch total, load, testSave, resultSave, test, clean, cacheHash, globalCache, misc; }
@@ -98,10 +98,11 @@ int main(string[] args)
 {
 	bool force, dump, dumpHtml, showTimes, stripComments, obfuscate, keepLength, showHelp, noOptimize;
 	string coverageDir;
-	string[] noRemoveStr, splitRules;
+	string[] reduceOnly, noRemoveStr, splitRules;
 
 	getopt(args,
 		"force", &force,
+		"reduceonly|reduce-only", &reduceOnly,
 		"noremove|no-remove", &noRemoveStr,
 		"strip-comments", &stripComments,
 		"coverage", &coverageDir,
@@ -112,6 +113,7 @@ int main(string[] args)
 		"dump", &dump,
 		"dump-html", &dumpHtml,
 		"times", &showTimes,
+		"noredirect|no-redirect", &noRedirect,
 		"cache", &globalCache, // for research
 		"trace", &trace, // for debugging
 		"nosave|no-save", &noSave, // for research
@@ -129,6 +131,8 @@ TESTER should be a shell command which returns 0 for a correct reduction,
 and anything else otherwise.
 Supported options:
   --force            Force reduction of unusual files
+  --reduce-only MASK Only reduce paths glob-matching MASK
+                       (may be used multiple times)
   --no-remove REGEXP Do not reduce blocks containing REGEXP
                        (may be used multiple times)
   --strip-comments   Attempt to remove comments from source code.
@@ -139,6 +143,7 @@ Supported options:
   --split MASK:MODE  Parse and reduce files specified by MASK using the given
                        splitter. Can be repeated. MODE must be one of:
                        %-(%s, %)
+  --no-redirect      Don't redirect stdout/stderr streams of test command.
 EOS", args[0], splitterNames);
 
 		if (!showHelp)
@@ -210,7 +215,7 @@ EOS");
 	enforce(root.children.length, "No files in specified directory");
 
 	applyNoRemoveMagic();
-	applyNoRemoveRegex(noRemoveStr);
+	applyNoRemoveRegex(noRemoveStr, reduceOnly);
 	if (coverageDir)
 		loadCoverage(coverageDir);
 	if (!obfuscate && !noOptimize)
@@ -1059,12 +1064,18 @@ bool test(Reduction reduction)
 		auto lastdir = getcwd(); scope(exit) chdir(lastdir);
 		chdir(testdir);
 
-		File nul;
-		version (Windows)
-			nul.open("nul", "w+");
+		Pid pid;
+		if (noRedirect)
+			pid = spawnShell(tester);
 		else
-			nul.open("/dev/null", "w+");
-		auto pid = spawnShell(tester, nul, nul, nul);
+		{
+			File nul;
+			version (Windows)
+				nul.open("nul", "w+");
+			else
+				nul.open("/dev/null", "w+");
+			pid = spawnShell(tester, nul, nul, nul);
+		}
 
 		bool result;
 		measure!"test"({result = pid.wait() == 0;});
@@ -1118,7 +1129,7 @@ void applyNoRemoveMagic()
 	scan(root);
 }
 
-void applyNoRemoveRegex(string[] noRemoveStr)
+void applyNoRemoveRegex(string[] noRemoveStr, string[] reduceOnly)
 {
 	auto noRemove = array(map!((string s) { return regex(s, "mg"); })(noRemoveStr));
 
@@ -1134,7 +1145,13 @@ void applyNoRemoveRegex(string[] noRemoveStr)
 	foreach (f; files)
 	{
 		assert(f.isFile);
-		if (noRemove.any!(a => !match(f.filename, a).empty))
+
+		if
+		(
+			(reduceOnly.length && !reduceOnly.any!(mask => globMatch(f.filename, mask)))
+		||
+			(noRemove.any!(a => !match(f.filename, a).empty))
+		)
 		{
 			mark(f);
 			root.noRemove = true;
