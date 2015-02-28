@@ -1,5 +1,4 @@
-DOC=\cbx\mars\doc
-PHOBOSDOC=\cbx\mars\doc\phobos
+DOC=..\dlang.org
 # Where scp command copies to
 SCPDIR=..\backup
 
