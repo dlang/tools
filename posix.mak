@@ -116,7 +116,7 @@ $(DOC)/d.tag : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
 $(ROOT)/dman: $(DOC)/d.tag
 $(ROOT)/dman: DFLAGS += -J$(DOC)
 
-install: $(TOOLS) $(CURL_TOOLS)
+install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 	mkdir -p $(INSTALL_DIR)/bin
 	cp $^ $(INSTALL_DIR)/bin
 
