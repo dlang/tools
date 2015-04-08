@@ -76,7 +76,7 @@ int main(string[] args)
         else if (value[0] == 'd')
         {
             // -odmydir passed
-            if (!exe) // Don't let -od override -of
+            if (!exe.length) // Don't let -od override -of
             {
                 // add a trailing dir separator to clarify it's a dir
                 exe = value[1 .. $];
@@ -148,7 +148,7 @@ int main(string[] args)
      * To see the full discussion please refer to:
      * https://github.com/D-Programming-Language/tools/pull/122
      */
-    if ((makeDepend || makeDepFile) && (!exe || exe.endsWith(dirSeparator)))
+    if ((makeDepend || makeDepFile.length) && (!exe.length || exe.endsWith(dirSeparator)))
     {
         stderr.write(helpString);
         stderr.writeln();
@@ -164,8 +164,8 @@ int main(string[] args)
     string root;
     string[] programArgs;
     // Just evaluate this program!
-    enforce(!(loop && eval), "Cannot mix --eval and --loop.");
-    if (loop)
+    enforce(!(loop.length && eval.length), "Cannot mix --eval and --loop.");
+    if (loop.length)
     {
         enforce(programPos == args.length, "Cannot have both --loop and a " ~
                 "program file ('" ~ args[programPos] ~ "').");
@@ -174,7 +174,7 @@ int main(string[] args)
                 ~ std.string.join(loop, "\n")
                 ~ ";\n} }");
     }
-    else if (eval)
+    else if (eval.length)
     {
         enforce(programPos == args.length, "Cannot have both --eval and a " ~
                 "program file ('" ~ args[programPos] ~ "').");
@@ -203,10 +203,10 @@ int main(string[] args)
     string outExt = lib ? libExt : binExt;
 
     // --build-only implies the user would like a binary in the program's directory
-    if (buildOnly && !exe)
+    if (buildOnly && !exe.length)
         exe = exeDirname ~ dirSeparator;
 
-    if (exe && exe.endsWith(dirSeparator))
+    if (exe.length && exe.endsWith(dirSeparator))
     {
         // user specified a directory, complete it to a file
         exe = buildPath(exe, exeBasename) ~ outExt;
@@ -263,7 +263,7 @@ int main(string[] args)
      */
     string buildWitness;
     SysTime lastBuildTime = SysTime.min;
-    if (exe)
+    if (exe.length)
     {
         // user-specified exe name
         buildWitness = buildPath(workDir, ".built");
@@ -395,7 +395,7 @@ private @property string myOwnTmpDir()
 private string getWorkPath(in string root, in string[] compilerFlags)
 {
     static string workPath;
-    if (workPath)
+    if (workPath.length)
         return workPath;
 
     enum string[] irrelevantSwitches = [
@@ -547,7 +547,7 @@ private int run(string[] args, string output = null, bool replace = false)
     yap(replace ? "exec " : "spawn ", args.text);
     if (dryRun) return 0;
 
-    if (replace && !output)
+    if (replace && !output.length)
     {
         version (Windows)
             { /* Windows doesn't have exec, fall back to spawnProcess+wait */ }
@@ -560,7 +560,7 @@ private int run(string[] args, string output = null, bool replace = false)
     }
 
     File outputFile;
-    if (output)
+    if (output.length)
         outputFile = File(output, "wb");
     else
         outputFile = stdout;
@@ -657,7 +657,7 @@ private string[string] getDependencies(string rootModule, string workDir,
             case "library":
                 immutable libName = captures[2].strip();
                 immutable libPath = findLib(libName);
-                if (libPath)
+                if (libPath.length)
                 {
                     yap("library ", libName, " ", libPath);
                     result[libPath] = null;
