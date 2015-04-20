@@ -25,7 +25,7 @@ Usage:
 
     string ofile;
     getopt(args, "o", &ofile);
-    if (!ofile)
+    if (!ofile.ptr)
     {
 	writeln("catdoc: set output file with -o=filename");
 	return 1;
@@ -53,7 +53,7 @@ Usage:
 		if (i + 8 < input.length && std.string.icmp(input[i + 1 .. i + 8], "Macros:") == 0)
 		{
 		    comment ~= input[4 .. i + 1];
-		    if (!macros)
+		    if (!macros.ptr)
 			macros = "Macros:\n";
 		    macros ~= input[i + 8 .. $];
 		    goto L1;
