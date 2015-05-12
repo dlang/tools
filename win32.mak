@@ -38,11 +38,12 @@ TARGETS=	$(ROOT)\dman.exe \
 	$(ROOT)\rdmd.exe \
 	$(ROOT)\ddemangle.exe \
 	$(ROOT)\changed.exe \
-	$(ROOT)\dustmite.exe
+	$(ROOT)\dustmite.exe \
+	$(ROOT)\reindent.exe
 
 MAKEFILES=win32.mak posix.mak
 
-SRCS=dman.d rdmd.d ddemangle.d
+SRCS=dman.d rdmd.d ddemangle.d reindent.d
 
 targets : $(TARGETS)
 
