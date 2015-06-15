@@ -15,13 +15,16 @@ module rdmd_test;
     Use the --rdmd switch to specify the path to RDMD.
 */
 
+import core.thread;
 import std.algorithm;
+import std.datetime;
 import std.exception;
 import std.file;
 import std.getopt;
 import std.path;
 import std.process;
 import std.range;
+import std.regex;
 import std.string;
 
 version (Posix)
@@ -53,6 +56,9 @@ void main(string[] args)
     );
 
     enforce(rdmd.exists, "Path to rdmd does not exist: %s".format(rdmd));
+
+    mkdir(tempDir());
+    scope (exit) rmdirRecurse(tempDir());
 
     rdmdApp = tempDir().buildPath("rdmd_app_") ~ binExt;
     if (rdmdApp.exists) std.file.remove(rdmdApp);
@@ -321,6 +327,157 @@ void runTests()
     mkdir(conflictDir);
     res = execute([rdmdApp, compilerSwitch, "-of" ~ conflictDir, forceSrc]);
     assert(res.status != 0, "-of set to a directory should fail");
+
+    /* test absolute import path */
+    immutable string rootsrc = buildPath(tempDir(), "root.d");
+    std.file.write(rootsrc, "import foo;");
+    immutable string imp = buildPath(tempDir(), "imp");
+    mkdir(imp);
+    std.file.write(buildPath(imp, "foo.d"), "int main() {return 101;}");
+    assert(imp.isAbsolute);
+    res = execute([rdmdApp, compilerSwitch, "-I" ~ imp, rootsrc]);
+    assert(res.status == 101, res.output);
+
+    /* test importing from above the current directory */
+    {
+        auto cwd = getcwd();
+        scope(exit) chdir(cwd);
+        chdir(tempDir);
+
+        std.file.write("foo.d", "int main() {return 102;}");
+        mkdir("dir");
+        chdir("dir");
+        std.file.write("root.d", "import foo;");
+        res = execute([rdmdApp, compilerSwitch, "-I..", "root.d"]);
+        assert(res.status == 102, res.output);
+    }
+
+    /* test same module names, different packages */
+    immutable imp2 = buildPath(tempDir(), "imp2");
+    mkdir(imp2);
+    write(rootsrc, "
+        module foo;
+        import imp.foo;
+        import imp2.foo;
+        int main() {return 100 + imp.foo.f() + imp2.foo.f();}
+    ");
+    std.file.write(buildPath(imp, "foo.d"),
+        "module imp.foo; int f() {return 1;}");
+    std.file.write(buildPath(imp2, "foo.d"),
+        "module imp2.foo; int f() {return 2;}");
+    res = execute([rdmdApp, rootsrc]);
+    assert(res.status == 103, res.output);
+
+    /* test import expression */
+    std.file.write(rootsrc,
+        "int main()
+        {
+            return 100 + (import(\"bar\") ~ import(\"bar.d\")).length;
+        }");
+    std.file.write(buildPath(tempDir(), "bar"), "not D code");
+    std.file.write(buildPath(tempDir(), "bar.d"), "not D code");
+    res = execute([rdmdApp, "-J"~tempDir(), rootsrc]);
+    assert(res.status == 100 + "not D code".length * 2, res.output);
+
+    /* test incremental building */
+    {
+        // cd to tempDir because rdmd wouldn't find the library otherwise.
+        auto cwd = getcwd();
+        scope(exit) chdir(cwd);
+        chdir(tempDir);
+
+        std.file.write("root.d", "
+            import circular1;
+            import lib;
+            pragma(lib, \"somelib\");
+            int main()
+            {
+                return 100 + circular1.f() + lib.f();
+            }");
+        std.file.write("circular1.d", "
+            import circular2;
+            import outside;
+            int f() {return circular2.f() + outside.f();}
+            int g() {return 1;}");
+        std.file.write("circular2.d", "
+            import circular3;
+            int f() {return circular3.f() + 1;}");
+        std.file.write("circular3.d", "
+            import circular1;
+            int f() {return circular1.g() + 1;}");
+        std.file.write("outside.d", "int f() {return 2;}");
+        std.file.write("lib.di", "int f();");
+        mkdir("somelib");
+        std.file.write("somelib/lib.d", "int f() {return 3;}");
+
+        // Build the library.
+        version (Posix) enum libExt = ".a";
+        else version (Windows) enum libExt = ".lib";
+        else static assert(false);
+        immutable libfile = buildPath(tempDir(), "libsomelib".setExtension(libExt));
+        res = execute([rdmdApp, "-lib", "-of" ~ libfile, "somelib/lib.d"]);
+        assert(res.status == 0, res.output);
+
+        res = execute([rdmdApp, "-L-L.", "-ofprogram", "root.d"]);
+        assert(res.status == 108, res.output);
+
+        static string[] compiledSources(string rdmdChattyOutput)
+        {
+            auto mLine = rdmdChattyOutput
+                .matchFirst(regex(`^spawn "[^"]+" "-c" .*"[^"]+\.d"$`, "m"));
+            if (!mLine) return [];
+            return mLine.hit.matchAll(`"([^"]+\.d)"`).map!(m => m[1]).array;
+        }
+
+        // Touching root.d must not trigger a rebuild of anything else.
+        Thread.sleep(1.seconds); // so that the time is actually different
+        std.file.write("root.d", "
+            import circular1;
+            import lib;
+            pragma(lib, \"somelib\");
+            int main()
+            {
+                return 100 + circular1.f() + lib.f()
+                    + 1; // !
+            }");
+        res = execute([rdmdApp, "--chatty", "-L-L.", "root.d"]);
+        assert(res.status == 109, res.output);
+        assert(compiledSources(res.output) == ["root.d"]);
+
+        /* Touching outside.d must trigger a rebuild of circular{1,2,3} (and
+        root of course). */
+        Thread.sleep(1.seconds); // so that the time is actually different
+        std.file.write("outside.d", "int f() {return 3;}");
+        res = execute([rdmdApp, "--chatty", "-L-L.", "root.d"]);
+        assert(res.status == 110, res.output);
+        auto compiled = compiledSources(res.output);
+        assert(compiled.length == 5);
+        assert(compiled.canFind("outside.d"));
+        assert(compiled.canFind("circular1.d"));
+        assert(compiled.canFind("circular2.d"));
+        assert(compiled.canFind("circular3.d"));
+        assert(compiled.canFind("root.d"));
+
+        /* Touching lib.di or somelib/lib.d must not trigger a rebuild of the
+        program. */
+        Thread.sleep(1.seconds); // so that the time is actually different
+        std.file.write("lib.di", "int f();");
+        std.file.write("somelib/lib.d", "int f() {return 4;}");
+        auto programTime = timeLastModified("program");
+        res = execute([rdmdApp, "--chatty", "-L-L.", "root.d"]);
+        assert(res.status == 110, res.output);
+        assert(compiledSources(res.output) == []);
+        assert(timeLastModified("program") == programTime);
+
+        /* Having touched somelib/lib.d must trigger a rebuild of the library.
+        The library having changed must trigger a rebuild of the program. */
+        Thread.sleep(1.seconds); // so that the time is actually different
+        res = execute([rdmdApp, "-lib", "-of" ~ libfile, "somelib/lib.d"]);
+        assert(res.status == 0, res.output);
+        res = execute([rdmdApp, "--chatty", "-L-L.", "root.d"]);
+        assert(res.status == 111, res.output);
+        assert(compiledSources(res.output) == ["root.d"]);
+    }
 }
 
 void runConcurrencyTest()
@@ -348,4 +505,9 @@ void runConcurrencyTest()
             break;
         }
     }
+}
+
+string tempDir()
+{
+    return buildPath(std.file.tempDir(), "rdmd_test");
 }
