@@ -128,3 +128,5 @@ all install: $(DOC_TOOLS)
 endif
 
 .PHONY: all install clean
+
+.DELETE_ON_ERROR: # GNU Make directive (delete output files on error)
