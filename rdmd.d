@@ -445,19 +445,23 @@ private int rebuild(string root, string fullExe,
 
     // Delete the old executable before we start building.
     yap("stat ", fullExe);
-    if (!dryRun && exists(fullExe))
+    if (exists(fullExe))
     {
+        enforce(!isDir(fullExe), fullExe ~ " is a directory");
         yap("rm ", fullExe);
-        try
-            remove(fullExe);
-        catch (FileException e)
+        if (!dryRun)
         {
-            // This can occur on Windows if the executable is locked.
-            // Although we can't delete the file, we can still rename it.
-            auto oldExe = "%s.%s-%s.old".format(fullExe,
-                Clock.currTime.stdTime, thisProcessID);
-            yap("mv ", fullExe, " ", oldExe);
-            rename(fullExe, oldExe);
+            try
+                   remove(fullExe);
+            catch (FileException e)
+            {
+                // This can occur on Windows if the executable is locked.
+                // Although we can't delete the file, we can still rename it.
+                auto oldExe = "%s.%s-%s.old".format(fullExe,
+                    Clock.currTime.stdTime, thisProcessID);
+                yap("mv ", fullExe, " ", oldExe);
+                rename(fullExe, oldExe);
+            }
         }
     }
 

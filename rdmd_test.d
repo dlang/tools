@@ -309,6 +309,18 @@ void runTests()
         assert(res.status == 0, res.output);
         assert(!res.output.canFind("compile_force_src"));
     }
+
+    auto conflictDir = forceSrc.setExtension(".dir");
+    if (exists(conflictDir))
+    {
+        if (isFile(conflictDir))
+            remove(conflictDir);
+        else
+            rmdirRecurse(conflictDir);
+    }
+    mkdir(conflictDir);
+    res = execute([rdmdApp, compilerSwitch, "-of" ~ conflictDir, forceSrc]);
+    assert(res.status != 0, "-of set to a directory should fail");
 }
 
 void runConcurrencyTest()
