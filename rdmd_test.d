@@ -129,6 +129,9 @@ void runTests()
     assert(res.status == 0, res.output);  // static assert(0) not called since we did not build.
     assert(res.output.canFind("mkdirRecurse "), res.output);  // --dry-run implies chatty
 
+    res = execute([rdmdApp, compilerSwitch, "--force", "--dry-run", "--build-only", failComptime]);
+    assert(res.status == 0, res.output);  // --build-only should not interfere with --dry-run
+
     /* Test --eval. */
     res = execute([rdmdApp, compilerSwitch, "--force", "--eval=writeln(`eval_works`);"]);
     assert(res.status == 0, res.output);

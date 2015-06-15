@@ -296,7 +296,8 @@ int main(string[] args)
         if (buildWitness != exe)
         {
             yap("touch ", buildWitness);
-            std.file.write(buildWitness, "");
+            if (!dryRun)
+                std.file.write(buildWitness, "");
         }
     }
 
