@@ -159,7 +159,7 @@ int main(string[] args)
     // Validate extensions of extra files (--extra-file)
     foreach (immutable f; extraFiles)
     {
-        if (![".d", ".di", objExt].canFind(f.extension))
+        if (!only(".d", ".di", objExt).canFind(f.extension))
         {
             stderr.writeln("Bad value for --extra-file: \"" ~ f ~ "\". " ~
                 "Value must be a D source file (extension .d or .di) " ~
@@ -319,26 +319,27 @@ int main(string[] args)
     Also pick out the libraries. They need to be passed explicitly in the
     link command.
     */
-    const SysTime[string] times = !force ? getTimes(myDeps) :
-        (SysTime[string]).init;
-    HashSet!string toCompile;
-    HashSet!string toReuse;
-    HashSet!string libraries;
+    const SysTime[string] times = force ? (SysTime[string]).init :
+         getTimes(myDeps);
+    HashSet!string toCompile, toReuse, libraries;
     foreach (node; myDeps.byKey)
     {
         final switch (node.type)
         {
-            case DepNode.Type.source:
-            immutable o = d2obj(node.file);
-            if (force || times[node.file].newerThan(o))
+        case DepNode.Type.source:
+            immutable obj = d2obj(node.file);
+            if (force || times[node.file].newerThan(obj))
                 toCompile.insert(node.file);
-            else toReuse.insert(o);
+            else toReuse.insert(obj);
             break;
 
-            case DepNode.Type.object: toReuse.insert(node.file); break;
-            case DepNode.Type.other: break;
+        case DepNode.Type.object:
+            toReuse.insert(node.file);
+            break;
 
-            case DepNode.Type.library:
+        case DepNode.Type.other: break;
+
+        case DepNode.Type.library:
             if (node.file != exe) libraries.insert(node.name);
             break;
         }
@@ -399,20 +400,18 @@ size_t indexOfProgram(string[] args)
 void writeDeps(string exe, string root, in HashSet!DepNode[DepNode] myDeps,
     File fo)
 {
-     fo.writeln(exe, ": \\");
-     fo.write(" ", root);
+     fo.write(exe, ": \\\n ", root);
      foreach (node, _; myDeps)
      {
-         if(node.file == exe || node.file == root) continue;
-         fo.writeln(" \\");
-         fo.write(" ", node.file);
+         if (node.file == exe || node.file == root) continue;
+         fo.write(" \\\n ", node.file);
      }
      fo.writeln();
      fo.writeln();
      fo.writeln(root, ":");
      foreach (node, _; myDeps)
      {
-         if(node.file == exe || node.file == root) continue;
+         if (node.file == exe || node.file == root) continue;
          fo.writeln('\n', node.file, ":");
      }
 }
@@ -697,7 +696,7 @@ private HashSet!DepNode[DepNode] getDependencies(string rootModule,
             auto importingNode = DepNode.source(importingFile);
             result.lookupOrInit(importingNode);
 
-            switch(regexMatch[1])
+            switch (regexMatch[1])
             {
             case "Import":
                 if (!inALibrary(importedName, importedFile))
@@ -796,9 +795,13 @@ private HashSet!DepNode[DepNode] getDependencies(string rootModule,
         DepNode extraNode;
         switch (f.extension)
         {
-            case ".d": case ".di": extraNode = DepNode.source(f); break;
-            case objExt: extraNode = DepNode.object(f); break;
-            default: assert(false);
+        case ".d": case ".di":
+            extraNode = DepNode.source(f);
+            break;
+        case objExt:
+            extraNode = DepNode.object(f);
+            break;
+        default: assert(false);
         }
         deps.lookupOrInit(extraNode).insert(exeNode);
     }
@@ -868,13 +871,6 @@ struct DepNode
     string file; // may be missing with type == library; must be set otherwise
     string name; // must be set when type == library; must not be set otherwise
 
-    this(Type type, string file, string name)
-    {
-        this.type = type;
-        this.file = file;
-        this.name = name;
-    }
-
     invariant()
     {
         if (type == Type.library) assert(name != "");
@@ -916,9 +912,9 @@ SysTime[string] getTimes(const HashSet!DepNode[DepNode] dependencies)
 
         /* If there's a time stored and it's newer than or equal to t, then
         there's nothing to do here. */
-        if ((node.file in times) !is null && times[node.file] >= t) return;
+        if (node.file in times && times[node.file] >= t) return;
 
-        if ((node.file in times) is null)
+        if (node.file !in times)
             times[node.file] = timeLastModified(node.file, SysTime.min);
         if (t > times[node.file])
             times[node.file] = t;
