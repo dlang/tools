@@ -642,92 +642,8 @@ private HashSet!DepNode[DepNode] getDependencies(string rootModule,
 {
     immutable depsFilename = buildPath(workDir, "rdmd.deps2");
 
-    HashSet!DepNode[DepNode] readDepsFile()
-    {
-        string findLib(string libName)
-        {
-            // This can't be 100% precise without knowing exactly where the linker
-            // will look for libraries (which requires, but is not limited to,
-            // parsing the linker's command line (as specified in dmd.conf/sc.ini).
-            // Go for best-effort instead.
-            string[] dirs = ["."];
-            foreach (envVar; ["LIB", "LIBRARY_PATH", "LD_LIBRARY_PATH"])
-                dirs ~= environment.get(envVar, "").split(pathSeparator);
-            version (Windows)
-                string[] names = [libName ~ ".lib"];
-            else
-            {
-                string[] names = ["lib" ~ libName ~ ".a", "lib" ~ libName ~ ".so"];
-                dirs ~= ["/lib", "/usr/lib"];
-            }
-            foreach (dir; dirs)
-                foreach (name; names)
-                {
-                    auto path = buildPath(dir, name);
-                    if (path.exists)
-                        return absolutePath(path);
-                }
-            return null;
-        }
-        yap("read ", depsFilename);
-        auto depsReader = File(depsFilename);
-        scope(exit) collectException(depsReader.close()); // don't care for errors
-
-        HashSet!DepNode[DepNode] result;
-
-        // Fetch all dependencies and put them into result
-        auto pattern = regex(`^deps(Import|File|Lib) ` ~
-            `(?P<importing_module>[^ ]+) \((?P<importing_file>[^)]+)\) ` ~
-            `: (?:[^ ]+ : )?` ~ // private/public
-            `(?P<imported_name>[^ ]+)(?: \((?P<imported_file>[^)]+)\))?$`);
-        foreach (string line; depsReader.byLineCopy)
-        {
-            auto regexMatch = matchFirst(line, pattern);
-            if (regexMatch.empty) continue;
-
-            immutable importingModule = regexMatch["importing_module"].strip();
-            immutable importingFile = regexMatch["importing_file"].strip();
-            immutable importedName = regexMatch["imported_name"].strip();
-            immutable importedFile = regexMatch["imported_file"].strip();
-
-            // Don't care about dependencies of libraries.
-            if (inALibrary(importingModule, importingFile)) continue;
-
-            auto importingNode = DepNode.source(importingFile);
-            result.lookupOrInit(importingNode);
-
-            switch (regexMatch[1])
-            {
-            case "Import":
-                if (!inALibrary(importedName, importedFile))
-                {
-                    auto node = DepNode.source(importedFile);
-                    result.lookupOrInit(node).insert(importingNode);
-                }
-                break;
-
-            case "File":
-                auto node = DepNode.other(importedFile);
-                result.lookupOrInit(node).insert(importingNode);
-                break;
-
-            case "Lib":
-                DepNode node = DepNode.library(importedName,
-                    findLib(importedName));
-                if (node.file.ptr)
-                    yap("library ", node.name, " ", node.file);
-                result.lookupOrInit(node).insert(importingNode);
-                break;
-
-            default: assert(0);
-            }
-        }
-
-        return result;
-    }
-
     HashSet!DepNode[DepNode] deps;
-    bool generateDepsFile = true;
+    bool doGenerateDepsFile = true;
 
     // Check if the old dependency file is fine
     if (!force)
@@ -737,7 +653,7 @@ private HashSet!DepNode[DepNode] getDependencies(string rootModule,
         if (depsT > SysTime.min)
         {
             // See if the deps file is still in good shape
-            deps = readDepsFile();
+            deps = readDepsFile(depsFilename);
             auto allDeps = deps.byKey
                 .map!(node => node.file)
                 .filter!(f => f != "")
@@ -746,37 +662,15 @@ private HashSet!DepNode[DepNode] getDependencies(string rootModule,
             if (!mustRebuildDeps)
             {
                 // Cool, we're in good shape
-                generateDepsFile = false;
+                doGenerateDepsFile = false;
             }
         }
     }
 
-    if (generateDepsFile)
+    if (doGenerateDepsFile)
     {
-        // Don't pass -lib to the compiler here.
-        compilerFlags = compilerFlags.filter!(flag => flag != "-lib").array();
-
-        // Collect dependencies
-        auto depsGetter =
-            [ compiler ] ~ compilerFlags ~
-            ["-deps", "-o-", rootModule];
-
-        scope(failure)
-        {
-            // Delete the deps file on failure, we don't want to be fooled
-            // by it next time we try
-            collectException(std.file.remove(depsFilename));
-        }
-
-        immutable depsExitCode = run(depsGetter, depsFilename);
-        if (depsExitCode)
-        {
-            stderr.writefln("Failed: %(%s %)", depsGetter);
-            collectException(std.file.remove(depsFilename));
-            exit(depsExitCode);
-        }
-
-        if (!dryRun) deps = readDepsFile();
+        generateDepsFile(depsFilename, rootModule, compilerFlags);
+        if (!dryRun) deps = readDepsFile(depsFilename);
     }
 
     // Add exe as the root of the dependency graph.
@@ -861,6 +755,117 @@ private HashSet!DepNode[DepNode] getDependencies(string rootModule,
     }
 
     return deps;
+}
+
+HashSet!DepNode[DepNode] readDepsFile(in string depsFilename)
+{
+    string findLib(string libName)
+    {
+        // This can't be 100% precise without knowing exactly where the linker
+        // will look for libraries (which requires, but is not limited to,
+        // parsing the linker's command line (as specified in dmd.conf/sc.ini).
+        // Go for best-effort instead.
+        string[] dirs = ["."];
+        foreach (envVar; ["LIB", "LIBRARY_PATH", "LD_LIBRARY_PATH"])
+            dirs ~= environment.get(envVar, "").split(pathSeparator);
+        version (Windows)
+            string[] names = [libName ~ ".lib"];
+        else
+        {
+            string[] names = ["lib" ~ libName ~ ".a", "lib" ~ libName ~ ".so"];
+            dirs ~= ["/lib", "/usr/lib"];
+        }
+        foreach (dir; dirs)
+            foreach (name; names)
+            {
+                auto path = buildPath(dir, name);
+                if (path.exists)
+                    return absolutePath(path);
+            }
+        return null;
+    }
+    yap("read ", depsFilename);
+    auto depsReader = File(depsFilename);
+    scope(exit) collectException(depsReader.close()); // don't care for errors
+
+    HashSet!DepNode[DepNode] result;
+
+    // Fetch all dependencies and put them into result
+    auto pattern = regex(`^deps(Import|File|Lib) ` ~
+        `(?P<importing_module>[^ ]+) \((?P<importing_file>[^)]+)\) ` ~
+        `: (?:[^ ]+ : )?` ~ // private/public
+        `(?P<imported_name>[^ ]+)(?: \((?P<imported_file>[^)]+)\))?$`);
+    foreach (string line; depsReader.byLineCopy)
+    {
+        auto regexMatch = matchFirst(line, pattern);
+        if (regexMatch.empty) continue;
+
+        immutable importingModule = regexMatch["importing_module"].strip();
+        immutable importingFile = regexMatch["importing_file"].strip();
+        immutable importedName = regexMatch["imported_name"].strip();
+        immutable importedFile = regexMatch["imported_file"].strip();
+
+        // Don't care about dependencies of libraries.
+        if (inALibrary(importingModule, importingFile)) continue;
+
+        auto importingNode = DepNode.source(importingFile);
+        result.lookupOrInit(importingNode);
+
+        switch (regexMatch[1])
+        {
+        case "Import":
+            if (!inALibrary(importedName, importedFile))
+            {
+                auto node = DepNode.source(importedFile);
+                result.lookupOrInit(node).insert(importingNode);
+            }
+            break;
+
+        case "File":
+            auto node = DepNode.other(importedFile);
+            result.lookupOrInit(node).insert(importingNode);
+            break;
+
+        case "Lib":
+            DepNode node = DepNode.library(importedName,
+                findLib(importedName));
+            if (node.file.ptr)
+                yap("library ", node.name, " ", node.file);
+            result.lookupOrInit(node).insert(importingNode);
+            break;
+
+        default: assert(0);
+        }
+    }
+
+    return result;
+}
+
+void generateDepsFile(in string depsFilename, in string rootModule,
+    string[] compilerFlags)
+{
+    // Don't pass -lib to the compiler here.
+    compilerFlags = compilerFlags.filter!(flag => flag != "-lib").array();
+
+    // Collect dependencies
+    auto depsGetter =
+        [ compiler ] ~ compilerFlags ~
+        ["-deps", "-o-", rootModule];
+
+    scope(failure)
+    {
+        // Delete the deps file on failure, we don't want to be fooled
+        // by it next time we try
+        collectException(std.file.remove(depsFilename));
+    }
+
+    immutable depsExitCode = run(depsGetter, depsFilename);
+    if (depsExitCode)
+    {
+        stderr.writefln("Failed: %(%s %)", depsGetter);
+        collectException(std.file.remove(depsFilename));
+        exit(depsExitCode);
+    }
 }
 
 struct DepNode
