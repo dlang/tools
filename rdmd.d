@@ -643,7 +643,7 @@ private HashSet!DepNode[DepNode] getDependencies(string rootModule,
     immutable depsFilename = buildPath(workDir, "rdmd.deps2");
 
     HashSet!DepNode[DepNode] deps;
-    bool doGenerateDepsFile = true;
+    bool mustRebuildDeps = true;
 
     // Check if the old dependency file is fine
     if (!force)
@@ -658,16 +658,11 @@ private HashSet!DepNode[DepNode] getDependencies(string rootModule,
                 .map!(node => node.file)
                 .filter!(f => f != "")
                 .array;
-            bool mustRebuildDeps = allDeps.anyNewerThan(depsT);
-            if (!mustRebuildDeps)
-            {
-                // Cool, we're in good shape
-                doGenerateDepsFile = false;
-            }
+            mustRebuildDeps = allDeps.anyNewerThan(depsT);
         }
     }
 
-    if (doGenerateDepsFile)
+    if (mustRebuildDeps)
     {
         generateDepsFile(depsFilename, rootModule, compilerFlags);
         if (!dryRun) deps = readDepsFile(depsFilename);
