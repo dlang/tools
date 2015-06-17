@@ -129,6 +129,9 @@ void runTests()
     assert(res.status == 0, res.output);  // static assert(0) not called since we did not build.
     assert(res.output.canFind("mkdirRecurse "), res.output);  // --dry-run implies chatty
 
+    res = execute([rdmdApp, compilerSwitch, "--force", "--dry-run", "--build-only", failComptime]);
+    assert(res.status == 0, res.output);  // --build-only should not interfere with --dry-run
+
     /* Test --eval. */
     res = execute([rdmdApp, compilerSwitch, "--force", "--eval=writeln(`eval_works`);"]);
     assert(res.status == 0, res.output);
@@ -306,6 +309,18 @@ void runTests()
         assert(res.status == 0, res.output);
         assert(!res.output.canFind("compile_force_src"));
     }
+
+    auto conflictDir = forceSrc.setExtension(".dir");
+    if (exists(conflictDir))
+    {
+        if (isFile(conflictDir))
+            remove(conflictDir);
+        else
+            rmdirRecurse(conflictDir);
+    }
+    mkdir(conflictDir);
+    res = execute([rdmdApp, compilerSwitch, "-of" ~ conflictDir, forceSrc]);
+    assert(res.status != 0, "-of set to a directory should fail");
 }
 
 void runConcurrencyTest()

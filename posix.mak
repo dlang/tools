@@ -116,7 +116,7 @@ $(DOC)/d.tag : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
 $(ROOT)/dman: $(DOC)/d.tag
 $(ROOT)/dman: DFLAGS += -J$(DOC)
 
-install: $(TOOLS) $(CURL_TOOLS)
+install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 	mkdir -p $(INSTALL_DIR)/bin
 	cp $^ $(INSTALL_DIR)/bin
 
@@ -128,3 +128,5 @@ all install: $(DOC_TOOLS)
 endif
 
 .PHONY: all install clean
+
+.DELETE_ON_ERROR: # GNU Make directive (delete output files on error)
