@@ -76,7 +76,7 @@ int main(string[] args)
         else if (value[0] == 'd')
         {
             // -odmydir passed
-            if (!exe) // Don't let -od override -of
+            if (!exe.ptr) // Don't let -od override -of
             {
                 // add a trailing dir separator to clarify it's a dir
                 exe = value[1 .. $];
@@ -148,7 +148,7 @@ int main(string[] args)
      * To see the full discussion please refer to:
      * https://github.com/D-Programming-Language/tools/pull/122
      */
-    if ((makeDepend || makeDepFile) && (!exe || exe.endsWith(dirSeparator)))
+    if ((makeDepend || makeDepFile.ptr) && (!exe.ptr || exe.endsWith(dirSeparator)))
     {
         stderr.write(helpString);
         stderr.writeln();
@@ -164,8 +164,8 @@ int main(string[] args)
     string root;
     string[] programArgs;
     // Just evaluate this program!
-    enforce(!(loop && eval), "Cannot mix --eval and --loop.");
-    if (loop)
+    enforce(!(loop.ptr && eval.ptr), "Cannot mix --eval and --loop.");
+    if (loop.ptr)
     {
         enforce(programPos == args.length, "Cannot have both --loop and a " ~
                 "program file ('" ~ args[programPos] ~ "').");
@@ -174,7 +174,7 @@ int main(string[] args)
                 ~ std.string.join(loop, "\n")
                 ~ ";\n} }");
     }
-    else if (eval)
+    else if (eval.ptr)
     {
         enforce(programPos == args.length, "Cannot have both --eval and a " ~
                 "program file ('" ~ args[programPos] ~ "').");
@@ -203,10 +203,10 @@ int main(string[] args)
     string outExt = lib ? libExt : binExt;
 
     // --build-only implies the user would like a binary in the program's directory
-    if (buildOnly && !exe)
+    if (buildOnly && !exe.ptr)
         exe = exeDirname ~ dirSeparator;
 
-    if (exe && exe.endsWith(dirSeparator))
+    if (exe.ptr && exe.endsWith(dirSeparator))
     {
         // user specified a directory, complete it to a file
         exe = buildPath(exe, exeBasename) ~ outExt;
@@ -263,7 +263,7 @@ int main(string[] args)
      */
     string buildWitness;
     SysTime lastBuildTime = SysTime.min;
-    if (exe)
+    if (exe.ptr)
     {
         // user-specified exe name
         buildWitness = buildPath(workDir, ".built");
@@ -296,7 +296,8 @@ int main(string[] args)
         if (buildWitness != exe)
         {
             yap("touch ", buildWitness);
-            std.file.write(buildWitness, "");
+            if (!dryRun)
+                std.file.write(buildWitness, "");
         }
     }
 
@@ -355,18 +356,6 @@ bool inALibrary(string source, string object)
         if (source.startsWith(exclusion~'.'))
             return true;
 
-    // https://issues.dlang.org/show_bug.cgi?id=13178
-    // print a warning about `tango` removal for one release cycle
-    static bool seenTango;
-    if (!seenTango && source.startsWith("tango."))
-    {
-        seenTango = true;
-        stderr.writeln(
-            "Warning: 'tango' package is no longer automatically excluded from compilation.\n" ~
-            "Warning:  modify your build script to mention --exclude=tango to keep the old behaviour"
-        );
-    }
-
     return false;
 
     // another crude heuristic: if a module's path is absolute, it's
@@ -395,7 +384,7 @@ private @property string myOwnTmpDir()
 private string getWorkPath(in string root, in string[] compilerFlags)
 {
     static string workPath;
-    if (workPath)
+    if (workPath.ptr)
         return workPath;
 
     enum string[] irrelevantSwitches = [
@@ -456,19 +445,23 @@ private int rebuild(string root, string fullExe,
 
     // Delete the old executable before we start building.
     yap("stat ", fullExe);
-    if (!dryRun && exists(fullExe))
+    if (exists(fullExe))
     {
+        enforce(!isDir(fullExe), fullExe ~ " is a directory");
         yap("rm ", fullExe);
-        try
-            remove(fullExe);
-        catch (FileException e)
+        if (!dryRun)
         {
-            // This can occur on Windows if the executable is locked.
-            // Although we can't delete the file, we can still rename it.
-            auto oldExe = "%s.%s-%s.old".format(fullExe,
-                Clock.currTime.stdTime, thisProcessID);
-            yap("mv ", fullExe, " ", oldExe);
-            rename(fullExe, oldExe);
+            try
+                   remove(fullExe);
+            catch (FileException e)
+            {
+                // This can occur on Windows if the executable is locked.
+                // Although we can't delete the file, we can still rename it.
+                auto oldExe = "%s.%s-%s.old".format(fullExe,
+                    Clock.currTime.stdTime, thisProcessID);
+                yap("mv ", fullExe, " ", oldExe);
+                rename(fullExe, oldExe);
+            }
         }
     }
 
@@ -547,7 +540,7 @@ private int run(string[] args, string output = null, bool replace = false)
     yap(replace ? "exec " : "spawn ", args.text);
     if (dryRun) return 0;
 
-    if (replace && !output)
+    if (replace && !output.ptr)
     {
         version (Windows)
             { /* Windows doesn't have exec, fall back to spawnProcess+wait */ }
@@ -560,7 +553,7 @@ private int run(string[] args, string output = null, bool replace = false)
     }
 
     File outputFile;
-    if (output)
+    if (output.ptr)
         outputFile = File(output, "wb");
     else
         outputFile = stdout;
@@ -657,7 +650,7 @@ private string[string] getDependencies(string rootModule, string workDir,
             case "library":
                 immutable libName = captures[2].strip();
                 immutable libPath = findLib(libName);
-                if (libPath)
+                if (libPath.ptr)
                 {
                     yap("library ", libName, " ", libPath);
                     result[libPath] = null;
