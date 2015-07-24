@@ -114,16 +114,20 @@ string getChangeLog(string revRange)
     Entry[][string][string] entries;
 
     immutable bugtypes = ["regressions", "bugs", "enhancements"];
-    immutable components = ["DMD Compiler", "Phobos", "Druntime", "Optlink", "Installer", "Website"];
+    immutable components = ["DMD Compiler", "Phobos", "Druntime", "dlang.org", "Optlink", "Tools", "Installer"];
 
     foreach (fields; csvReader!(Tuple!(int, string, string, string))(data, null))
     {
         string comp = fields[1].toLower;
         switch (comp)
         {
+            case "dlang.org": comp = "dlang.org"; break;
             case "dmd": comp = "DMD Compiler"; break;
-            case "websites": comp = "Website"; break;
-            default: comp = comp.capitalize;
+            case "druntime": comp = "Druntime"; break;
+            case "installer": comp = "Installer"; break;
+            case "phobos": comp = "Phobos"; break;
+            case "tools": comp = "Tools"; break;
+            default: assert(0, comp);
         }
 
         string type = fields[2].toLower;
