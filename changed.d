@@ -31,26 +31,6 @@ import std.net.curl, std.conv, std.exception, std.algorithm, std.csv, std.typeco
     std.stdio, std.datetime, std.array, std.string, std.file, std.format, std.getopt,
     std.path;
 
-string[dchar] charToValid;
-shared static this()
-{
-    charToValid = [':' : "_", ' ': ""];
-}
-
-/** Return a valid file name. */
-string normalize(string input)
-{
-    return input.translate(charToValid);
-}
-
-/** Generate location for the cache file. */
-string getCachePath(string start_date, string end_date)
-{
-    return buildPath(tempDir(),
-                     format("dlog_%s_%s_%s_%s",
-                            __DATE__, __TIME__, start_date, end_date).normalize());
-}
-
 auto templateRequest =
     `https://issues.dlang.org/buglist.cgi?username=crap2crap%40yandex.ru&password=powerlow7&chfieldto={to}&query_format=advanced&chfield=resolution&chfieldfrom={from}&bug_status=RESOLVED&resolution=FIXED&product=D&ctype=csv&columnlist=component%2Cbug_severity%2Cshort_desc`;
 
@@ -166,9 +146,7 @@ int main(string[] args)
 {
     string start_date, end_date;
     bool ddoc = false;
-    bool nocache;  // don't read from cache
     getopt(args,
-        "nocache", &nocache,
         "start",   &start_date,    // numeric
         "end",     &end_date);     // string
 
@@ -182,20 +160,8 @@ int main(string[] args)
     Date start = dateFromStr(start_date);
     Date end = end_date.empty ? to!Date(Clock.currTime()) : dateFromStr(end_date);
 
-    // caching to avoid querying bugzilla
-    // (depends on the compile date of the generator + the start and end dates)
-    string cachePath = getCachePath(to!string(start), to!string(end));
-    debug stderr.writefln("Cache file: %s\nCache file found: %s", cachePath, cachePath.exists);
     string changeLog;
-    if (!nocache && cachePath.exists)
-    {
-        changeLog = (cast(string)read(cachePath)).strip;
-    }
-    else
-    {
-        changeLog = getChangeLog(start, end);
-        std.file.write(cachePath, changeLog);
-    }
+    changeLog = getChangeLog(start, end);
 
     string logPath = "./changelog.txt".absolutePath.buildNormalizedPath;
     std.file.write(logPath, changeLog);
