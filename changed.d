@@ -31,34 +31,14 @@ import std.net.curl, std.conv, std.exception, std.algorithm, std.csv, std.typeco
     std.stdio, std.datetime, std.array, std.string, std.file, std.format, std.getopt,
     std.path;
 
-string[dchar] charToValid;
-shared static this()
-{
-    charToValid = [':' : "_", ' ': ""];
-}
-
-/** Return a valid file name. */
-string normalize(string input)
-{
-    return input.translate(charToValid);
-}
-
-/** Generate location for the cache file. */
-string getCachePath(string start_date, string end_date)
-{
-    return buildPath(tempDir(),
-                     format("dlog_%s_%s_%s_%s",
-                            __DATE__, __TIME__, start_date, end_date).normalize());
-}
-
 auto templateRequest =
-    `https://issues.dlang.org/buglist.cgi?username=crap2crap%40yandex.ru&password=powerlow7&chfieldto={to}&query_format=advanced&chfield=resolution&chfieldfrom={from}&bug_status=RESOLVED&resolution=FIXED&product=D&ctype=csv&columnlist=component%2Cbug_severity%2Cshort_desc`;
+    `https://issues.dlang.org/buglist.cgi?bug_id={buglist}&bug_status=RESOLVED&resolution=FIXED&`~
+        `ctype=csv&columnlist=component,bug_severity,short_desc`;
 
-auto generateRequest(string templ, Date start, Date end)
+auto generateRequest(Range)(string templ, Range issues)
 {
-    auto ss = format("%04s-%02s-%02s", start.year, to!int(start.month), start.day);
-    auto es = format("%04s-%02s-%02s", end.year, to!int(end.month), end.day);
-    return templateRequest.replace("{from}", ss).replace("{to}", es);
+    auto buglist = format("%(%d,%)", issues);
+    return templateRequest.replace("{buglist}", buglist);
 }
 
 auto dateFromStr(string sdate)
@@ -86,10 +66,47 @@ string escapeParens(string input)
     return input.translate(parenToMacro);
 }
 
-/** Generate and return the change log as a string. */
-string getChangeLog(Date start, Date end)
+/** Get a list of all bugzilla issues mentioned in revRange */
+auto getIssues(string revRange)
 {
-    auto req = generateRequest(templateRequest, start, end);
+    import std.process : pipeProcess, Redirect, wait;
+    import std.regex : ctRegex, match, splitter;
+
+    // see https://github.com/github/github-services/blob/2e886f407696261bd5adfc99b16d36d5e7b50241/lib/services/bugzilla.rb#L155
+    enum closedRE = ctRegex!(`((close|fix|address)e?(s|d)? )?(ticket|bug|tracker item|issue)s?:? *([\d ,\+&#and]+)`, "i");
+
+    auto issues = appender!(int[]);
+    foreach (repo; ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"]
+             .map!(r => buildPath("..", r)))
+    {
+        auto cmd = ["git", "-C", repo, "fetch", "upstream", "--tags"];
+        auto p = pipeProcess(cmd, Redirect.stdout);
+        enforce(wait(p.pid) == 0, "Failed to execute '%(%s %)'.".format(cmd));
+
+        cmd = ["git", "-C", repo, "log", revRange];
+        p = pipeProcess(cmd, Redirect.stdout);
+        scope(exit) enforce(wait(p.pid) == 0, "Failed to execute '%(%s %)'.".format(cmd));
+
+        foreach (line; p.stdout.byLine())
+        {
+            if (auto m = match(line, closedRE))
+            {
+                if (!m.captures[1].length) continue;
+                m.captures[5]
+                    .splitter(ctRegex!`[^\d]+`)
+                    .filter!(b => b.length)
+                    .map!(to!int)
+                    .copy(issues);
+            }
+        }
+    }
+    return issues.data.sort().release.uniq;
+}
+
+/** Generate and return the change log as a string. */
+string getChangeLog(string revRange)
+{
+    auto req = generateRequest(templateRequest, getIssues(revRange));
     debug stderr.writeln(req);  // write text
     auto data = req.get;
 
@@ -97,16 +114,20 @@ string getChangeLog(Date start, Date end)
     Entry[][string][string] entries;
 
     immutable bugtypes = ["regressions", "bugs", "enhancements"];
-    immutable components = ["DMD Compiler", "Phobos", "Druntime", "Optlink", "Installer", "Website"];
+    immutable components = ["DMD Compiler", "Phobos", "Druntime", "dlang.org", "Optlink", "Tools", "Installer"];
 
     foreach (fields; csvReader!(Tuple!(int, string, string, string))(data, null))
     {
         string comp = fields[1].toLower;
         switch (comp)
         {
+            case "dlang.org": comp = "dlang.org"; break;
             case "dmd": comp = "DMD Compiler"; break;
-            case "websites": comp = "Website"; break;
-            default: comp = comp.capitalize;
+            case "druntime": comp = "Druntime"; break;
+            case "installer": comp = "Installer"; break;
+            case "phobos": comp = "Phobos"; break;
+            case "tools": comp = "Tools"; break;
+            default: assert(0, comp);
         }
 
         string type = fields[2].toLower;
@@ -164,41 +185,14 @@ string getChangeLog(Date start, Date end)
 
 int main(string[] args)
 {
-    string start_date, end_date;
-    bool ddoc = false;
-    bool nocache;  // don't read from cache
-    getopt(args,
-        "nocache", &nocache,
-        "start",   &start_date,    // numeric
-        "end",     &end_date);     // string
-
-    if (start_date.empty)
+    if (args.length != 2)
     {
-        stderr.writefln("*ERROR: No start date set.\nUsage example:\n%s --start=YYYY-MM-HH [--end=YYYY-MM-HH] ",
-               args[0].baseName);
+        stderr.writeln("Usage: ./changed <revision range>, e.g. ./changed v2.067.1..upstream/stable");
         return 1;
     }
 
-    Date start = dateFromStr(start_date);
-    Date end = end_date.empty ? to!Date(Clock.currTime()) : dateFromStr(end_date);
-
-    // caching to avoid querying bugzilla
-    // (depends on the compile date of the generator + the start and end dates)
-    string cachePath = getCachePath(to!string(start), to!string(end));
-    debug stderr.writefln("Cache file: %s\nCache file found: %s", cachePath, cachePath.exists);
-    string changeLog;
-    if (!nocache && cachePath.exists)
-    {
-        changeLog = (cast(string)read(cachePath)).strip;
-    }
-    else
-    {
-        changeLog = getChangeLog(start, end);
-        std.file.write(cachePath, changeLog);
-    }
-
     string logPath = "./changelog.txt".absolutePath.buildNormalizedPath;
-    std.file.write(logPath, changeLog);
+    std.file.write(logPath, getChangeLog(args[1]));
     writefln("Change log generated to: '%s'", logPath);
 
     return 0;
