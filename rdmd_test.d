@@ -321,6 +321,22 @@ void runTests()
     mkdir(conflictDir);
     res = execute([rdmdApp, compilerSwitch, "-of" ~ conflictDir, forceSrc]);
     assert(res.status != 0, "-of set to a directory should fail");
+
+    /* rdmd should force rebuild when --compiler changes: https://issues.dlang.org/show_bug.cgi?id=15031 */
+
+    res = execute([rdmdApp, compilerSwitch, forceSrc]);
+    assert(res.status == 0, res.output);
+    assert(!res.output.canFind("compile_force_src"));
+
+    auto fullCompilerPath = environment["PATH"]
+        .splitter(pathSeparator)
+        .map!(dir => dir.buildPath(compiler ~ binExt))
+        .filter!exists
+        .front;
+
+    res = execute([rdmdApp, "--compiler=" ~ fullCompilerPath, forceSrc]);
+    assert(res.status == 0, res.output ~ "\nCan't run with --compiler=" ~ fullCompilerPath);
+    assert(res.output.canFind("compile_force_src"));
 }
 
 void runConcurrencyTest()
