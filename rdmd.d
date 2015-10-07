@@ -174,6 +174,7 @@ int main(string[] args)
                 ~ "foreach (line; std.stdio.stdin.byLine()) {\n"
                 ~ std.string.join(loop, "\n")
                 ~ ";\n} }");
+        argsBeforeProgram ~= "-d";
     }
     else if (eval.ptr)
     {
@@ -181,6 +182,7 @@ int main(string[] args)
                 "program file ('" ~ args[programPos] ~ "').");
         root = makeEvalFile(importWorld ~ "void main(char[][] args) {\n"
                 ~ std.string.join(eval, "\n") ~ ";\n}");
+        argsBeforeProgram ~= "-d";
     }
     else if (programPos < args.length)
     {

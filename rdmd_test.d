@@ -133,7 +133,7 @@ void runTests()
     assert(res.status == 0, res.output);  // --build-only should not interfere with --dry-run
 
     /* Test --eval. */
-    res = execute([rdmdApp, compilerSwitch, "--force", "--eval=writeln(`eval_works`);"]);
+    res = execute([rdmdApp, compilerSwitch, "--force", "-de", "--eval=writeln(`eval_works`);"]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("eval_works"));  // there could be a "DMD v2.xxx header in the output"
 
