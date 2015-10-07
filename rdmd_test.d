@@ -337,6 +337,25 @@ void runTests()
     res = execute([rdmdApp, "--compiler=" ~ fullCompilerPath, forceSrc]);
     assert(res.status == 0, res.output ~ "\nCan't run with --compiler=" ~ fullCompilerPath);
     assert(res.output.canFind("compile_force_src"));
+
+    /* tmpdir */
+
+    res = execute([rdmdApp, compilerSwitch, forceSrc, "--build-only"]);
+    assert(res.status == 0, res.output);
+
+    auto tmpdir = "rdmdTest";
+    if (exists(tmpdir)) rmdirRecurse(tmpdir);
+    mkdir(tmpdir);
+    scope(exit)
+    {
+        import core.thread;
+        Thread.sleep(100.msecs); // Hack around Windows locking the directory
+        rmdirRecurse(tmpdir);
+    }
+
+    res = execute([rdmdApp, compilerSwitch, "--tmpdir=" ~ tmpdir, forceSrc, "--build-only"]);
+    assert(res.status == 0, res.output);
+    assert(res.output.canFind("compile_force_src"));
 }
 
 void runConcurrencyTest()
