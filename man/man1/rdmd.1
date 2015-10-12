@@ -24,27 +24,13 @@ if specified, but uses
 by default.
 
 .SH OPTIONS
-.IP --help
-Print help
-
-.IP --force
-Force re-compilation of source code [default = do not
-force]
-
-.IP --compiler=(dmd|gdmd)
-Specify compiler [default = \fBdmd\fR]
-
-.IP --tmpdir=\fItmp_dir_path\fR
-Specify directory to store cached program and other
-temporaries [default = \fI/tmp\fR]
-
 .IP --build-only
 Just build the executable, don't run it
 
 .IP --chatty
 Write compiler commands to stdout before executing them
 
-.IP --compiler=\fIcomp\fR
+.IP --compiler=(dmd|gdmd|ldmd2)
 Use the specified compiler (e.g. gdmd) instead of dmd
 
 .IP --dry-run
@@ -67,6 +53,13 @@ file rather than the
 file) when compiling the program (multiple --extra-file
 allowed).
 
+.IP --force
+Force re-compilation of source code [default = do not
+force]
+
+.IP --help
+Print help
+
 .IP --loop
 Assume \fI"foreach (line; stdin.byLine()) { ... }"\fR for eval
 
@@ -82,8 +75,9 @@ Print dependencies in makefile format to file and continue
 .IP --man
 Open web browser on manual page
 
-.IP --shebang
-\fBrdmd\fR is in a shebang line (put as first argument)
+.IP --tmpdir=\fItmp_dir_path\fR
+Specify directory to store cached program and other
+temporaries [default = as per \fIhttp://dlang.org/phobos/std_file.html#.tempDir\fR]
 
 .SH NOTES
 .B dmd
@@ -105,7 +99,9 @@ extension
 dmd itself
 
 .SH AUTHOR
-Written by Dave Fladebo and Robert Mariottini
+Written by Andrei Alexandrescu
+
+Originally written by Dave Fladebo and Robert Mariottini
 
 .SH "SEE ALSO"
 .BR dmd (1)
