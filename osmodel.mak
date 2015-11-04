@@ -1,5 +1,5 @@
 # This Makefile snippet detects the OS and the architecture MODEL
-# Keep this file in sync between druntime, phobos, and dmd repositories!
+# Keep this file in sync between druntime, phobos, tools, and dmd repositories!
 
 ifeq (,$(OS))
   uname_S:=$(shell uname -s)
