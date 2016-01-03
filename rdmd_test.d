@@ -133,7 +133,7 @@ void runTests()
     assert(res.status == 0, res.output);  // --build-only should not interfere with --dry-run
 
     /* Test --eval. */
-    res = execute([rdmdApp, compilerSwitch, "--force", "--eval=writeln(`eval_works`);"]);
+    res = execute([rdmdApp, compilerSwitch, "--force", "-de", "--eval=writeln(`eval_works`);"]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("eval_works"));  // there could be a "DMD v2.xxx header in the output"
 
@@ -336,6 +336,25 @@ void runTests()
 
     res = execute([rdmdApp, "--compiler=" ~ fullCompilerPath, forceSrc]);
     assert(res.status == 0, res.output ~ "\nCan't run with --compiler=" ~ fullCompilerPath);
+    assert(res.output.canFind("compile_force_src"));
+
+    /* tmpdir */
+
+    res = execute([rdmdApp, compilerSwitch, forceSrc, "--build-only"]);
+    assert(res.status == 0, res.output);
+
+    auto tmpdir = "rdmdTest";
+    if (exists(tmpdir)) rmdirRecurse(tmpdir);
+    mkdir(tmpdir);
+    scope(exit)
+    {
+        import core.thread;
+        Thread.sleep(100.msecs); // Hack around Windows locking the directory
+        rmdirRecurse(tmpdir);
+    }
+
+    res = execute([rdmdApp, compilerSwitch, "--tmpdir=" ~ tmpdir, forceSrc, "--build-only"]);
+    assert(res.status == 0, res.output);
     assert(res.output.canFind("compile_force_src"));
 }
 

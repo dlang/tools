@@ -38,7 +38,7 @@ else
 }
 
 private bool chatty, buildOnly, dryRun, force, preserveOutputPaths;
-private string exe;
+private string exe, userTempDir;
 private string[] exclusions = ["std", "etc", "core"]; // packages that are to be excluded
 private string[] extraFiles = [];
 
@@ -137,6 +137,7 @@ int main(string[] args)
             "makedepend", &makeDepend,
             "makedepfile", &makeDepFile,
             "man", { man(); bailout = true; },
+            "tmpdir", &userTempDir,
             "o", &dashOh);
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
@@ -173,6 +174,7 @@ int main(string[] args)
                 ~ "foreach (line; std.stdio.stdin.byLine()) {\n"
                 ~ std.string.join(loop, "\n")
                 ~ ";\n} }");
+        argsBeforeProgram ~= "-d";
     }
     else if (eval.ptr)
     {
@@ -180,6 +182,7 @@ int main(string[] args)
                 "program file ('" ~ args[programPos] ~ "').");
         root = makeEvalFile(importWorld ~ "void main(char[][] args) {\n"
                 ~ std.string.join(eval, "\n") ~ ";\n}");
+        argsBeforeProgram ~= "-d";
     }
     else if (programPos < args.length)
     {
@@ -366,7 +369,7 @@ bool inALibrary(string source, string object)
 
 private @property string myOwnTmpDir()
 {
-    auto tmpRoot = tempDir();
+    auto tmpRoot = userTempDir ? userTempDir : tempDir();
     version (Posix)
     {
         import core.sys.posix.unistd;

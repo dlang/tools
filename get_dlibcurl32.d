@@ -88,27 +88,27 @@ int main(string[] args)
         showHelp();
         return 1;
     }
-    
+
     if(args[1] == "--help")
     {
         showHelp();
         return 0;
     }
-    
+
     // Setup paths
     auto curlVersion = args[1];
     curlUrl     = curlUrl    .replace("$(CURL_VERSION)", curlVersion);
     curlZipBase = curlZipBase.replace("$(CURL_VERSION)", curlVersion);
     outputDir ~= "-" ~ curlVersion;
     workDir = buildPath(tempDir(), workDirName);
-    
+
     checkImplib();
-    
+
     // Clear temporary work dir
     writeln("Clearing temporary work dir: ", workDir);
     removeDir(workDir);
     makeDir(workDir);
-    
+
     // Archive paths
     auto unzipArchivePath        = buildPath(workDir, "unzip", unzipArchiveName);
     auto basicUtilsArchivePath   = buildPath(workDir, "bup",   basicUtilsArchiveName);
@@ -122,7 +122,7 @@ int main(string[] args)
     if(!hasImplib)
         download(basicUtilsUrl, basicUtilsArchivePath);
     download(curlUrl, curlArchivePath);
-    
+
     // Extract
     {
         auto saveDir = getcwd();
@@ -140,20 +140,20 @@ int main(string[] args)
         chdir(workDir);
         unzip(curlArchivePath);
     }
-    
+
     // Generate import lib
     auto curlDir = buildPath(workDir, curlZipBase);
     implib(buildPath(curlDir, "libcurl"));
-    
+
     // Copy results out of temp dir
     writeln("Copying results to '", outputDir, "'");
     removeDir(outputDir);
     copyDir(curlDir, outputDir);
-    
-	writeln("Done.");
-	writeln("Your OPTLINK-compatable libcurl.lib, along with the rest of libcurl,");
-	writeln("is in the directory: ", outputDir);
-	
+
+    writeln("Done.");
+    writeln("Your OPTLINK-compatable libcurl.lib, along with the rest of libcurl,");
+    writeln("is in the directory: ", outputDir);
+
     return 0;
 }
 
@@ -169,7 +169,7 @@ void copyDir(string src, string dest)
     // Needed to generate 'relativePath' correctly.
     if(!src.endsWith(dirSeparator))
         src ~= dirSeparator;
-    
+
     makeDir(dest);
     foreach(DirEntry entry; dirEntries(src, SpanMode.breadth))
     {
@@ -191,11 +191,11 @@ void removeDir(string path)
 {
     if(exists(path))
     {
-        auto failMsg = 
+        auto failMsg =
             "Failed to remove directory: "~path~"\n"~
             "    A process may still holding an open handle within the directory.\n"~
             "    Either delete the directory manually or try again later.";
-        
+
         try
             system("rmdir /S /Q "~quote(path));
         catch(Exception e)
