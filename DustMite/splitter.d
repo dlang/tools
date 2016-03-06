@@ -107,7 +107,7 @@ Entity loadFiles(ref string path, ParseOptions options)
 	else
 	{
 		auto set = new Entity();
-		foreach (string entry; dirEntries(path, SpanMode.breadth))
+		foreach (string entry; dirEntries(path, SpanMode.breadth).array.sort!((a, b) => a.name < b.name))
 			if (isFile(entry))
 			{
 				assert(entry.startsWith(path));
