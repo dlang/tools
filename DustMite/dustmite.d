@@ -87,7 +87,8 @@ struct Reduction
 					e = e.children[a];
 				}
 				progress += e.descendants;
-				return format("[%5.1f%%] %s [%s]", (origDescendants-progress) * 100.0 / origDescendants, name, segments.join(binary ? "" : ", "));
+				auto progressPM = (origDescendants-progress) * 1000 / origDescendants; // per-mille
+				return format("[%2d.%d%%] %s [%s]", progressPM/10, progressPM%10, name, segments.join(binary ? "" : ", "));
 		}
 	}
 }
@@ -252,9 +253,14 @@ EOS");
 	duration = dur!"msecs"(duration.total!"msecs"); // truncate anything below ms, users aren't interested in that
 	if (foundAnything)
 	{
-		if (noSave)
-			measure!"resultSave"({safeSave(resultDir);});
-		writefln("Done in %s tests and %s; reduced version is in %s", tests, duration, resultDir);
+		if (root.children.length)
+		{
+			if (noSave)
+				measure!"resultSave"({safeSave(resultDir);});
+			writefln("Done in %s tests and %s; reduced version is in %s", tests, duration, resultDir);
+		}
+		else
+			writefln("Done in %s tests and %s; reduced to empty set", tests, duration);
 	}
 	else
 		writefln("Done in %s tests and %s; no reductions found", tests, duration);
@@ -291,7 +297,7 @@ size_t checkDescendants(Entity e)
 	size_t n = 1;
 	foreach (c; e.children)
 		n += checkDescendants(c);
-	assert(e.descendants == n);
+	assert(e.descendants == n, "Wrong descendant count: expected %d, found %d".format(e.descendants, n));
 	return n;
 }
 
@@ -313,6 +319,9 @@ bool testAddress(size_t[] address)
 {
 	auto e = entityAt(address);
 
+	if (e is root && !root.children.length)
+		return false;
+	else
 	if (tryReduction(Reduction(Reduction.Type.Remove, address, e)))
 		return true;
 	else
@@ -601,7 +610,7 @@ void obfuscate(bool keepLength)
 		{
 			auto result = new char[length];
 			foreach (i, ref c; result)
-				c = (i==0 ? first : other)[uniform(0, $, rng)];
+				c = (i==0 ? first : other)[uniform(0, cast(uint)$, rng)];
 
 			return assumeUnique(result);
 		}
@@ -840,7 +849,10 @@ void applyReduction(ref Reduction r)
 				p.children = remove(p.children, r.address[$-1]);
 			}
 			else
+			{
 				root = new Entity();
+				root.descendants = 1;
+			}
 
 			debug verifyNotRemoved(root);
 			debug checkDescendants(root);
@@ -1284,7 +1296,7 @@ void assignID(Entity e)
 
 void dumpSet(string fn)
 {
-	auto f = File(fn, "wt");
+	auto f = File(fn, "wb");
 
 	string printable(string s) { return s is null ? "null" : `"` ~ s.replace("\\", `\\`).replace("\"", `\"`).replace("\r", `\r`).replace("\n", `\n`) ~ `"`; }
 	string printableFN(string s) { return "/*** " ~ s ~ " ***/"; }
