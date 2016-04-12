@@ -39,7 +39,8 @@ else
 
 private bool chatty, buildOnly, dryRun, force, preserveOutputPaths;
 private string exe, userTempDir;
-private string[] exclusions = ["std", "etc", "core"]; // packages that are to be excluded
+immutable string[] defaultExclusions = ["std", "etc", "core"];
+private string[] exclusions = defaultExclusions; // packages that are to be excluded
 private string[] extraFiles = [];
 
 version (DigitalMars)
@@ -130,6 +131,7 @@ int main(string[] args)
             "eval", &eval,
             "loop", &loop,
             "exclude", &exclusions,
+            "include", (string opt, string p) { exclusions = exclusions.filter!(ex => ex != p).array(); },
             "extra-file", &extraFiles,
             "force", &force,
             "help", { writeln(helpString); bailout = true; },
@@ -797,6 +799,7 @@ addition to compiler options, rdmd recognizes the following options:
                       (implies --chatty)
   --eval=code        evaluate code as in perl -e (multiple --eval allowed)
   --exclude=package  exclude a package from the build (multiple --exclude allowed)
+  --include=package  negate --exclude or a standard package (%-(%s, %))
   --extra-file=file  include an extra source or object in the compilation
                      (multiple --extra-file allowed)
   --force            force a rebuild even if apparently not necessary
@@ -809,7 +812,7 @@ addition to compiler options, rdmd recognizes the following options:
                      (needs dmd's option `-of` to be present)
   --man              open web browser on manual page
   --shebang          rdmd is in a shebang line (put as first argument)
-".format(defaultCompiler);
+".format(defaultCompiler, defaultExclusions);
 }
 
 // For --eval
