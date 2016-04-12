@@ -826,7 +826,7 @@ import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
     std.numeric, std.outbuffer, std.parallelism, std.path, std.process,
     std.random, std.range, std.regex, std.signals, std.socket,
     std.socketstream, std.stdint, std.stdio, std.stdiobase, std.stream,
-    std.string, std.syserror, std.system, std.traits, std.typecons,
+    std.string, std.windows.syserror, std.system, std.traits, std.typecons,
     std.typetuple, std.uni, std.uri, std.utf, std.variant, std.xml, std.zip,
     std.zlib;
 ";
