@@ -147,7 +147,7 @@ int main(string[] args)
      * std.path.buildNormalizedPath(), but some corner cases will break, so it
      * has been decided to only allow -of for now.
      * To see the full discussion please refer to:
-     * https://github.com/D-Programming-Language/tools/pull/122
+     * https://github.com/dlang/tools/pull/122
      */
     if ((makeDepend || makeDepFile.ptr) && (!exe.ptr || exe.endsWith(dirSeparator)))
     {
