@@ -14,7 +14,7 @@ import std.algorithm : equal, map;
 import std.getopt;
 import std.regex;
 import std.stdio;
-import std.c.stdlib;
+import core.stdc.stdlib;
 
 void showhelp(string[] args)
 {
