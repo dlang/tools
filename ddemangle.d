@@ -30,12 +30,37 @@ ENDHELP", args[0]);
     exit(1);
 }
 
-auto reDemangle = regex(r"\b(_D[0-9a-zA-Z_]+)\b");
+auto reDemangle = regex(r"\b_?_D[0-9a-zA-Z_]+\b");
+
+const(char)[] demangleMatch(T)(Captures!(T) m)
+    if (is(T : const(char)[]))
+{
+    /+ If the second character is an underscore, it may be a D symbol with double leading underscore;
+     + in that case, try to demangle it with only one leading underscore.
+     +/
+    if (m.hit[1] != '_')
+    {
+        return demangle(m.hit);
+    }
+    else
+    {
+        auto result = demangle(m.hit[1..$]);
+        if (result == m.hit[1..$])
+        {
+            // Demangling failed, return original match with (!) double underscore
+            return m.hit;
+        }
+        else
+        {
+            return result;
+        }
+    }
+}
 
 auto ddemangle(T)(T line)
     if (is(T : const(char)[]))
 {
-    return replaceAll!(a => demangle(a.hit))(line, reDemangle);
+    return replaceAll!(demangleMatch)(line, reDemangle);
 }
 
 unittest
@@ -44,11 +69,19 @@ unittest
         "_D2rt4util7console8__assertFiZv",
         "random initial junk _D2rt4util7console8__assertFiZv random trailer",
         "multiple _D2rt4util7console8__assertFiZv occurrences _D2rt4util7console8__assertFiZv",
+        "_D6object9Throwable8toStringMFZAya",
+        "__D6object9Throwable8toStringMFZAya",
+        "don't match 3 leading underscores ___D6object9Throwable8toStringMFZAya",
+        "fail demangling __D6object9Throwable8toStringMFZAy"
     ];
     string[] expected = [
         "void rt.util.console.__assert(int)",
         "random initial junk void rt.util.console.__assert(int) random trailer",
         "multiple void rt.util.console.__assert(int) occurrences void rt.util.console.__assert(int)",
+        "immutable(char)[] object.Throwable.toString()",
+        "immutable(char)[] object.Throwable.toString()",
+        "don't match 3 leading underscores ___D6object9Throwable8toStringMFZAya",
+        "fail demangling __D6object9Throwable8toStringMFZAy"
     ];
 
     assert(equal(testData.map!ddemangle(), expected));
