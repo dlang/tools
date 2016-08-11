@@ -4,20 +4,21 @@
 
 module dustmite;
 
-import std.stdio;
-import std.file;
-import std.path;
-import std.string;
-import std.getopt;
-import std.array;
-import std.process;
 import std.algorithm;
-import std.exception;
-import std.datetime;
-import std.regex;
-import std.conv;
+import std.array;
 import std.ascii;
+import std.conv;
+import std.datetime;
+import std.exception;
+import std.file;
+import std.getopt;
+import std.path;
+import std.parallelism : totalCPUs;
+import std.process;
 import std.random;
+import std.regex;
+import std.stdio;
+import std.string;
 
 import splitter;
 
@@ -33,7 +34,6 @@ string dirSuffix(string suffix) { return (dir.absolutePath().buildNormalizedPath
 size_t maxBreadth;
 Entity root;
 size_t origDescendants;
-bool concatPerformed;
 int tests; bool foundAnything;
 bool noSave, trace, noRedirect;
 string strategy = "inbreadth";
@@ -100,6 +100,19 @@ int main(string[] args)
 	bool force, dump, dumpHtml, showTimes, stripComments, obfuscate, keepLength, showHelp, noOptimize;
 	string coverageDir;
 	string[] reduceOnly, noRemoveStr, splitRules;
+	uint lookaheadCount;
+
+	args = args.filter!(
+		(arg)
+		{
+			if (arg.startsWith("-j"))
+			{
+				arg = arg[2..$];
+				lookaheadCount = arg.length ? arg.to!uint : totalCPUs;
+				return false;
+			}
+			return true;
+		}).array();
 
 	getopt(args,
 		"force", &force,
@@ -119,7 +132,7 @@ int main(string[] args)
 		"trace", &trace, // for debugging
 		"nosave|no-save", &noSave, // for research
 		"nooptimize|no-optimize", &noOptimize, // for research
-		"h|help", &showHelp
+		"h|help", &showHelp,
 	);
 
 	if (showHelp || args.length == 1 || args.length>3)
@@ -145,7 +158,8 @@ Supported options:
                        splitter. Can be repeated. MODE must be one of:
                        %-(%s, %)
   --no-redirect      Don't redirect stdout/stderr streams of test command.
-EOS", args[0], splitterNames);
+  -j[N]              Use N look-ahead processes (%d by default)
+EOS", args[0], splitterNames, totalCPUs);
 
 		if (!showHelp)
 		{
@@ -217,6 +231,7 @@ EOS");
 
 	applyNoRemoveMagic();
 	applyNoRemoveRegex(noRemoveStr, reduceOnly);
+	applyNoRemoveDeps();
 	if (coverageDir)
 		loadCoverage(coverageDir);
 	if (!obfuscate && !noOptimize)
@@ -241,7 +256,21 @@ EOS");
 	enforce(!exists(resultDir), "Result directory already exists");
 
 	if (!test(nullReduction))
-		throw new Exception("Initial test fails");
+	{
+		auto testerFile = dir.buildNormalizedPath(tester);
+		version (Posix)
+		{
+			if (testerFile.exists && (testerFile.getAttributes() & octal!111) == 0)
+				writeln("Hint: test program seems to be a non-executable file, try: chmod +x " ~ testerFile.escapeShellFileName());
+		}
+		if (!testerFile.exists && tester.exists)
+			writeln("Hint: test program path should be relative to the source directory, try " ~
+				tester.absolutePath.relativePath(dir.absolutePath).escapeShellFileName() ~
+				" instead of " ~ tester.escapeShellFileName());
+		throw new Exception("Initial test fails" ~ (noRedirect ? "" : " (try using --no-redirect for details)"));
+	}
+
+	lookaheadProcesses = new Lookahead[lookaheadCount];
 
 	foundAnything = false;
 	if (obfuscate)
@@ -314,24 +343,118 @@ size_t countFiles(Entity e)
 	}
 }
 
-/// Try reductions at address. Edit set, save result and return true on successful reduction.
-bool testAddress(size_t[] address)
-{
-	auto e = entityAt(address);
 
-	if (e is root && !root.children.length)
-		return false;
-	else
-	if (tryReduction(Reduction(Reduction.Type.Remove, address, e)))
-		return true;
-	else
-	if (e.head.length && e.tail.length && tryReduction(Reduction(Reduction.Type.Unwrap, address, e)))
-		return true;
-	else
-	if (e.isFile && !concatPerformed && tryReduction(Reduction(Reduction.Type.Concat, address, e)))
-		return concatPerformed = true;
-	else
-		return false;
+struct ReductionIterator
+{
+	Strategy strategy;
+
+	bool done = false;
+	bool concatPerformed;
+
+	Reduction.Type type = Reduction.Type.None;
+	Entity e;
+
+	this(Strategy strategy)
+	{
+		this.strategy = strategy;
+		next(false);
+
+		if (countFiles(root) < 2)
+			concatPerformed = true;
+	}
+
+	this(this)
+	{
+		strategy = strategy.dup;
+	}
+
+	@property Reduction front() { return Reduction(type, strategy.front, e); }
+
+	void next(bool success)
+	{
+		while (true)
+		{
+			final switch (type)
+			{
+				case Reduction.Type.None:
+					if (strategy.done)
+					{
+						done = true;
+						return;
+					}
+
+					e = entityAt(strategy.front);
+
+					if (e.noRemove)
+					{
+						strategy.next(false);
+						continue;
+					}
+
+					if (e is root && !root.children.length)
+					{
+						strategy.next(false);
+						continue;
+					}
+
+					// Try next reduction type
+					type = Reduction.Type.Remove;
+					return;
+
+				case Reduction.Type.Remove:
+					if (success)
+					{
+						// Next node
+						type = Reduction.Type.None;
+						strategy.next(true);
+						continue;
+					}
+
+					// Try next reduction type
+					type = Reduction.Type.Unwrap;
+
+					if (e.head.length && e.tail.length)
+						return; // Try this
+					else
+					{
+						success = false; // Skip
+						continue;
+					}
+
+				case Reduction.Type.Unwrap:
+					if (success)
+					{
+						// Next node
+						type = Reduction.Type.None;
+						strategy.next(true);
+						continue;
+					}
+
+					// Try next reduction type
+					type = Reduction.Type.Concat;
+
+					if (e.isFile && !concatPerformed)
+						return; // Try this
+					else
+					{
+						success = false; // Skip
+						continue;
+					}
+
+				case Reduction.Type.Concat:
+					if (success)
+						concatPerformed = true;
+
+					// Next node
+					type = Reduction.Type.None;
+					strategy.next(success);
+					continue;
+
+				case Reduction.Type.ReplaceWord:
+					assert(false);
+			}
+		}
+	}
 }
 
 void resetProgress()
@@ -339,72 +462,248 @@ void resetProgress()
 	origDescendants = root.descendants;
 }
 
-void testLevel(int testDepth, out bool tested, out bool changed)
+class Strategy
 {
-	tested = changed = false;
-	resetProgress();
+	uint progressGeneration = 0;
+	bool done = false;
 
-	enum MAX_DEPTH = 1024;
-	size_t[MAX_DEPTH] address;
-
-	void scan(Entity e, int depth)
+	void copy(Strategy result) const
 	{
-		if (depth < testDepth)
+		result.progressGeneration = this.progressGeneration;
+		result.done = this.done;
+	}
+
+	abstract @property size_t[] front();
+	abstract void next(bool success);
+	int getIteration() { return -1; }
+	int getDepth() { return -1; }
+
+	final Strategy dup()
+	{
+		auto result = cast(Strategy)this.classinfo.create();
+		copy(result);
+		return result;
+	}
+}
+
+class SimpleStrategy : Strategy
+{
+	size_t[] address;
+
+	override void copy(Strategy target) const
+	{
+		super.copy(target);
+		auto result = cast(SimpleStrategy)target;
+		result.address = this.address.dup;
+	}
+
+	override @property size_t[] front()
+	{
+		assert(!done, "Done");
+		return address;
+	}
+
+	override void next(bool success)
+	{
+		assert(!done, "Done");
+	}
+}
+
+class IterativeStrategy : SimpleStrategy
+{
+	int iteration = 0;
+	bool iterationChanged;
+
+	override int getIteration() { return iteration; }
+
+	override void copy(Strategy target) const
+	{
+		super.copy(target);
+		auto result = cast(IterativeStrategy)target;
+		result.iteration = this.iteration;
+		result.iterationChanged = this.iterationChanged;
+	}
+
+	override void next(bool success)
+	{
+		super.next(success);
+		iterationChanged |= success;
+	}
+
+	void nextIteration()
+	{
+		assert(iterationChanged, "Starting new iteration after no changes");
+		iteration++;
+		iterationChanged = false;
+		address = null;
+		progressGeneration++;
+	}
+}
+
+/// Find the first address at the depth of address.length,
+/// and populate address[] accordingly.
+/// Return false if no address at that level could be found.
+bool findAddressAtLevel(size_t[] address, Entity root)
+{
+	if (!address.length)
+		return true;
+	foreach_reverse (i, child; root.children)
+	{
+		if (findAddressAtLevel(address[1..$], child))
 		{
-			// recurse
-			foreach_reverse (i, c; e.children)
-			{
-				address[depth] = i;
-				scan(c, depth+1);
-			}
+			address[0] = i;
+			return true;
 		}
-		else
-		if (e.noRemove)
+	}
+	return false;
+}
+
+/// Find the next address at the depth of address.length,
+/// and update address[] accordingly.
+/// Return false if no more addresses at that level could be found.
+bool nextAddressInLevel(size_t[] address, lazy Entity root)
+{
+	if (!address.length)
+		return false;
+	if (nextAddressInLevel(address[1..$], root.children[address[0]]))
+		return true;
+	if (!address[0])
+		return false;
+
+	foreach_reverse (i; 0..address[0])
+	{
+		if (findAddressAtLevel(address[1..$], root.children[i]))
 		{
-			// skip, but don't stop going deeper
-			tested = true;
+			address[0] = i;
+			return true;
 		}
+	}
+	return false;
+}
+
+/// Find the next address, starting from the given one
+/// (going depth-first). Update address accordingly.
+/// If descend is false, then skip addresses under the given one.
+/// Return false if no more addresses could be found.
+bool nextAddress(ref size_t[] address, lazy Entity root, bool descend)
+{
+	if (!address.length)
+	{
+		if (descend && root.children.length)
+		{
+			address ~= [root.children.length-1];
+			return true;
+		}
+		return false;
+	}
+
+	auto cdr = address[1..$];
+	if (nextAddress(cdr, root.children[address[0]], descend))
+	{
+		address = address[0] ~ cdr;
+		return true;
+	}
+
+	if (address[0])
+	{
+		address = [address[0] - 1];
+		return true;
+	}
+
+	return false;
+}
+
+void validateAddress(size_t[] address, Entity root = root)
+{
+	if (!address.length)
+		return;
+	assert(address[0] < root.children.length);
+	validateAddress(address[1..$], root.children[address[0]]);
+}
+
+class LevelStrategy : IterativeStrategy
+{
+	bool levelChanged;
+	bool invalid;
+
+	override int getDepth() { return cast(int)address.length; }
+
+	override void copy(Strategy target) const
+	{
+		super.copy(target);
+		auto result = cast(LevelStrategy)target;
+		result.levelChanged = this.levelChanged;
+		result.invalid = this.invalid;
+	}
+
+	override void next(bool success)
+	{
+		super.next(success);
+		levelChanged |= success;
+	}
+
+	override void nextIteration()
+	{
+		super.nextIteration();
+		invalid = false;
+		levelChanged = false;
+	}
+
+	final bool nextInLevel()
+	{
+		assert(!invalid, "Choose a level!");
+		if (nextAddressInLevel(address, root))
+			return true;
 		else
 		{
-			// test
-			tested = true;
-			if (testAddress(address[0..depth]))
-				changed = true;
+			invalid = true;
+			return false;
 		}
 	}
 
-	scan(root, 0);
+	final @property size_t currentLevel() const { return address.length; }
 
-	//writefln("Scan results: tested=%s, changed=%s", tested, changed);
-}
-
-void startIteration(int iterCount)
-{
-	writefln("############### ITERATION %d ################", iterCount);
-	resetProgress();
+	final bool setLevel(size_t level)
+	{
+		address.length = level;
+		if (findAddressAtLevel(address, root))
+		{
+			invalid = false;
+			levelChanged = false;
+			progressGeneration++;
+			return true;
+		}
+		else
+			return false;
+	}
 }
 
 /// Keep going deeper until we find a successful reduction.
 /// When found, finish tests at current depth and restart from top depth (new iteration).
 /// If we reach the bottom (depth with no nodes on it), we're done.
-void reduceCareful()
+class CarefulStrategy : LevelStrategy
 {
-	bool tested;
-	int iterCount;
-	do
+	override void next(bool success)
 	{
-		startIteration(iterCount++);
-		bool changed;
-		int depth = 0;
-		do
+		super.next(success);
+
+		if (!nextInLevel())
 		{
-			writefln("============= Depth %d =============", depth);
-
-			testLevel(depth, tested, changed);
-
-			depth++;
-		} while (tested && !changed); // go deeper while we found something to test, but no results
-	} while (tested); // stop when we didn't find anything to test
+			// End of level
+			if (levelChanged)
+			{
+				nextIteration();
+			}
+			else
+			if (!setLevel(currentLevel + 1))
+			{
+				if (iterationChanged)
+					nextIteration();
+				else
+					done = true;
+			}
+		}
+	}
 }
 
 /// Keep going deeper until we find a successful reduction.
@@ -413,39 +712,48 @@ void reduceCareful()
 /// Once no new reductions are found at higher depths, jump to the next unvisited depth in this iteration.
 /// If we reach the bottom (depth with no nodes on it), start a new iteration.
 /// If we finish an iteration without finding any reductions, we're done.
-void reduceLookback()
+class LookbackStrategy : LevelStrategy
 {
-	bool iterationChanged;
-	int iterCount;
-	do
+	size_t maxLevel = 0;
+
+	override void copy(Strategy target) const
 	{
-		iterationChanged = false;
-		startIteration(iterCount++);
+		super.copy(target);
+		auto result = cast(LookbackStrategy)target;
+		result.maxLevel = this.maxLevel;
+	}
 
-		int depth = 0, maxDepth = 0;
-		bool depthTested;
+	override void nextIteration()
+	{
+		super.nextIteration();
+		maxLevel = 0;
+	}
 
-		do
+	override void next(bool success)
+	{
+		super.next(success);
+
+		if (!nextInLevel())
 		{
-			writefln("============= Depth %d =============", depth);
-			bool depthChanged;
-
-			testLevel(depth, depthTested, depthChanged);
-
-			if (depthChanged)
+			// End of level
+			if (levelChanged)
 			{
-				iterationChanged = true;
-				depth--;
-				if (depth < 0)
-					depth = 0;
+				setLevel(currentLevel ? currentLevel - 1 : 0);
+			}
+			else
+			if (setLevel(maxLevel + 1))
+			{
+				maxLevel = currentLevel;
 			}
 			else
 			{
-				maxDepth++;
-				depth = maxDepth;
+				if (iterationChanged)
+					nextIteration();
+				else
+					done = true;
 			}
-		} while (depthTested); // keep going up/down while we found something to test
-	} while (iterationChanged); // stop when we couldn't reduce anything this iteration
+		}
+	}
 }
 
 /// Keep going deeper until we find a successful reduction.
@@ -454,66 +762,52 @@ void reduceLookback()
 /// Once no new reductions are found at higher depths, start going downwards again.
 /// If we reach the bottom (depth with no nodes on it), start a new iteration.
 /// If we finish an iteration without finding any reductions, we're done.
-void reducePingPong()
+class PingPongStrategy : LevelStrategy
 {
-	bool iterationChanged;
-	int iterCount;
-	do
+	override void next(bool success)
 	{
-		iterationChanged = false;
-		startIteration(iterCount++);
+		super.next(success);
 
-		int depth = 0;
-		bool depthTested;
-
-		do
+		if (!nextInLevel())
 		{
-			writefln("============= Depth %d =============", depth);
-			bool depthChanged;
-
-			testLevel(depth, depthTested, depthChanged);
-
-			if (depthChanged)
+			// End of level
+			if (levelChanged)
 			{
-				iterationChanged = true;
-				depth--;
-				if (depth < 0)
-					depth = 0;
+				setLevel(currentLevel ? currentLevel - 1 : 0);
 			}
 			else
-				depth++;
-		} while (depthTested); // keep going up/down while we found something to test
-	} while (iterationChanged); // stop when we couldn't reduce anything this iteration
+			if (!setLevel(currentLevel + 1))
+			{
+				if (iterationChanged)
+					nextIteration();
+				else
+					done = true;
+			}
+		}
+	}
 }
 
 /// Keep going deeper.
 /// If we reach the bottom (depth with no nodes on it), start a new iteration.
 /// If we finish an iteration without finding any reductions, we're done.
-void reduceInBreadth()
+class InBreadthStrategy : LevelStrategy
 {
-	bool iterationChanged;
-	int iterCount;
-	do
+	override void next(bool success)
 	{
-		iterationChanged = false;
-		startIteration(iterCount++);
+		super.next(success);
 
-		int depth = 0;
-		bool depthTested;
-
-		do
+		if (!nextInLevel())
 		{
-			writefln("============= Depth %d =============", depth);
-			bool depthChanged;
-
-			testLevel(depth, depthTested, depthChanged);
-
-			if (depthChanged)
-				iterationChanged = true;
-
-			depth++;
-		} while (depthTested); // keep going down while we found something to test
-	} while (iterationChanged); // stop when we couldn't reduce anything this iteration
+			// End of level
+			if (!setLevel(currentLevel + 1))
+			{
+				if (iterationChanged)
+					nextIteration();
+				else
+					done = true;
+			}
+		}
+	}
 }
 
 /// Look at every entity in the tree.
@@ -521,63 +815,75 @@ void reduceInBreadth()
 /// Otherwise, recurse and look at its children.
 /// End an iteration once we looked at an entire tree.
 /// If we finish an iteration without finding any reductions, we're done.
-void reduceInDepth()
+class InDepthStrategy : IterativeStrategy
 {
-	bool changed;
-	int iterCount;
-	do
+	final bool nextAddress(bool descend)
 	{
-		changed = false;
-		startIteration(iterCount++);
+		return .nextAddress(address, root, descend);
+	}
 
-		enum MAX_DEPTH = 1024;
-		size_t[MAX_DEPTH] address;
+	override void next(bool success)
+	{
+		super.next(success);
 
-		void scan(Entity e, int depth)
+		if (!nextAddress(!success))
 		{
-			if (e.noRemove)
-			{
-				// skip, but don't stop going deeper
-			}
+			if (iterationChanged)
+				nextIteration();
 			else
-			{
-				// test
-				if (testAddress(address[0..depth]))
-				{
-					changed = true;
-					return;
-				}
-			}
+				done = true;
+		}
+	}
+}
 
-			// recurse
-			foreach_reverse (i, c; e.children)
-			{
-				address[depth] = i;
-				scan(c, depth+1);
-			}
+ReductionIterator iter;
+
+void reduceByStrategy(Strategy strategy)
+{
+	int lastIteration = -1;
+	int lastDepth = -1;
+	int lastProgressGeneration = -1;
+
+	iter = ReductionIterator(strategy);
+
+	while (!iter.done)
+	{
+		if (lastIteration != strategy.getIteration())
+		{
+			writefln("############### ITERATION %d ################", strategy.getIteration());
+			lastIteration = strategy.getIteration();
+		}
+		if (lastDepth != strategy.getDepth())
+		{
+			writefln("============= Depth %d =============", strategy.getDepth());
+			lastDepth = strategy.getDepth();
+		}
+		if (lastProgressGeneration != strategy.progressGeneration)
+		{
+			resetProgress();
+			lastProgressGeneration = strategy.progressGeneration;
 		}
 
-		scan(root, 0);
-	} while (changed && root.children.length); // stop when we couldn't reduce anything this iteration
+		auto result = tryReduction(iter.front);
+
+		iter.next(result);
+	}
 }
 
 void reduce()
 {
-	if (countFiles(root) < 2)
-		concatPerformed = true;
-
 	switch (strategy)
 	{
 		case "careful":
-			return reduceCareful();
+			return reduceByStrategy(new CarefulStrategy());
 		case "lookback":
-			return reduceLookback();
+			return reduceByStrategy(new LookbackStrategy());
 		case "pingpong":
-			return reducePingPong();
+			return reduceByStrategy(new PingPongStrategy());
 		case "indepth":
-			return reduceInDepth();
+			return reduceByStrategy(new InDepthStrategy());
 		case "inbreadth":
-			return reduceInBreadth();
+			return reduceByStrategy(new InBreadthStrategy());
 		default:
 			throw new Exception("Unknown strategy");
 	}
@@ -1016,6 +1322,23 @@ else
 	alias toHexString formatHash;
 }
 
+struct Lookahead
+{
+	Pid pid;
+	string testdir;
+	HASH digest;
+}
+Lookahead[] lookaheadProcesses;
+
+bool[HASH] lookaheadResults;
+
+bool lookaheadPredict() { return false; }
+
+version (Windows)
+	enum nullFileName = "nul";
+else
+	enum nullFileName = "/dev/null";
+
 bool[HASH] cache;
 
 bool test(Reduction reduction)
@@ -1068,25 +1391,114 @@ bool test(Reduction reduction)
 			return fallback;
 	}
 
+	bool lookahead(lazy bool fallback)
+	{
+		if (iter.strategy)
+		{
+			// Handle existing lookahead jobs
+
+			bool reap(ref Lookahead process, int status)
+			{
+				safeDelete(process.testdir);
+				process.pid = null;
+				return lookaheadResults[process.digest] = status == 0;
+			}
+
+			foreach (ref process; lookaheadProcesses)
+			{
+				if (process.pid)
+				{
+					auto waitResult = process.pid.tryWait();
+					if (waitResult.terminated)
+						reap(process, waitResult.status);
+				}
+			}
+
+			// Start new lookahead jobs
+
+			auto lookaheadIter = iter;
+			if (!lookaheadIter.done)
+				lookaheadIter.next(lookaheadPredict());
+
+			foreach (ref process; lookaheadProcesses)
+			{
+				if (!process.pid && !lookaheadIter.done)
+				{
+					while (true)
+					{
+						auto reduction = lookaheadIter.front;
+						auto digest = hash(reduction);
+
+						if (digest in cache || digest in lookaheadResults || lookaheadProcesses[].canFind!(p => p.digest == digest))
+						{
+							bool prediction;
+							if (digest in cache)
+								prediction = cache[digest];
+							else
+							if (digest in lookaheadResults)
+								prediction = lookaheadResults[digest];
+							else
+								prediction = lookaheadPredict();
+							lookaheadIter.next(prediction);
+							if (lookaheadIter.done)
+								break;
+							continue;
+						}
+
+						process.digest = digest;
+
+						static int counter;
+						process.testdir = dirSuffix("lookahead.%d".format(counter++));
+						save(reduction, process.testdir);
+
+						auto nul = File(nullFileName, "w+");
+						process.pid = spawnShell(tester, nul, nul, nul, null, Config.none, process.testdir);
+
+						lookaheadIter.next(lookaheadPredict());
+						break;
+					}
+				}
+			}
+
+			// Find a result for the current test.
+
+			auto plookaheadResult = digest in lookaheadResults;
+			if (plookaheadResult)
+			{
+				writeln(*plookaheadResult ? "Yes" : "No", " (lookahead)");
+				return *plookaheadResult;
+			}
+
+			foreach (ref process; lookaheadProcesses)
+			{
+				if (process.pid && process.digest == digest)
+				{
+					// Current test is already being tested in the background, wait for its result.
+
+					auto exitCode = process.pid.wait();
+
+					auto result = reap(process, exitCode);
+					writeln(result ? "Yes" : "No", " (lookahead-wait)");
+					return result;
+				}
+			}
+		}
+
+		return fallback;
+	}
+
 	bool doTest()
 	{
 		string testdir = dirSuffix("test");
 		measure!"testSave"({save(reduction, testdir);}); scope(exit) measure!"clean"({safeDelete(testdir);});
 
-		auto lastdir = getcwd(); scope(exit) chdir(lastdir);
-		chdir(testdir);
-
 		Pid pid;
 		if (noRedirect)
-			pid = spawnShell(tester);
+			pid = spawnShell(tester, null, Config.none, testdir);
 		else
 		{
-			File nul;
-			version (Windows)
-				nul.open("nul", "w+");
-			else
-				nul.open("/dev/null", "w+");
-			pid = spawnShell(tester, nul, nul, nul);
+			auto nul = File(nullFileName, "w+");
+			pid = spawnShell(tester, nul, nul, nul, null, Config.none, testdir);
 		}
 
 		bool result;
@@ -1095,7 +1507,7 @@ bool test(Reduction reduction)
 		return result;
 	}
 
-	auto result = ramCached(diskCached(doTest()));
+	auto result = ramCached(diskCached(lookahead(doTest())));
 	if (trace) saveTrace(reduction, dirSuffix("trace"), result);
 	return result;
 }
@@ -1225,6 +1637,36 @@ void applyNoRemoveRegex(string[] noRemoveStr, string[] reduceOnly)
 
 		scan(f);
 	}
+}
+
+void applyNoRemoveDeps()
+{
+	static void applyDeps(Entity e)
+	{
+		e.noRemove = true;
+		foreach (d; e.dependencies)
+			applyDeps(d);
+	}
+
+	static void scan(Entity e)
+	{
+		if (e.noRemove)
+			applyDeps(e);
+		foreach (c; e.children)
+			scan(c);
+	}
+
+	scan(root);
+
+	// Propagate upwards
+	static bool fill(Entity e)
+	{
+		foreach (c; e.children)
+			e.noRemove |= fill(c);
+		return e.noRemove;
+	}
+
+	fill(root);
 }
 
 void loadCoverage(string dir)
