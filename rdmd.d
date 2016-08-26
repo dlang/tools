@@ -679,7 +679,7 @@ private string[string] getDependencies(string rootModule, string workDir,
         {
             // See if the deps file is still in good shape
             auto deps = readDepsFile();
-            auto allDeps = chain(rootModule.only, deps.byKey).array;
+            auto allDeps = chain(rootModule.only, deps.byKey);
             bool mustRebuildDeps = allDeps.anyNewerThan(depsT);
             if (!mustRebuildDeps)
             {
@@ -717,14 +717,14 @@ private string[string] getDependencies(string rootModule, string workDir,
 }
 
 // Is any file newer than the given file?
-bool anyNewerThan(in string[] files, in string file)
+bool anyNewerThan(T)(T files, in string file)
 {
     yap("stat ", file);
     return files.anyNewerThan(file.timeLastModified);
 }
 
 // Is any file newer than the given file?
-bool anyNewerThan(in string[] files, SysTime t)
+bool anyNewerThan(T)(T files, SysTime t)
 {
     // Experimental: running newerThan in separate threads, one per file
     if (false)
