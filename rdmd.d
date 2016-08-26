@@ -617,7 +617,7 @@ private string[string] getDependencies(string rootModule, string workDir,
         scope(exit) collectException(depsReader.close()); // don't care for errors
 
         // Fetch all dependencies and append them to myDeps
-        auto pattern = regex(r"^(import|file|binary|config|library)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
+        auto pattern = ctRegex!r"^(import|file|binary|config|library)\s+([^\(]+)\(?([^\)]*)\)?\s*$";
         string[string] result;
         foreach (string line; lines(depsReader))
         {
@@ -693,6 +693,17 @@ private string[string] getDependencies(string rootModule, string workDir,
 
     immutable rootDir = dirName(rootModule);
 
+    // For most single-file builds we don't have any dependencies except the standard library
+    immutable file = readText(rootModule);
+    immutable hasDependencies = needsInspection(file);
+    if (!hasDependencies)
+    {
+        import std.file : writeFile = write;
+        // run dmd with an empty file to get it's configuration
+        rootModule = buildPath(workDir, "emptyFile.d");
+        rootModule.writeFile("");
+    }
+
     // Collect dependencies
     auto depsGetter =
         // "cd "~shellQuote(rootDir)~" && "
@@ -714,7 +725,205 @@ private string[string] getDependencies(string rootModule, string workDir,
         exit(depsExitCode);
     }
 
+    if (!hasDependencies)
+        std.file.remove(rootModule);
+
     return dryRun ? null : readDepsFile();
+}
+
+bool needsInspection(string file)
+{
+    import std.utf : byChar;
+
+    // an import statement can be at the beginning of a line or preceded by
+    // at least one whitespace
+    // a whitespace after `import` is mandatory
+    foreach (match; file.matchAll(ctRegex!(`(?<=^|\s)import\s+([^;]*);`, "ms")))
+    {
+        // selective imports can only be at the end of an ImportList
+        // hence we can just chop of the imports
+        auto selectiveImportStart = match[1].byChar.countUntil(':');
+        if (selectiveImportStart < 0)
+            selectiveImportStart = match[1].length;
+
+        // the ImportList of packages can be separated with commas
+        foreach (importText; match[1][0..selectiveImportStart].splitter(","))
+        {
+            string mod;
+
+            // for renamed imports the second part is the package name
+            if (auto renamedImport = importText.matchFirst(ctRegex!(`[^=]*=\s*(.*)`, "s")))
+                mod = renamedImport[1];
+            else
+                mod = importText.strip;
+
+            // standard library and runtime are included by default and have no dependencies
+            if (!exclusions.any!(x => mod.startsWith(x.chain("."))))
+                return true;
+        }
+    }
+
+    // Mixins are tricky -> do the full inspection to be sure
+    // A `mixin` statement must be preceded by at least one whitespace or the beginning of a line
+    if (file.matchFirst(ctRegex!(`(?<=^|\s)mixin[^(a-zA-Z0-9_]*\(`, "ms")))
+        return true;
+
+    return false;
+}
+
+// check imports from the standard library or runtime
+unittest
+{
+    assert(!"import std.traits;".needsInspection);
+    assert(!"import core.runtime;".needsInspection);
+    assert(!"public import   std.traits;".needsInspection);
+
+    // import as an identifiers
+    assert(!"Import foo;".needsInspection);
+    assert(!"importline foo;".needsInspection);
+    assert(!"myimport foo;".needsInspection);
+
+    // multiple imports
+    assert(!"import std.traits, std.math;".needsInspection);
+    assert(!"import std.traits; import std.math;".needsInspection);
+    assert(!"import std.traits ,std.math, core.runtime;".needsInspection);
+    assert(!"import std.traits;\nimport std.math;".needsInspection);
+
+    // selective imports
+    assert(!"import std.math: exp;".needsInspection);
+    assert(!"import std.math : cos, exp, sin;".needsInspection);
+
+    // selective imports can be the last part of an ImportList
+    assert(!"import std.traits, std.math : exp;".needsInspection);
+    assert(!"import std.traits, std.math : cos, exp, sin;".needsInspection);
+
+    // renamed imports
+    assert(!"import io = std.stdio;".needsInspection);
+    assert(!"import io = std.stdio, math = std.math;".needsInspection);
+
+    // selective renamed imports
+    assert(!"import stdio = std.stdio: writeln, dump = write;".needsInspection);
+    assert(!"import traits = std.traits: isFloatingPoint;".needsInspection);
+    assert(!"import math = std.math, stdio = std.stdio: writeln, dump = write;".needsInspection);
+
+    // multi-line
+    assert(!q{
+        import
+        std.traits
+        ;
+    }.needsInspection);
+
+    assert(!q{
+        import
+        io
+        =
+        std.stdio,
+        math = std.math
+        ;
+    }.needsInspection);
+}
+
+// check imports from third-party libraries
+unittest
+{
+    assert("import foo;".needsInspection);
+    assert("import  bar;".needsInspection);
+    assert("public import   foo.bar;".needsInspection);
+
+    // check for the last dot
+    assert("import stdio;".needsInspection);
+
+    // multiple imports
+    assert("import std.traits, foo;".needsInspection);
+    assert("import std.traits; import foo;".needsInspection);
+    assert("import foo; import std.traits".needsInspection);
+    assert("import bar ,std.math, core.runtime;".needsInspection);
+    assert("import std.traits;\nimport foo;".needsInspection);
+    assert("import foo;\nimport std.traits;".needsInspection);
+
+    // selective imports
+    assert("import foo: exp;".needsInspection);
+    assert("import foo.bar : cos, exp, sin;".needsInspection);
+
+    // selective imports can be the last part of an ImportList
+    assert("import std.traits, foo.bar : exp;".needsInspection);
+    assert("import bar, std.math : exp;".needsInspection);
+    assert("import std.traits, bar : cos, exp, sin;".needsInspection);
+
+    // renamed imports
+    assert("import io = foo.bar;".needsInspection);
+    assert("import stdio = foo.bar;".needsInspection);
+    assert("import io = std.stdio, math = foo.bar;".needsInspection);
+    assert("import io = foo, math = std.math;".needsInspection);
+
+    // selective renamed imports
+    assert("import stdio = foo.bar: writeln, dump = write;".needsInspection);
+    assert("import traits = foo.bar: isFloatingPoint;".needsInspection);
+    assert("import math = std.math, stdio = foo.bar: writeln, dump = write;".needsInspection);
+    assert("import math = foo.bar, stdio = std.stdio: writeln, dump = write;".needsInspection);
+
+    // multi-line
+    assert(q{
+        import
+        foo
+        ;
+    }.needsInspection);
+
+    assert(q{
+        import
+        io
+        =
+        std.stdio,
+        math = foo.bar
+        ;
+    }.needsInspection);
+}
+
+// check for mixins
+// for now we don't inspect the mixin itself and always trigger an inspection
+unittest
+{
+    assert(q{
+        void main() {
+            mixin("import foo;");
+        }
+    }.needsInspection);
+
+    assert(q{
+        void main() {
+            mixin("imp" ~ "ort foo;");
+        }
+    }.needsInspection);
+
+    assert(q{
+        void main() {
+            enum foo = `string a = "Foo"; im` ~ `port stdio;`;
+            mixin (b);
+        }
+    }.needsInspection);
+
+    // multi-line
+    assert(q{
+        void main() {
+            enum foo = "string a = \"Foo\"; import " ~ " foo;";
+            mixin
+            (
+            b
+            )
+            ;
+        }
+    }.needsInspection);
+
+    // import as an identifiers
+    assert(!"Mixin(foo);".needsInspection);
+    assert(!"mymixin  (foo);".needsInspection);
+    assert(!"mixinTrick (foo);".needsInspection);
+
+    // for templates
+    assert(!"mixin foo;".needsInspection);
+
+    assert("int a = 2;\nmixin(`import foo`);".needsInspection);
+    assert("mixin(`import foo`);\n int a = 2;".needsInspection);
 }
 
 // Is any file newer than the given file?
