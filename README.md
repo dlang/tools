@@ -1,6 +1,8 @@
 D tools
 =======
 
+[![Build Status](https://travis-ci.org/dlang/tools.svg?branch=master)](https://travis-ci.org/dlang/tools)
+
 This repository hosts various tools redistributed with DMD or used
 internally during various build tasks.
 

@@ -1,0 +1,15 @@
+language: d
+d:
+  - dmd
+sudo: false
+addons:
+  apt:
+    packages:
+    - g++-multilib
+    - libcurl3-gnutls:i386
+env:
+  - MODEL=32
+  - MODEL=64
+
+script:
+  - ./travis.sh
