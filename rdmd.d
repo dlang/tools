@@ -53,6 +53,7 @@ else
 
 private string compiler = defaultCompiler;
 
+version(unittest) {} else
 int main(string[] args)
 {
     //writeln("Invoked with: ", args);
