@@ -726,31 +726,16 @@ bool anyNewerThan(T)(T files, in string file)
 // Is any file newer than the given file?
 bool anyNewerThan(T)(T files, SysTime t)
 {
-    // Experimental: running newerThan in separate threads, one per file
-    if (false)
+    bool result;
+    foreach (source; taskPool.parallel(files))
     {
-        foreach (source; files)
+        yap("stat ", source);
+        if (!result && source.newerThan(t))
         {
-            if (source.newerThan(t))
-            {
-                return true;
-            }
+            result = true;
         }
-        return false;
     }
-    else
-    {
-        bool result;
-        foreach (source; taskPool.parallel(files))
-        {
-            yap("stat ", source);
-            if (!result && source.newerThan(t))
-            {
-                result = true;
-            }
-        }
-        return result;
-    }
+    return result;
 }
 
 /*
