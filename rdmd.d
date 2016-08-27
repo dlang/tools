@@ -114,6 +114,14 @@ int main(string[] args)
     assert(programPos > 0);
     auto argsBeforeProgram = args[0 .. programPos];
 
+    /* Catch -main and handle it like --main. This needs to be done, because
+    rdmd compiles the root file independently from the dependencies, but -main
+    must be present in only one of the calls to dmd. */
+    foreach (ref arg; argsBeforeProgram)
+    {
+        if (arg == "-main") arg = "--main";
+    }
+
     bool bailout;    // bailout set by functions called in getopt if
                      // program should exit
     string[] loop;       // set by --loop
@@ -234,7 +242,7 @@ int main(string[] args)
     }
 
     // Fetch dependencies
-    const myDeps = getDependencies(root, workDir, objDir, compilerFlags);
+    const myDeps = compileRootAndGetDeps(root, workDir, objDir, compilerFlags);
 
     // --makedepend mode. Just print dependencies and exit.
     if (makeDepend)
@@ -437,9 +445,9 @@ private void unlockWorkPath()
     }
 }
 
-// Rebuild the executable fullExe starting from modules in myDeps
+// Rebuild the executable fullExe from root and myDeps,
 // passing the compiler flags compilerFlags. Generates one large
-// object file.
+// object file for the dependencies.
 
 private int rebuild(string root, string fullExe,
         string workDir, string objDir, in string[string] myDeps,
@@ -470,46 +478,58 @@ private int rebuild(string root, string fullExe,
         }
     }
 
-    auto fullExeTemp = fullExe ~ ".tmp";
+    immutable fullExeTemp = fullExe ~ ".tmp";
+    immutable rootObj = buildPath(objDir, "rdmd.root"~objExt);
+    immutable depsObj = buildPath(objDir, "rdmd.deps"~objExt);
 
-    string[] buildTodo()
+    assert(dryRun || std.file.exists(rootObj),
+        "should have been created by compileRootAndGetDeps");
+
+    int result = 0;
+    string[] objs = [ rootObj ];
+
+    // compile dependencies
+    if (myDeps.byValue.any) // if there is any source dependency at all
     {
-        auto todo = compilerFlags
-            ~ [ "-of"~fullExeTemp ]
-            ~ [ "-od"~objDir ]
-            ~ [ "-I"~dirName(root) ]
-            ~ [ root ];
+        auto todo = compilerFlags ~ [
+            "-c",
+            "-of"~depsObj,
+            "-I"~dirName(root),
+        ];
         foreach (k, objectFile; myDeps) {
             if(objectFile !is null)
                 todo ~= [ k ];
         }
-        // Need to add void main(){}?
-        if (addStubMain)
+
+        // Different shells and OS functions have different limits,
+        // but 1024 seems to be the smallest maximum outside of MS-DOS.
+        enum maxLength = 1024;
+        auto commandLength = escapeShellCommand(todo).length;
+        if (commandLength + compiler.length >= maxLength)
         {
-            auto stubMain = buildPath(myOwnTmpDir, "stubmain.d");
-            std.file.write(stubMain, "void main(){}");
-            todo ~= [ stubMain ];
+            auto rspName = buildPath(workDir, "rdmd.rsp");
+
+            // DMD uses Windows-style command-line parsing in response files
+            // regardless of the operating system it's running on.
+            std.file.write(rspName,
+                array(map!escapeWindowsArgument(todo)).join(" "));
+
+            todo = [ "@"~rspName ];
         }
-        return todo;
-    }
-    auto todo = buildTodo();
 
-    // Different shells and OS functions have different limits,
-    // but 1024 seems to be the smallest maximum outside of MS-DOS.
-    enum maxLength = 1024;
-    auto commandLength = escapeShellCommand(todo).length;
-    if (commandLength + compiler.length >= maxLength)
+        result = run([ compiler ] ~ todo);
+        objs ~= depsObj;
+    }
+
+    // link
+    if (!result)
     {
-        auto rspName = buildPath(workDir, "rdmd.rsp");
-
-        // DMD uses Windows-style command-line parsing in response files
-        // regardless of the operating system it's running on.
-        std.file.write(rspName, array(map!escapeWindowsArgument(todo)).join(" "));
-
-        todo = [ "@"~rspName ];
+        string[] cmd = [ compiler ] ~ compilerFlags ~
+            [ "-of"~fullExeTemp, "-od"~objDir ] ~ objs;
+        if (addStubMain) cmd ~= "-main";
+        result = run(cmd);
     }
 
-    immutable result = run([ compiler ] ~ todo);
     if (result)
     {
         // build failed
@@ -571,12 +591,12 @@ private int exec(string[] args)
     return run(args, null, true);
 }
 
-// Given module rootModule, returns a mapping of all dependees .d
-// source filenames to their corresponding .o files sitting in
+// Given module rootModule, compiles it to rdmd.root.o and returns a mapping of
+// all dependees .d source filenames to their corresponding .o files sitting in
 // directory workDir. The mapping is obtained by running dmd -v against
 // rootModule.
 
-private string[string] getDependencies(string rootModule, string workDir,
+private string[string] compileRootAndGetDeps(string rootModule, string workDir,
         string objDir, string[] compilerFlags)
 {
     immutable depsFilename = buildPath(workDir, "rdmd.deps");
@@ -694,10 +714,13 @@ private string[string] getDependencies(string rootModule, string workDir,
     immutable rootDir = dirName(rootModule);
 
     // Collect dependencies
-    auto depsGetter =
-        // "cd "~shellQuote(rootDir)~" && "
-        [ compiler ] ~ compilerFlags ~
-        ["-v", "-o-", rootModule, "-I"~rootDir];
+    auto depsGetter = [ compiler ] ~ compilerFlags ~ [
+        "-v",
+        "-c",
+        "-of"~buildPath(objDir, "rdmd.root"~objExt),
+        rootModule,
+        "-I"~rootDir
+    ];
 
     scope(failure)
     {
