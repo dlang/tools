@@ -489,7 +489,8 @@ private int rebuild(string root, string fullExe,
     string[] objs = [ rootObj ];
 
     // compile dependencies
-    if (myDeps.byValue.any) // if there is any source dependency at all
+    if (myDeps.byValue.any!(o => o !is null))
+        // if there is any source dependency at all
     {
         auto todo = compilerFlags ~ [
             "-c",
