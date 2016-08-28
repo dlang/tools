@@ -233,13 +233,17 @@ int main(string[] args)
         objDir = exe.dirName;
     }
 
-    // Fetch dependencies
-    const myDeps = getDependencies(root, workDir, objDir, compilerFlags);
+    // are there cached dependencies?
+    auto dependencyList = checkDependencyList(root, workDir, objDir);
+    BuildInformation info = BuildInformation(root, exeBasename, outExt, workDir, objDir,
+                                dependencyList, compilerFlags, addStubMain, makeDepend);
+    // run the build operation
+    auto resp = witnessedRebuild(info);
 
     // --makedepend mode. Just print dependencies and exit.
     if (makeDepend)
     {
-        writeDeps(exe, root, myDeps, stdout);
+        writeDeps(exe, root, resp.deps, stdout);
         return 0;
     }
 
@@ -250,60 +254,12 @@ int main(string[] args)
     // prog:
     //      rdmd --makedepfile=.deps.mak --build-only prog.d
     if (makeDepFile !is null)
-        writeDeps(exe, root, myDeps, File(makeDepFile, "w"));
+        writeDeps(exe, root, resp.deps, File(makeDepFile, "w"));
 
-    // Compute executable name, check for freshness, rebuild
-    /*
-      We need to be careful about using -o. Normally the generated
-      executable is hidden in the unique directory workDir. But if the
-      user forces generation in a specific place by using -od or -of,
-      the time of the binary can't be used to check for freshness
-      because the user may change e.g. the compile option from one run
-      to the next, yet the generated binary's datetime stays the
-      same. In those cases, we'll use a dedicated file called ".built"
-      and placed in workDir. Upon a successful build, ".built" will be
-      touched. See also
-      http://d.puremagic.com/issues/show_bug.cgi?id=4814
-     */
-    string buildWitness;
-    SysTime lastBuildTime = SysTime.min;
-    if (exe.ptr)
-    {
-        // user-specified exe name
-        buildWitness = buildPath(workDir, ".built");
-        if (!exe.newerThan(buildWitness))
-        {
-            // Both exe and buildWitness exist, and exe is older than
-            // buildWitness. This is the only situation in which we
-            // may NOT need to recompile.
-            yap("stat ", buildWitness);
-            lastBuildTime = buildWitness.timeLastModified(SysTime.min);
-        }
-    }
-    else
-    {
-        exe = buildPath(workDir, exeBasename) ~ outExt;
-        buildWitness = exe;
-        yap("stat ", buildWitness);
-        lastBuildTime = buildWitness.timeLastModified(SysTime.min);
-    }
+    // check for errors
+    if (resp.response != 0)
+        return resp.response;
 
-    // Have at it
-    if (chain(root.only, myDeps.byKey).array.anyNewerThan(lastBuildTime))
-    {
-        immutable result = rebuild(root, exe, workDir, objDir,
-                                   myDeps, compilerFlags, addStubMain);
-        if (result)
-            return result;
-
-        // Touch the build witness to track the build time
-        if (buildWitness != exe)
-        {
-            yap("touch ", buildWitness);
-            if (!dryRun)
-                std.file.write(buildWitness, "");
-        }
-    }
 
     if (buildOnly)
     {
@@ -437,62 +393,174 @@ private void unlockWorkPath()
     }
 }
 
-// Rebuild the executable fullExe starting from modules in myDeps
-// passing the compiler flags compilerFlags. Generates one large
-// object file.
+// Internal information needed for a build
+struct BuildInformation {
+    string root;
+    string exeBasename;
+    string outExt;
+    string workDir;
+    string objDir;
+    string[string] myDeps;
+    string[] compilerFlags;
+    bool addStubMain;
+    bool makeOnlyDependencies;
+}
 
-private int rebuild(string root, string fullExe,
-        string workDir, string objDir, in string[string] myDeps,
-        string[] compilerFlags, bool addStubMain)
+/*
+Find the path to the build witness file
+If the exe file is stored in a different directory, a special witness file is
+used
+TODO: we now always store the object file in the temporary directory
+*/
+string buildWitnessPath(in ref BuildInformation build)
 {
-    version (Windows)
-        fullExe = fullExe.defaultExtension(".exe");
+    string path;
 
-    // Delete the old executable before we start building.
-    yap("stat ", fullExe);
-    if (exists(fullExe))
+    if (exe.ptr)
     {
-        enforce(!isDir(fullExe), fullExe ~ " is a directory");
-        yap("rm ", fullExe);
+        // user-specified exe name
+        path = buildPath(build.workDir, ".built");
+    }
+    else
+    {
+        exe = buildPath(build.workDir, build.exeBasename) ~ build.outExt;
+        path = exe;
+    }
+    return path;
+}
+
+// Given the special buildWitness file, stats it to get the last build time
+SysTime findLastBuildTime(string buildWitness)
+{
+    SysTime lastBuildTime = SysTime.min;
+    if (exe.ptr)
+    {
+        if (!exe.newerThan(buildWitness))
+        {
+            // Both exe and buildWitness exist, and exe is older than
+            // buildWitness. This is the only situation in which we
+            // may NOT need to recompile.
+            yap("stat ", buildWitness);
+            lastBuildTime = buildWitness.timeLastModified(SysTime.min);
+        }
+    }
+    else
+    {
+        yap("stat ", buildWitness);
+        lastBuildTime = buildWitness.timeLastModified(SysTime.min);
+    }
+    return lastBuildTime;
+}
+
+// Compute executable name, check for freshness, rebuild
+/*
+  We need to be careful about using -o. Normally the generated
+  executable is hidden in the unique directory workDir. But if the
+  user forces generation in a specific place by using -od or -of,
+  the time of the binary can't be used to check for freshness
+  because the user may change e.g. the compile option from one run
+  to the next, yet the generated binary's datetime stays the
+  same. In those cases, we'll use a dedicated file called ".built"
+  and placed in workDir. Upon a successful build, ".built" will be
+  touched. See also
+  http://d.puremagic.com/issues/show_bug.cgi?id=4814
+ */
+private RebuildResponse witnessedRebuild(BuildInformation build)
+{
+    string buildWitness = buildWitnessPath(build);
+    auto lastBuildTime = findLastBuildTime(buildWitness);
+
+    auto resp = rebuild(build, lastBuildTime);
+    // witness successful builds
+    if (resp.response == 0)
+    {
+        // Touch the build witness to track the build time
+        if (buildWitness != exe)
+        {
+            yap("touch ", buildWitness);
+            if (!dryRun)
+                std.file.write(buildWitness, "");
+        }
+    }
+
+    return resp;
+}
+
+// removes a files from the disk if existent
+// as a fallback, the file is renamed
+void cleanupFile(string file)
+{
+    // Delete the old executable before we start building.
+    yap("stat ", file);
+    if (exists(file))
+    {
+        enforce(!isDir(file), file ~ " is a directory");
+        yap("rm ", file);
         if (!dryRun)
         {
             try
-                   remove(fullExe);
+                remove(file);
             catch (FileException e)
             {
                 // This can occur on Windows if the executable is locked.
                 // Although we can't delete the file, we can still rename it.
-                auto oldExe = "%s.%s-%s.old".format(fullExe,
+                auto oldFile = "%s.%s-%s.old".format(file,
                     Clock.currTime.stdTime, thisProcessID);
-                yap("mv ", fullExe, " ", oldExe);
-                rename(fullExe, oldExe);
+                yap("mv ", file, " ", oldFile);
+                rename(file, oldFile);
             }
         }
     }
+}
 
-    auto fullExeTemp = fullExe ~ ".tmp";
+struct FlagSettings
+{
+    bool checkDeps;
+    bool verbose;
+    bool mainFile;
+}
 
-    string[] buildTodo()
+// construct all flags needed for the build
+string[] buildFlags(string outputFile, const string[string] deps, in ref BuildInformation build, in ref FlagSettings config)
+{
+    string[] todo;
+    if (config.checkDeps)
     {
-        auto todo = compilerFlags
-            ~ [ "-of"~fullExeTemp ]
-            ~ [ "-od"~objDir ]
-            ~ [ "-I"~dirName(root) ]
-            ~ [ root ];
-        foreach (k, objectFile; myDeps) {
-            if(objectFile !is null)
-                todo ~= [ k ];
+        auto filterCheck(string x) {
+            bool ret = !(!x.startsWith('-', '@') && x.endsWith(objExt));
+            return ret & ! x.startsWith("-main");
         }
-        // Need to add void main(){}?
-        if (addStubMain)
+        foreach (el; build.compilerFlags.filter!filterCheck)
         {
-            auto stubMain = buildPath(myOwnTmpDir, "stubmain.d");
-            std.file.write(stubMain, "void main(){}");
-            todo ~= [ stubMain ];
+            todo ~= el;
         }
-        return todo;
+        todo ~= [ "-c" ];
     }
-    auto todo = buildTodo();
+    else
+        todo ~= build.compilerFlags;
+
+    todo ~= [ "-od" ~ build.objDir ];
+    todo ~= [ "-I" ~ dirName(build.root) ];
+    todo ~= [ "-of" ~ outputFile];
+
+    if (config.verbose)
+        todo ~= [ "-v" ];
+
+    if (config.mainFile)
+        todo ~= [ build.root ];
+
+    foreach (k, objectFile; deps) {
+        if(objectFile !is null)
+            todo ~= [ k ];
+    }
+
+    // Need to add void main(){}?
+    if (build.addStubMain && config.mainFile)
+    {
+        auto stubMain = buildPath(myOwnTmpDir, "stubmain.d");
+        std.file.write(stubMain, "void main(){}");
+        todo ~= [ stubMain ];
+    }
 
     // Different shells and OS functions have different limits,
     // but 1024 seems to be the smallest maximum outside of MS-DOS.
@@ -500,7 +568,7 @@ private int rebuild(string root, string fullExe,
     auto commandLength = escapeShellCommand(todo).length;
     if (commandLength + compiler.length >= maxLength)
     {
-        auto rspName = buildPath(workDir, "rdmd.rsp");
+        auto rspName = buildPath(build.workDir, "rdmd.rsp");
 
         // DMD uses Windows-style command-line parsing in response files
         // regardless of the operating system it's running on.
@@ -509,31 +577,160 @@ private int rebuild(string root, string fullExe,
         todo = [ "@"~rspName ];
     }
 
-    immutable result = run([ compiler ] ~ todo);
+    return todo;
+}
+
+// removes a file if existent
+private void cleanup(string file)
+{
+    // build failed
+    if (exists(file))
+        remove(file);
+}
+
+// for convenient use in UFCS
+private int cleanup(string file, int result)
+{
     if (result)
+        cleanup(file);
+    return result;
+}
+
+// if the dependencies are known, we directly build the main executable
+// otherwise we build object file and emit the missing import during the build
+int buildMainFile(in ref BuildInformation build, string depsFilename, bool withDependencies, string fullExeTemp, string buildFile)
+{
+    FlagSettings config = {checkDeps: withDependencies, verbose: withDependencies, mainFile: true};
+    string[] todo = buildFlags(buildFile, build.myDeps, build, config);
+
+    int res;
+    if (withDependencies)
+        res = run([ compiler ] ~ todo, depsFilename);
+    else
+        res = run([ compiler ] ~ todo);
+
+    return fullExeTemp.cleanup(res);
+}
+
+// builds the external dependencies
+int buildExternalDependencies(in ref BuildInformation build, ref DependencyResponse deps, string depsFilename, string fullExeTemp, string buildFile)
+{
+    // build external dependencies
+    FlagSettings config = {checkDeps: true, verbose: false, mainFile: false};
+    string[] todo = buildFlags(buildFile, deps.deps, build, config);
+
+    int res = run([ compiler] ~ todo);
+    return fullExeTemp.cleanup(res);
+}
+
+// links all built objects into an executable
+int linkObjects(in ref BuildInformation build, string fullExeTemp, string[] builtObjects)
+{
+    // link files without dependencies
+    auto commands = [ compiler ]
+        ~ build.compilerFlags
+        ~ [ "-of"~fullExeTemp ]
+        ~ [ "-I"~dirName(build.root) ];
+
+    commands ~= builtObjects;
+
+    int res = run(commands);
+    return fullExeTemp.cleanup(res);
+}
+
+struct RebuildResponse
+{
+    int response;
+    string[string] deps;
+}
+
+// Rebuild the executable fullExe starting from modules in myDeps
+// passing the compiler flags compilerFlags. Generates one large
+// object file in case the dependencies are known and the root file
+private RebuildResponse rebuild(BuildInformation build, SysTime lastBuildTime)
+{
+    bool newerDependencies = build.myDeps.byKey.anyNewerThan(lastBuildTime);
+    bool newerSource = build.root.newerThan(lastBuildTime);
+
+    if (newerDependencies || newerSource)
     {
-        // build failed
-        if (exists(fullExeTemp))
-            remove(fullExeTemp);
-        return result;
+        // we need a full rebuild if any dependency changed
+        if (newerDependencies)
+            build.myDeps = null;
     }
+    else
+        // nothing changed -> use the existing executable
+        return RebuildResponse(0, build.myDeps);
+
+    // get the name of the resulting executable
+    string fullExe = exe;
+    version (Windows)
+        fullExe = fullExe.defaultExtension(".exe");
+
+    // and just in case cleanup previous builds
+    cleanupFile(fullExe);
+    auto fullExeTemp = fullExe ~ ".tmp";
+
+    // if the dependencies are cached and didn't change, we can directly compile
+    // TODO: is this case really possible
+    bool withDependencies = ! (newerDependencies && build.myDeps !is null);
+
+    // if the dependencies are already known we built directly the exe
+    string[] builtObjects = void;
+    if (withDependencies)
+        builtObjects = [ build.objDir.buildPath(build.exeBasename ~ objExt) ];
+    else
+        builtObjects = [ fullExeTemp ];
+
+    immutable depsFilename = build.workDir.buildPath("rdmd.deps");
+
+    if (auto res = buildMainFile(build, depsFilename, withDependencies, fullExeTemp, builtObjects[0]))
+        return RebuildResponse(res, null);
+
+    DependencyResponse deps;
+    // TODO: in dry-mode there will be no dependency file
+    if (withDependencies)
+        deps = readDepsFile(build.objDir, depsFilename);
+
+    if (build.makeOnlyDependencies)
+        return RebuildResponse(0, deps.deps);
+
+    // check whether we need to rebuild
+    if (withDependencies)
+    {
+        // compile all external files
+        if (deps.hasImports)
+        {
+            auto depsObjFile = build.objDir.buildPath(build.exeBasename ~ "_deps" ~ objExt);
+
+            if (auto res = buildExternalDependencies(build, deps, depsFilename, fullExeTemp, depsObjFile))
+                return RebuildResponse(res, deps.deps);
+
+            builtObjects ~= depsObjFile;
+        }
+
+        // we only built objects - we need to link them to an executable
+        if (auto res = linkObjects(build, fullExeTemp, builtObjects))
+            return RebuildResponse(res, deps.deps);
+    }
+
     // clean up the dir containing the object file, just not in dry
     // run mode because we haven't created any!
     if (!dryRun)
     {
-        yap("stat ", objDir);
-        if (objDir.exists && objDir.startsWith(workDir))
+        yap("stat ", build.objDir);
+        if (build.objDir.exists && build.objDir.startsWith(build.workDir))
         {
-            yap("rmdirRecurse ", objDir);
+            yap("rmdirRecurse ", build.objDir);
             // We swallow the exception because of a potential race: two
             // concurrently-running scripts may attempt to remove this
             // directory. One will fail.
-            collectException(rmdirRecurse(objDir));
+            collectException(rmdirRecurse(build.objDir));
         }
         yap("mv ", fullExeTemp, " ", fullExe);
         rename(fullExeTemp, fullExe);
     }
-    return 0;
+    return RebuildResponse(0, deps.deps);
 }
 
 // Run a program optionally writing the command line first
@@ -571,105 +768,115 @@ private int exec(string[] args)
     return run(args, null, true);
 }
 
+struct DependencyResponse
+{
+    string[string] deps;
+    bool hasImports;
+}
+
 // Given module rootModule, returns a mapping of all dependees .d
 // source filenames to their corresponding .o files sitting in
-// directory workDir. The mapping is obtained by running dmd -v against
+// directory workDir. The mapping is obtained by an output of dmd -v against
 // rootModule.
+private DependencyResponse readDepsFile(string objDir, string depsFilename)
+{
+    string d2obj(string dfile)
+    {
+        return buildPath(objDir, dfile.baseName.chomp(".d") ~ objExt);
+    }
 
-private string[string] getDependencies(string rootModule, string workDir,
-        string objDir, string[] compilerFlags)
+    string findLib(string libName)
+    {
+        // This can't be 100% precise without knowing exactly where the linker
+        // will look for libraries (which requires, but is not limited to,
+        // parsing the linker's command line (as specified in dmd.conf/sc.ini).
+        // Go for best-effort instead.
+        string[] dirs = ["."];
+        foreach (envVar; ["LIB", "LIBRARY_PATH", "LD_LIBRARY_PATH"])
+            dirs ~= environment.get(envVar, "").split(pathSeparator);
+        version (Windows)
+            string[] names = [libName ~ ".lib"];
+        else
+        {
+            string[] names = ["lib" ~ libName ~ ".a", "lib" ~ libName ~ ".so"];
+            dirs ~= ["/lib", "/usr/lib"];
+        }
+        foreach (dir; dirs)
+            foreach (name; names)
+            {
+                auto path = buildPath(dir, name);
+                if (path.exists)
+                    return absolutePath(path);
+            }
+        return null;
+    }
+    yap("read ", depsFilename);
+    auto depsReader = File(depsFilename);
+    scope(exit) collectException(depsReader.close()); // don't care for errors
+
+    // Fetch all dependencies and append them to myDeps
+    auto pattern = ctRegex!(r"^(import|file|binary|config|library)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
+    DependencyResponse result = {hasImports: extraFiles.length > 0};
+    foreach (string line; lines(depsReader))
+    {
+        auto regexMatch = match(line, pattern);
+        if (regexMatch.empty) continue;
+        auto captures = regexMatch.captures;
+        switch(captures[1])
+        {
+        case "import":
+            immutable moduleName = captures[2].strip(), moduleSrc = captures[3].strip();
+            if (inALibrary(moduleName, moduleSrc)) continue;
+            immutable moduleObj = d2obj(moduleSrc);
+            result.deps[moduleSrc] = moduleObj;
+
+            // check whether its an unknown import
+            if (!exclusions.any!(x => moduleObj.startsWith(x.chain("."))))
+                result.hasImports = true;
+            break;
+
+        case "file":
+            result.deps[captures[3].strip()] = null;
+            break;
+
+        case "binary":
+            result.deps[which(captures[2].strip())] = null;
+            break;
+
+        case "config":
+            auto confFile = captures[2].strip;
+            // The config file is special: if missing, that's fine too. So
+            // add it as a dependency only if it actually exists.
+            yap("stat ", confFile);
+            if (confFile.exists)
+            {
+                result.deps[confFile] = null;
+            }
+            break;
+
+        case "library":
+            immutable libName = captures[2].strip();
+            immutable libPath = findLib(libName);
+            if (libPath.ptr)
+            {
+                yap("library ", libName, " ", libPath);
+                result.deps[libPath] = null;
+            }
+            break;
+
+        default: assert(0);
+        }
+    }
+    // All dependencies specified through --extra-file
+    foreach (immutable moduleSrc; extraFiles)
+        result.deps[moduleSrc] = d2obj(moduleSrc);
+    return result;
+}
+
+// loads a cached dependency list
+auto checkDependencyList(string rootModule, string workDir, string objDir)
 {
     immutable depsFilename = buildPath(workDir, "rdmd.deps");
-
-    string[string] readDepsFile()
-    {
-        string d2obj(string dfile)
-        {
-            return buildPath(objDir, dfile.baseName.chomp(".d") ~ objExt);
-        }
-        string findLib(string libName)
-        {
-            // This can't be 100% precise without knowing exactly where the linker
-            // will look for libraries (which requires, but is not limited to,
-            // parsing the linker's command line (as specified in dmd.conf/sc.ini).
-            // Go for best-effort instead.
-            string[] dirs = ["."];
-            foreach (envVar; ["LIB", "LIBRARY_PATH", "LD_LIBRARY_PATH"])
-                dirs ~= environment.get(envVar, "").split(pathSeparator);
-            version (Windows)
-                string[] names = [libName ~ ".lib"];
-            else
-            {
-                string[] names = ["lib" ~ libName ~ ".a", "lib" ~ libName ~ ".so"];
-                dirs ~= ["/lib", "/usr/lib"];
-            }
-            foreach (dir; dirs)
-                foreach (name; names)
-                {
-                    auto path = buildPath(dir, name);
-                    if (path.exists)
-                        return absolutePath(path);
-                }
-            return null;
-        }
-        yap("read ", depsFilename);
-        auto depsReader = File(depsFilename);
-        scope(exit) collectException(depsReader.close()); // don't care for errors
-
-        // Fetch all dependencies and append them to myDeps
-        auto pattern = regex(r"^(import|file|binary|config|library)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
-        string[string] result;
-        foreach (string line; lines(depsReader))
-        {
-            auto regexMatch = match(line, pattern);
-            if (regexMatch.empty) continue;
-            auto captures = regexMatch.captures;
-            switch(captures[1])
-            {
-            case "import":
-                immutable moduleName = captures[2].strip(), moduleSrc = captures[3].strip();
-                if (inALibrary(moduleName, moduleSrc)) continue;
-                immutable moduleObj = d2obj(moduleSrc);
-                result[moduleSrc] = moduleObj;
-                break;
-
-            case "file":
-                result[captures[3].strip()] = null;
-                break;
-
-            case "binary":
-                result[which(captures[2].strip())] = null;
-                break;
-
-            case "config":
-                auto confFile = captures[2].strip;
-                // The config file is special: if missing, that's fine too. So
-                // add it as a dependency only if it actually exists.
-                yap("stat ", confFile);
-                if (confFile.exists)
-                {
-                    result[confFile] = null;
-                }
-                break;
-
-            case "library":
-                immutable libName = captures[2].strip();
-                immutable libPath = findLib(libName);
-                if (libPath.ptr)
-                {
-                    yap("library ", libName, " ", libPath);
-                    result[libPath] = null;
-                }
-                break;
-
-            default: assert(0);
-            }
-        }
-        // All dependencies specified through --extra-file
-        foreach (immutable moduleSrc; extraFiles)
-            result[moduleSrc] = d2obj(moduleSrc);
-        return result;
-    }
 
     // Check if the old dependency file is fine
     if (!force)
@@ -679,42 +886,12 @@ private string[string] getDependencies(string rootModule, string workDir,
         if (depsT > SysTime.min)
         {
             // See if the deps file is still in good shape
-            auto deps = readDepsFile();
-            auto allDeps = chain(rootModule.only, deps.byKey);
-            bool mustRebuildDeps = allDeps.anyNewerThan(depsT);
-            if (!mustRebuildDeps)
-            {
-                // Cool, we're in good shape
-                return deps;
-            }
-            // Fall through to rebuilding the deps file
+            auto deps = readDepsFile(objDir, depsFilename);
+            auto allDeps = chain(rootModule.only, deps.deps.byKey);
+            return deps.deps;
         }
     }
-
-    immutable rootDir = dirName(rootModule);
-
-    // Collect dependencies
-    auto depsGetter =
-        // "cd "~shellQuote(rootDir)~" && "
-        [ compiler ] ~ compilerFlags ~
-        ["-v", "-o-", rootModule, "-I"~rootDir];
-
-    scope(failure)
-    {
-        // Delete the deps file on failure, we don't want to be fooled
-        // by it next time we try
-        collectException(std.file.remove(depsFilename));
-    }
-
-    immutable depsExitCode = run(depsGetter, depsFilename);
-    if (depsExitCode)
-    {
-        stderr.writefln("Failed: %s", depsGetter);
-        collectException(std.file.remove(depsFilename));
-        exit(depsExitCode);
-    }
-
-    return dryRun ? null : readDepsFile();
+    return null;
 }
 
 // Is any file newer than the given file?
