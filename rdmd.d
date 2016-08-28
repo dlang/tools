@@ -289,7 +289,7 @@ int main(string[] args)
     }
 
     // Have at it
-    if (chain(root.only, myDeps.byKey).array.anyNewerThan(lastBuildTime))
+    if (chain(root.only, myDeps.byKey).anyNewerThan(lastBuildTime))
     {
         immutable result = rebuild(root, exe, workDir, objDir,
                                    myDeps, compilerFlags, addStubMain);
@@ -617,7 +617,7 @@ private string[string] getDependencies(string rootModule, string workDir,
         scope(exit) collectException(depsReader.close()); // don't care for errors
 
         // Fetch all dependencies and append them to myDeps
-        auto pattern = regex(r"^(import|file|binary|config|library)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
+        auto pattern = ctRegex!(r"^(import|file|binary|config|library)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
         string[string] result;
         foreach (string line; lines(depsReader))
         {
