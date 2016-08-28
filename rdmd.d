@@ -242,7 +242,8 @@ int main(string[] args)
     }
 
     // Fetch dependencies
-    const myDeps = compileRootAndGetDeps(root, workDir, objDir, compilerFlags);
+    const myDeps = compileRootAndGetDeps(root, workDir, objDir, compilerFlags,
+        addStubMain);
 
     // --makedepend mode. Just print dependencies and exit.
     if (makeDepend)
@@ -300,7 +301,7 @@ int main(string[] args)
     if (chain(root.only, myDeps.byKey).array.anyNewerThan(lastBuildTime))
     {
         immutable result = rebuild(root, exe, workDir, objDir,
-                                   myDeps, compilerFlags, addStubMain);
+                                   myDeps, compilerFlags);
         if (result)
             return result;
 
@@ -451,7 +452,7 @@ private void unlockWorkPath()
 
 private int rebuild(string root, string fullExe,
         string workDir, string objDir, in string[string] myDeps,
-        string[] compilerFlags, bool addStubMain)
+        string[] compilerFlags)
 {
     version (Windows)
         fullExe = fullExe.defaultExtension(".exe");
@@ -479,8 +480,8 @@ private int rebuild(string root, string fullExe,
     }
 
     immutable fullExeTemp = fullExe ~ ".tmp";
-    immutable rootObj = buildPath(objDir, "rdmd.root"~objExt);
-    immutable depsObj = buildPath(objDir, "rdmd.deps"~objExt);
+    immutable rootObj = buildPath(objDir, root.baseName(".d")~objExt);
+    immutable depsObj = buildPath(objDir, root.baseName(".d")~".deps"~objExt);
 
     assert(dryRun || std.file.exists(rootObj),
         "should have been created by compileRootAndGetDeps");
@@ -527,7 +528,6 @@ private int rebuild(string root, string fullExe,
     {
         string[] cmd = [ compiler ] ~ compilerFlags ~
             [ "-of"~fullExeTemp, "-od"~objDir ] ~ objs;
-        if (addStubMain) cmd ~= "-main";
         result = run(cmd);
     }
 
@@ -598,7 +598,7 @@ private int exec(string[] args)
 // rootModule.
 
 private string[string] compileRootAndGetDeps(string rootModule, string workDir,
-        string objDir, string[] compilerFlags)
+        string objDir, string[] compilerFlags, bool addStubMain)
 {
     immutable depsFilename = buildPath(workDir, "rdmd.deps");
 
@@ -718,10 +718,20 @@ private string[string] compileRootAndGetDeps(string rootModule, string workDir,
     auto depsGetter = [ compiler ] ~ compilerFlags ~ [
         "-v",
         "-c",
-        "-of"~buildPath(objDir, "rdmd.root"~objExt),
+        "-of"~buildPath(objDir, rootModule.baseName(".d")~objExt),
         rootModule,
         "-I"~rootDir
     ];
+
+    // Need to add void main(){}?
+    if (addStubMain)
+    {
+        /* TODO: Can be simplified to `depsGetter ~= "-main";` when issue 16440
+        is fixed. */
+        auto stubMain = buildPath(myOwnTmpDir, "stubmain.d");
+        std.file.write(stubMain, "void main(){}");
+        depsGetter ~= [ stubMain ];
+    }
 
     scope(failure)
     {
