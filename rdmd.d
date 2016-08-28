@@ -768,27 +768,6 @@ private int exec(string[] args)
     return run(args, null, true);
 }
 
-// loads a cached dependency list
-auto checkDependencyList(string rootModule, string workDir, string objDir)
-{
-    immutable depsFilename = buildPath(workDir, "rdmd.deps");
-
-    // Check if the old dependency file is fine
-    if (!force)
-    {
-        yap("stat ", depsFilename);
-        auto depsT = depsFilename.timeLastModified(SysTime.min);
-        if (depsT > SysTime.min)
-        {
-            // See if the deps file is still in good shape
-            auto deps = readDepsFile(objDir, depsFilename);
-            auto allDeps = chain(rootModule.only, deps.deps.byKey);
-            return deps.deps;
-        }
-    }
-    return null;
-}
-
 struct DependencyResponse
 {
     string[string] deps;
@@ -892,6 +871,27 @@ private DependencyResponse readDepsFile(string objDir, string depsFilename)
     foreach (immutable moduleSrc; extraFiles)
         result.deps[moduleSrc] = d2obj(moduleSrc);
     return result;
+}
+
+// loads a cached dependency list
+auto checkDependencyList(string rootModule, string workDir, string objDir)
+{
+    immutable depsFilename = buildPath(workDir, "rdmd.deps");
+
+    // Check if the old dependency file is fine
+    if (!force)
+    {
+        yap("stat ", depsFilename);
+        auto depsT = depsFilename.timeLastModified(SysTime.min);
+        if (depsT > SysTime.min)
+        {
+            // See if the deps file is still in good shape
+            auto deps = readDepsFile(objDir, depsFilename);
+            auto allDeps = chain(rootModule.only, deps.deps.byKey);
+            return deps.deps;
+        }
+    }
+    return null;
 }
 
 // Is any file newer than the given file?
