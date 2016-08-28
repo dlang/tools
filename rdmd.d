@@ -480,8 +480,9 @@ private int rebuild(string root, string fullExe,
     }
 
     immutable fullExeTemp = fullExe ~ ".tmp";
-    immutable rootObj = buildPath(objDir, root.baseName(".d")~objExt);
-    immutable depsObj = buildPath(objDir, root.baseName(".d")~".deps"~objExt);
+    immutable rootObj = buildPath(objDir, root.baseName(".d") ~ objExt);
+    immutable depsObj = buildPath(objDir,
+        root.baseName(".d") ~ ".deps" ~ objExt);
 
     assert(dryRun || std.file.exists(rootObj),
         "should have been created by compileRootAndGetDeps");
@@ -495,8 +496,8 @@ private int rebuild(string root, string fullExe,
     {
         auto todo = compilerFlags ~ [
             "-c",
-            "-of"~depsObj,
-            "-I"~dirName(root),
+            "-of" ~ depsObj,
+            "-I" ~ dirName(root),
         ];
         foreach (k, objectFile; myDeps) {
             if(objectFile !is null)
@@ -516,7 +517,7 @@ private int rebuild(string root, string fullExe,
             std.file.write(rspName,
                 array(map!escapeWindowsArgument(todo)).join(" "));
 
-            todo = [ "@"~rspName ];
+            todo = [ "@" ~ rspName ];
         }
 
         result = run([ compiler ] ~ todo);
@@ -527,7 +528,7 @@ private int rebuild(string root, string fullExe,
     if (!result)
     {
         string[] cmd = [ compiler ] ~ compilerFlags ~
-            [ "-of"~fullExeTemp, "-od"~objDir ] ~ objs;
+            [ "-of" ~ fullExeTemp, "-od" ~ objDir ] ~ objs;
         result = run(cmd);
     }
 
@@ -718,9 +719,9 @@ private string[string] compileRootAndGetDeps(string rootModule, string workDir,
     auto depsGetter = [ compiler ] ~ compilerFlags ~ [
         "-v",
         "-c",
-        "-of"~buildPath(objDir, rootModule.baseName(".d")~objExt),
+        "-of" ~ buildPath(objDir, rootModule.baseName(".d")~objExt),
         rootModule,
-        "-I"~rootDir
+        "-I" ~ rootDir
     ];
 
     // Need to add void main(){}?
