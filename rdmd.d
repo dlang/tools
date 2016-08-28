@@ -719,7 +719,7 @@ private string[string] compileRootAndGetDeps(string rootModule, string workDir,
     auto depsGetter = [ compiler ] ~ compilerFlags ~ [
         "-v",
         "-c",
-        "-of" ~ buildPath(objDir, rootModule.baseName(".d")~objExt),
+        "-of" ~ buildPath(objDir, rootModule.baseName(".d") ~ objExt),
         rootModule,
         "-I" ~ rootDir
     ];
