@@ -172,6 +172,23 @@ void runTests()
     res = execute([rdmdApp, compilerSwitch, "--force", "--exclude=dsubpack", subModObj, subModUser]);
     assert(res.status == 0, res.output);  // building with the dependency succeeds
 
+    /* Test --include. */
+    auto packFolder2 = tempDir().buildPath("std");
+    if (packFolder2.exists) packFolder2.rmdirRecurse();
+    packFolder2.mkdirRecurse();
+    scope (exit) packFolder2.rmdirRecurse();
+
+    string subModSrc2 = packFolder2.buildPath("foo.d");
+    std.file.write(subModSrc2, "module std.foo; void foobar() { }");
+
+    std.file.write(subModUser, "import std.foo; void main() { foobar(); }");
+
+    res = execute([rdmdApp, compilerSwitch, "--force", subModUser]);
+    assert(res.status == 1, res.output);  // building without the --include fails
+
+    res = execute([rdmdApp, compilerSwitch, "--force", "--include=std", subModUser]);
+    assert(res.status == 0, res.output);  // building with the --include succeeds
+
     /* Test --extra-file. */
 
     string extraFileDi = tempDir().buildPath("extraFile_.di");
