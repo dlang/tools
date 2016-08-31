@@ -1,3 +1,4 @@
+#!/usr/bin/env rdmd
 // Written in the D programming language
 
 /**
