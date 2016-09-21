@@ -109,7 +109,10 @@ void main(string[] args)
     {
         auto f = (args.length==2) ? File(args[1], "r") : stdin;
         foreach (line; f.byLine())
+        {
             writeln(ddemangle(line));
+            stdout.flush;
+        }
     }
     catch(Exception e)
     {
