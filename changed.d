@@ -1,3 +1,4 @@
+#!/usr/bin/env rdmd
 // Written in the D programming language
 
 /**
@@ -168,14 +169,11 @@ string getChangeLog(string revRange)
         if (auto bugs = bugtype in *comp)
         {
             result ~= format("$(BUGSTITLE %s %s,\n\n", component, bugtype);
-
-            result ~= "$(P\n";
             foreach (bug; sort!"a.id < b.id"(*bugs))
             {
                 result ~= format("$(LI $(BUGZILLA %s): %s)\n",
                               bug.id, bug.summary.escapeParens());
             }
-            result ~= ")\n";
             result ~= ")\n";
         }
     }

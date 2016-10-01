@@ -112,7 +112,7 @@ function installAnew() {
     for project in $projects; do
         (
             cd $wd &&
-            git clone --quiet git://github.com/D-Programming-Language/$project.git &&
+            git clone --quiet git://github.com/dlang/$project.git &&
             touch $tempdir/$project
         ) &
     done
@@ -141,7 +141,7 @@ function update() {
 
     function update_project() {
         local project=$1
-        local gitproject="git://github.com/D-Programming-Language/$project.git"
+        local gitproject="git://github.com/dlang/$project.git"
         if ! ( cd "$wd/$project" && \
             git checkout master && \
             git pull --ff-only $gitproject master && \

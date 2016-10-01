@@ -14,7 +14,7 @@ import std.path;
 import std.range;
 import std.string;
 import std.traits;
-debug import std.stdio;
+import std.stdio : stderr;
 
 /// Represents a slice of the original code.
 class Entity
@@ -44,18 +44,19 @@ class Entity
 		this.tail     = tail;
 	}
 
+	string[] comments;
+
 	@property string comment()
 	{
+		string[] result = comments;
 		if (isPair)
 		{
 			assert(token == DSplitter.Token.none);
-			return "Pair";
+			result ~= "Pair";
 		}
-		else
-		if (token)
-			return DSplitter.tokenText[token];
-		else
-			return null;
+		if (token && DSplitter.tokenText[token])
+			result ~= DSplitter.tokenText[token];
+		return result.length ? result.join(" / ") : null;
 	}
 
 	override string toString()
@@ -161,6 +162,7 @@ private:
 /// Override std.string nonsense, which does UTF-8 decoding
 bool startsWith(in char[] big, in char[] small) { return big.length >= small.length && big[0..small.length] == small; }
 bool startsWith(in char[] big, char c) { return big.length && big[0] == c; }
+string strip(string s) { while (s.length && isWhite(s[0])) s = s[1..$]; while (s.length && isWhite(s[$-1])) s = s[0..$-1]; return s; }
 
 immutable ParseRule[] defaultRules =
 [
@@ -171,7 +173,7 @@ immutable ParseRule[] defaultRules =
 
 Entity loadFile(string name, string path, ParseOptions options)
 {
-	debug writeln("Loading ", path);
+	stderr.writeln("Loading ", path);
 	auto result = new Entity();
 	result.filename = name.replace(`\`, `/`);
 	result.contents = cast(string)read(path);
@@ -811,6 +813,20 @@ struct DSplitter
 		}
 	}
 
+	static void postProcessTemplates(ref Entity[] entities)
+	{
+		if (!entities.length)
+			return;
+		foreach_reverse (i, e; entities[0..$-1])
+			if (e.token == tokenLookup["!"] && entities[i+1].children.length && entities[i+1].children[0].token == tokenLookup["("])
+			{
+				auto dependency = new Entity;
+				e.dependencies ~= dependency;
+				entities[i+1].children[0].dependencies ~= dependency;
+				entities = entities[0..i+1] ~ dependency ~ entities[i+1..$];
+			}
+	}
+
 	static void postProcessDependencyBlock(ref Entity[] entities)
 	{
 		foreach (i, e; entities)
@@ -941,19 +957,193 @@ struct DSplitter
 			postProcessParens(e.children);
 	}
 
-	static void postProcess(ref Entity[] entities)
+	static bool isValidIdentifier(string s)
+	{
+		if (!s.length)
+			return false;
+		if (!isAlpha(s[0]))
+			return false;
+		foreach (c; s[1..$])
+			if (!isAlphaNum(c))
+				return false;
+		return true;
+	}
+
+	/// Get all nodes between (exclusively) two addresses.
+	/// If either address is empty, then the respective bound is the respective extreme.
+	static Entity[] nodesBetween(Entity root, size_t[] a, size_t[] b)
+	{
+		while (a.length && b.length && a[0] == b[0])
+		{
+			root = root.children[a[0]];
+			a = a[1..$];
+			b = b[1..$];
+		}
+		size_t index0, index1;
+		Entity[] children0, children1;
+		if (a.length)
+		{
+			index0 = a[0] + 1;
+			if (a.length > 1)
+				children0 = nodesBetween(root.children[a[0]], a[1..$], null);
+		}
+		else
+			index0 = 0;
+
+		if (b.length)
+		{
+			index1 = b[0];
+			if (b.length > 1)
+				children1 = nodesBetween(root.children[b[0]], null, b[1..$]);
+		}
+		else
+			index1 = root.children.length;
+
+		assert(index0 <= index1);
+		return children0 ~ root.children[index0 .. index1] ~ children1;
+	}
+
+	static void postProcessRecursive(ref Entity[] entities)
 	{
 		foreach (e; entities)
 			if (e.children.length)
-				postProcess(e.children);
+				postProcessRecursive(e.children);
 
 		postProcessSimplify(entities);
+		postProcessTemplates(entities);
 		postProcessDependency(entities);
 		postProcessBlockKeywords(entities);
 		postProcessDependencyBlock(entities);
 		postProcessBlockStatements(entities);
 		postProcessPairs(entities);
 		postProcessParens(entities);
+	}
+
+	/// Attempt to link together function arguments / parameters for
+	/// things that look like calls to the same function, to allow removing
+	/// unused function arguments / parameters.
+	static void postProcessArgs(ref Entity[] entities)
+	{
+		string lastID;
+
+		Entity[][][string] calls;
+
+		void visit(Entity entity)
+		{
+			auto id = entity.head.strip();
+			if (entity.token == Token.other && isValidIdentifier(id) && !entity.tail && !entity.children)
+				lastID = id;
+			else
+			if (lastID && entity.token == tokenLookup["("])
+			{
+				size_t[] stack;
+				struct Comma { size_t[] addr, after; }
+				Comma[] commas;
+
+				bool afterComma;
+
+				// Find all top-level commas
+				void visit2(size_t i, Entity entity)
+				{
+					stack ~= i;
+					if (afterComma)
+					{
+						commas[$-1].after = stack;
+						//entity.comments ~= "After-comma %d".format(commas.length);
+						afterComma = false;
+					}
+
+					if (entity.token == tokenLookup[","])
+					{
+						commas ~= Comma(stack);
+						//entity.comments ~= "Comma %d".format(commas.length);
+						afterComma = true;
+					}
+					else
+					if (entity.head.length || entity.tail.length)
+						{}
+					else
+						foreach (j, child; entity.children)
+							visit2(j, child);
+					stack = stack[0..$-1];
+				}
+
+				foreach (i, child; entity.children)
+					visit2(i, child);
+
+				// Find all nodes between commas, effectively obtaining the arguments
+				size_t[] last = null;
+				commas ~= [Comma()];
+				Entity[][] args;
+				foreach (i, comma; commas)
+				{
+					//Entity entityAt(Entity root, size_t[] address) { return address.length ? entityAt(root.children[address[0]], address[1..$]) : root; }
+					//entityAt(entity, last).comments ~= "nodesBetween-left %d".format(i);
+					//entityAt(entity, comma.after).comments ~= "nodesBetween-right %d".format(i);
+					args ~= nodesBetween(entity, last, comma.after);
+					last = comma.addr;
+				}
+
+				// Register the arguments
+				foreach (i, arg; args)
+				{
+					debug
+						foreach (j, e; arg)
+							e.comments ~= "%s arg %d node %d".format(lastID, i, j);
+
+					if (arg.length == 1)
+					{
+						if (lastID !in calls)
+							calls[lastID] = null;
+						while (calls[lastID].length < i+1)
+							calls[lastID] ~= null;
+						calls[lastID][i] ~= arg[0];
+					}
+				}
+
+				lastID = null;
+				return;
+			}
+			else
+			if (entity.token == tokenLookup["!"])
+				{}
+			else
+			if (entity.head || entity.tail)
+				lastID = null;
+
+			foreach (child; entity.children)
+				visit(child);
+		}
+
+		foreach (entity; entities)
+			visit(entity);
+
+		// For each parameter, create a dummy empty node which is a dependency for all of the arguments.
+		auto callRoot = new Entity();
+		debug callRoot.comments ~= "Args root";
+		entities ~= callRoot;
+
+		foreach (id, params; calls)
+		{
+			auto funRoot = new Entity();
+			debug funRoot.comments ~= "%s root".format(id);
+			callRoot.children ~= funRoot;
+
+			foreach (i, args; params)
+			{
+				auto e = new Entity();
+				debug e.comments ~= "%s param %d".format(id, i);
+				funRoot.children ~= e;
+				foreach (arg; args)
+					arg.dependencies ~= e;
+			}
+		}
+	}
+
+	static void postProcess(ref Entity[] entities)
+	{
+		postProcessRecursive(entities);
+		postProcessArgs(entities);
 	}
 
 	static Entity* firstHead(ref Entity e)

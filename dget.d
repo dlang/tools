@@ -40,7 +40,7 @@ int main(string[] args)
 //::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 /// default github users for repo lookup
-immutable defaultUsers = ["D-Programming-Deimos", "D-Programming-Language"];
+immutable defaultUsers = ["D-Programming-Deimos", "dlang"];
 
 auto resolveRepo(string arg)
 {
