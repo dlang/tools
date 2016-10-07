@@ -18,10 +18,9 @@ Authors:   Dmitry Olshansky,
            Sebastian Wilzbach
 
 Example usage:
+
 ---
 rdmd changed.d "v2.071.2..upstream/stable"
-rdmd changed.d --start=2013-01-01 --end=2013-04-01
-rdmd changed.d --start=2013-01-01 (end date implicitly set to current date)
 ---
 
 It is also possible to directly preview the generated changelog file:
@@ -30,9 +29,8 @@ It is also possible to directly preview the generated changelog file:
 rdmd changed.d "v2.071.2..upstream/stable" && dmd ../dlang.org/macros.ddoc ../dlang.org/html.ddoc ../dlang.org/dlang.org.ddoc ../dlang.org/doc.ddoc ../dlang.org/changelog/changelog.ddoc changelog.dd -Df../dlang.org/changelog/pending.html
 ---
 
-$(B Note:) The script will cache the results of an invocation, to avoid
-re-querying bugzilla when invoked with the same arguments.
-Use the --nocache option to override this behavior.
+If no arguments are passed, only the manual changes will be accumulated and Bugzilla
+won't be queried (faster).
 */
 
 // NOTE: this script requires libcurl to be linked in (usually done by default).
@@ -219,7 +217,7 @@ Returns: An InputRange of `ChangelogEntry`s
 auto readTextChanges(string changelogDir)
 {
     import std.algorithm.iteration : filter, map;
-    import std.file: dirEntries, SpanMode;
+    import std.file : dirEntries, SpanMode;
     import std.string : endsWith;
 
     return dirEntries(changelogDir, SpanMode.shallow)
@@ -309,7 +307,10 @@ int main(string[] args)
     auto helpInformation = getopt(
         args,
         std.getopt.config.passThrough,
-        "output|o", &outputFile);
+        "output|o", &outputFile,
+        "date", &nextVersionDate,
+        "version", &nextVersionString,
+        "prev-version", &previousVersion); // this can automatically be detected
 
     if (args.length >= 2)
     {
