@@ -24,7 +24,7 @@ test_rdmd() {
 
 build_digger() {
     git clone --recursive https://github.com/CyberShadow/Digger "$DIGGER_DIR"
-    dub --root="$DIGGER_DIR" build
+    (cd "$DIGGER_DIR" && rdmd --build-only -debug digger)
 }
 
 install_digger() {
