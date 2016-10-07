@@ -302,6 +302,7 @@ int main(string[] args)
     auto nextVersionString = "LATEST";
     auto nextVersionDate = "September 19, 2016";
     string previousVersion = "Previous version";
+    bool hideTextChanges = false;
     string revRange;
 
     auto helpInformation = getopt(
@@ -310,7 +311,8 @@ int main(string[] args)
         "output|o", &outputFile,
         "date", &nextVersionDate,
         "version", &nextVersionString,
-        "prev-version", &previousVersion); // this can automatically be detected
+        "prev-version", &previousVersion, // this can automatically be detected
+        "no-text", &hideTextChanges);
 
     if (args.length >= 2)
     {
@@ -335,35 +337,42 @@ int main(string[] args)
         w.formattedWrite("$(VERSION %s, =================================================,\n\n", nextVersionDate);
         scope(exit) w.put(")\n");
 
-        // search for raw change files
-        alias Repo = Tuple!(string, "path", string, "headline");
-        auto repos = [Repo("dmd", "Language changes"),
-                      Repo("druntime", "Runtime changes"),
-                      Repo("phobos", "Library changes")];
+        if (!hideTextChanges)
+        {
+            // search for raw change files
+            alias Repo = Tuple!(string, "path", string, "headline");
+            auto repos = [Repo("dmd", "Language changes"),
+                          Repo("druntime", "Runtime changes"),
+                          Repo("phobos", "Library changes")];
 
-        auto changedRepos = repos
-             .map!(repo => Repo(buildPath("..", repo.path, "changelog"), repo.headline))
-             .filter!(x => x.path.exists)
-             .map!(x => tuple!("headline", "changes")(x.headline, x.path.readTextChanges.array))
-             .filter!(x => !x.changes.empty);
+            auto changedRepos = repos
+                 .map!(repo => Repo(buildPath("..", repo.path, "changelog"), repo.headline))
+                 .filter!(x => x.path.exists)
+                 .map!(x => tuple!("headline", "changes")(x.headline, x.path.readTextChanges.array))
+                 .filter!(x => !x.changes.empty);
 
-        // print the overview headers
-        changedRepos.each!(x => x.changes.writeTextChangesHeader(w, x.headline));
+            // print the overview headers
+            changedRepos.each!(x => x.changes.writeTextChangesHeader(w, x.headline));
 
-        if (revRange.length)
-            w.put("$(BR)$(BIG $(RELATIVE_LINK2 bugfix-list, List of all bug fixes and enhancements in D $(VER).))\n\n");
+            if (revRange.length)
+                w.put("$(BR)$(BIG $(RELATIVE_LINK2 bugfix-list, List of all bug fixes and enhancements in D $(VER).))\n\n");
 
-        w.put("$(HR)\n\n");
+            w.put("$(HR)\n\n");
 
-        // print the detailed descriptions
-        changedRepos.each!(x => x.changes.writeTextChangesBody(w, x.headline));
+            // print the detailed descriptions
+            changedRepos.each!(x => x.changes.writeTextChangesBody(w, x.headline));
+
+            if (revRange.length)
+                w.put("$(BR)$(BIG $(LNAME2 bugfix-list, List of all bug fixes and enhancements in D $(VER):))\n\n");
+        }
+        else
+        {
+                w.put("$(BR)$(BIG List of all bug fixes and enhancements in D $(VER).)\n\n");
+        }
 
         // print the entire changelog history
         if (revRange.length)
-        {
-            w.put("$(BR)$(BIG $(LNAME2 bugfix-list, List of all bug fixes and enhancements in D $(VER):))\n\n");
             revRange.getBugzillaChanges.writeBugzillaChanges(w);
-        }
     }
 
     w.formattedWrite("$(CHANGELOG_NAV_LAST %s)\n", previousVersion);
