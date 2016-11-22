@@ -26,11 +26,14 @@ rdmd changed.d "v2.071.2..upstream/stable"
 It is also possible to directly preview the generated changelog file:
 
 ---
-rdmd changed.d "v2.071.2..upstream/stable" && dmd ../dlang.org/macros.ddoc ../dlang.org/html.ddoc ../dlang.org/dlang.org.ddoc ../dlang.org/doc.ddoc ../dlang.org/changelog/changelog.ddoc changelog.dd -Df../dlang.org/changelog/pending.html
+rdmd changed.d "v2.071.2..upstream/stable" && dmd ../dlang.org/macros.ddoc ../dlang.org/html.ddoc ../dlang.org/dlang.org.ddoc ../dlang.org/doc.ddoc ../dlang.org/changelog/changelog.ddoc changelog.dd -Df../dlang.org/web/changelog/pending.html
 ---
 
 If no arguments are passed, only the manual changes will be accumulated and Bugzilla
 won't be queried (faster).
+
+A manual changelog entry consists of a title line, a blank separator line and
+the description.
 */
 
 // NOTE: this script requires libcurl to be linked in (usually done by default).
@@ -157,7 +160,7 @@ auto getBugzillaChanges(string revRange)
                 type = "bugs";
                 break;
 
-                case "enhancement":
+            case "enhancement":
                 type = "enhancements";
                 break;
 
@@ -183,7 +186,7 @@ Returns: The parsed `ChangelogEntry`
 ChangelogEntry readChangelog(string filename)
 {
     import std.algorithm.searching : countUntil;
-    import std.file: read;
+    import std.file : read;
     import std.path : baseName, stripExtension;
     import std.string : strip;
 
@@ -201,7 +204,7 @@ ChangelogEntry readChangelog(string filename)
     ChangelogEntry entry = {
         title: (cast(string) fileRead[0..firstLineBreak]).strip,
         description: (cast(string) fileRead[firstLineBreak..$]).strip,
-        basename: filename.baseName.stripExtension // let's be safe here
+        basename: filename.baseName.stripExtension
     };
     return entry;
 }
@@ -296,11 +299,59 @@ void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
     }
 }
 
+string toString(Month month){
+    string s = void;
+    with(Month)
+    final switch (month) {
+        case jan:
+            s = "January";
+            break;
+        case feb:
+            s = "February";
+            break;
+        case mar:
+            s = "March";
+            break;
+        case apr:
+            s = "April";
+            break;
+        case may:
+            s = "May";
+            break;
+        case jun:
+            s = "June";
+            break;
+        case jul:
+            s = "July";
+            break;
+        case aug:
+            s = "August";
+            break;
+        case sep:
+            s = "September";
+            break;
+        case oct:
+            s = "October";
+            break;
+        case nov:
+            s = "November";
+            break;
+        case dec:
+            s = "December";
+            break;
+    }
+    return s;
+}
+
 int main(string[] args)
 {
     auto outputFile = "./changelog.dd";
     auto nextVersionString = "LATEST";
-    auto nextVersionDate = "September 19, 2016";
+
+    auto currDate = Clock.currTime();
+    auto nextVersionDate = "%s %02d, %04d"
+        .format(currDate.month.toString, currDate.day, currDate.year);
+
     string previousVersion = "Previous version";
     bool hideTextChanges = false;
     string revRange;
@@ -313,6 +364,13 @@ int main(string[] args)
         "version", &nextVersionString,
         "prev-version", &previousVersion, // this can automatically be detected
         "no-text", &hideTextChanges);
+
+    if (helpInformation.helpWanted)
+    {
+`Changelog generator
+Please supply a bugzilla version
+./changed.d "v2.071.2..upstream/stable"`.defaultGetoptPrinter(helpInformation.options);
+    }
 
     if (args.length >= 2)
     {
@@ -347,14 +405,14 @@ int main(string[] args)
 
             auto changedRepos = repos
                  .map!(repo => Repo(buildPath("..", repo.path, "changelog"), repo.headline))
-                 .filter!(x => x.path.exists)
-                 .map!(x => tuple!("headline", "changes")(x.headline, x.path.readTextChanges.array))
-                 .filter!(x => !x.changes.empty);
+                 .filter!(r => r.path.exists)
+                 .map!(r => tuple!("headline", "changes")(r.headline, r.path.readTextChanges.array))
+                 .filter!(r => !r.changes.empty);
 
             // print the overview headers
-            changedRepos.each!(x => x.changes.writeTextChangesHeader(w, x.headline));
+            changedRepos.each!(r => r.changes.writeTextChangesHeader(w, r.headline));
 
-            if (revRange.length)
+            if (!revRange.empty)
                 w.put("$(BR)$(BIG $(RELATIVE_LINK2 bugfix-list, List of all bug fixes and enhancements in D $(VER).))\n\n");
 
             w.put("$(HR)\n\n");
