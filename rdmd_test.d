@@ -373,6 +373,16 @@ void runTests()
     res = execute([rdmdApp, compilerSwitch, "--tmpdir=" ~ tmpdir, forceSrc, "--build-only"]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("compile_force_src"));
+
+    /* issue 16966 */
+    immutable voidMainExe = setExtension(voidMain, binExt);
+    res = execute([rdmdApp, compilerSwitch, voidMain]);
+    assert(res.status == 0, res.output);
+    assert(!exists(voidMainExe));
+    res = execute([rdmdApp, compilerSwitch, "--build-only", voidMain]);
+    assert(res.status == 0, res.output);
+    assert(exists(voidMainExe));
+    remove(voidMainExe);
 }
 
 void runConcurrencyTest()
