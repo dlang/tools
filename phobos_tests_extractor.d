@@ -15,17 +15,16 @@ dependency "libdparse" version="~>0.7.0-beta.2"
 */
 // Written in the D programming language.
 
-import std.stdio;
-import std.conv;
-import std.string;
-import std.file;
-import std.regex;
-import std.range;
-import std.exception;
-import std.algorithm;
-import std.path;
-
 import dparse.ast;
+import std.algorithm;
+import std.conv;
+import std.exception;
+import std.file;
+import std.path;
+import std.range;
+import std.regex;
+import std.stdio;
+import std.string;
 
 class TestVisitor : ASTVisitor
 {
