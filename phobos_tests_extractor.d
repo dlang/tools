@@ -19,6 +19,7 @@ import dparse.ast;
 import std.algorithm;
 import std.conv;
 import std.exception;
+import std.experimental.logger;
 import std.file;
 import std.path;
 import std.range;
@@ -44,34 +45,32 @@ class TestVisitor : ASTVisitor
     override void visit(const Unittest u)
     {
         // scan the previous line for ddoc header
-        auto loc = u.location + 0;
-        while (sourceCode[loc] != '\n')
-            loc--;
-        loc--;
-        auto ddocComments = 0;
-        while (sourceCode[loc] != '\n')
-            if (sourceCode[loc--] == '/')
-                ddocComments++;
+        auto prevLine = sourceCode[0 .. u.location].retro;
+        prevLine.findSkip("\n"); // skip forward to the previous line
+        auto ddocCommentSlashes = prevLine.until('\n').count('/');
 
         // only look for comments annotated with three slashes (///)
-        if (ddocComments != 3)
+        if (ddocCommentSlashes != 3)
             return;
 
         // write the origin source code line
-        outFile.write("// Line ");
-        outFile.write(sourceCode[0 .. loc].count("\n") + 2);
-        outFile.write("\n");
+        outFile.writefln("// Line %d", u.line);
 
-        // write the unittest block and add an import to the current module
+        // write the unittest block
         outFile.write("unittest\n{\n");
-        outFile.write("    import ");
-        outFile.write(moduleName);
-        outFile.write(";");
-        auto k = cast(immutable(char)[]) sourceCode[u.blockStatement.startLocation
-            + 0 .. u.blockStatement.endLocation];
+        scope(exit) outFile.writeln("}\n");
+
+        // add an import to the current module
+        outFile.writefln("    import %s;", moduleName);
+
+        // write the content of the unittest block (but skip the first brace)
+        auto k = cast(immutable(char)[]) sourceCode[u.blockStatement.startLocation .. u.blockStatement.endLocation];
         k.findSkip("{");
         outFile.write(k);
-        outFile.writeln("}\n");
+
+        // if the last line contains characters, we want to add an extra line for increased visual beauty
+        if (k[$ - 1] != '\n')
+            outFile.writeln;
     }
 }
 
@@ -85,6 +84,13 @@ void parseTests(string fileName, string moduleName, string outFileName)
     assert(exists(fileName));
 
     File f = File(fileName);
+
+    if (f.size == 0)
+    {
+        warningf("%s is empty", fileName);
+        return;
+    }
+
     ubyte[] sourceCode = uninitializedArray!(ubyte[])(to!size_t(f.size));
     f.rawRead(sourceCode);
     LexerConfig config;
@@ -101,15 +107,22 @@ void parseFile(string inputDir, string fileName, string outputDir, string module
     import std.path : buildPath, dirSeparator, buildNormalizedPath;
 
     // file name without its parent directory, e.g. std/uni.d
-    string fileNameNormalized = (inputDir != ".") ? fileName.replace(inputDir,
-            "")[1 .. $] : fileName[1 .. $];
+    string fileNameNormalized = (inputDir == "." ? fileName : fileName.replace(inputDir, ""));
+
+    // remove leading dots or slashes
+    while (!fileNameNormalized.empty && fileNameNormalized[0] == '.')
+        fileNameNormalized = fileNameNormalized[1 .. $];
+    if (fileNameNormalized.length >= dirSeparator.length &&
+            fileNameNormalized[0 .. dirSeparator.length] == dirSeparator)
+        fileNameNormalized = fileNameNormalized[dirSeparator.length .. $];
 
     // convert the file path to its module path, e.g. std/uni.d -> std.uni
     string moduleName = modulePrefix ~ fileNameNormalized.replace(".d", "")
-        .replace(dirSeparator, ".").replace(".package", "");
+                                                         .replace(dirSeparator, ".")
+                                                         .replace(".package", "");
 
     // convert the file path to a nice output file, e.g. std/uni.d -> std_uni.d
-    string outName = fileNameNormalized.replace("./", "").replace(dirSeparator, "_");
+    string outName = fileNameNormalized.replace(dirSeparator, "_");
 
     parseTests(fileName, moduleName, buildPath(outputDir, outName));
 }
@@ -121,14 +134,13 @@ void main(string[] args)
     string inputDir;
     string outputDir = "./out";
     string ignoredFilesStr;
+    string modulePrefix = "";
 
-    auto helpInfo = getopt(args, config.required, "inputdir|i",
-            "Folder to start the recursive search for unittest blocks (i.e. location to Phobos source)",
-            &inputDir, "outputdir|o",
-            "Folder to which the extracted test files should be saved",
-            &outputDir, "ignore",
-            "Comma-separated list of files to exclude (partial matching is supported)",
-            &ignoredFilesStr,);
+    auto helpInfo = getopt(args, config.required,
+            "inputdir|i", "Folder to start the recursive search for unittest blocks (can be a single file)", &inputDir,
+            "outputdir|o", "Folder to which the extracted test files should be saved", &outputDir,
+            "moduleprefix", "Module prefix to use for all files (e.g. std.algorithm)", &modulePrefix,
+            "ignore", "Comma-separated list of files to exclude (partial matching is supported)", &ignoredFilesStr);
 
     if (helpInfo.helpWanted)
     {
@@ -146,8 +158,22 @@ to in the output directory.
     if (!exists(outputDir))
         mkdir(outputDir);
 
-    auto files = dirEntries(inputDir, SpanMode.depth).array.filter!(
-            a => a.name.endsWith(".d") && !a.name.canFind(".git"));
+    // if the module prefix is std -> add a dot for the next modules to follow
+    if (!modulePrefix.empty)
+        modulePrefix ~= '.';
+
+    DirEntry[] files;
+
+    if (inputDir.isFile)
+    {
+        files = [DirEntry(inputDir)];
+        inputDir = ".";
+    }
+    else
+    {
+        files = dirEntries(inputDir, SpanMode.depth).filter!(
+                a => a.name.endsWith(".d") && !a.name.canFind(".git")).array;
+    }
 
     auto ignoringFiles = ignoredFilesStr.split(",");
 
@@ -156,7 +182,7 @@ to in the output directory.
         if (!ignoringFiles.any!(x => file.name.canFind(x)))
         {
             writeln("parsing ", file);
-            parseFile(inputDir, file, outputDir);
+            parseFile(inputDir, file, outputDir, modulePrefix);
         }
         else
         {
