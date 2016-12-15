@@ -1,0 +1,11 @@
+dependencies:
+  pre:
+    - ./circle.sh install-deps
+  cache_directories:
+    - "~/dlang"
+
+test:
+  override:
+    - ./circle.sh setup-repos
+    - ./circle.sh build-tools
+    - ./circle.sh test_rdmd
