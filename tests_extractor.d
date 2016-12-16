@@ -1,10 +1,10 @@
 #!/usr/bin/env dub
 /+ dub.sdl:
-name "check_phobos"
+name "tests_extractor"
 dependency "libdparse" version="~>0.7.0-beta.2"
 +/
 /*
- * Parses all public unittests that are visible on dlang.org
+ * Parses all public unittests
  * (= annotated with three slashes)
  *
  * Copyright (C) 2016 by D Language Foundation
@@ -144,7 +144,7 @@ void main(string[] args)
 
     if (helpInfo.helpWanted)
     {
-        return defaultGetoptPrinter(`phobos_tests_extractor
+        return defaultGetoptPrinter(`tests_extractor
 Searches the input directory recursively for public unittest blocks, i.e.
 unittest blocks that are annotated with three slashes (///).
 The tests will be extracted as one file for each source file
