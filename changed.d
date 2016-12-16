@@ -399,9 +399,12 @@ Please supply a bugzilla version
         {
             // search for raw change files
             alias Repo = Tuple!(string, "path", string, "headline");
-            auto repos = [Repo("dmd", "Language changes"),
+            auto repos = [Repo("dmd", "Compiler changes"),
                           Repo("druntime", "Runtime changes"),
-                          Repo("phobos", "Library changes")];
+                          Repo("phobos", "Library changes"),
+                          Repo("dlang.org", "Language changes"),
+                          Repo("installer", "Installer changes"),
+                          Repo("tools", "Tools changes")];
 
             auto changedRepos = repos
                  .map!(repo => Repo(buildPath("..", repo.path, "changelog"), repo.headline))
