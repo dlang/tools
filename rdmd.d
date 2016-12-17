@@ -101,7 +101,7 @@ int main(string[] args)
         }
         else
         {
-            enforce(false, "Unrecognized option: "~key~value);
+            enforce(false, "Unrecognized option: " ~ key ~ value);
         }
     }
 
@@ -366,7 +366,7 @@ bool inALibrary(string source, string object)
         return true;
 
     foreach(string exclusion; exclusions)
-        if (source.startsWith(exclusion~'.'))
+        if (source.startsWith(exclusion ~ '.'))
             return true;
 
     return false;
@@ -484,9 +484,9 @@ private int rebuild(string root, string fullExe,
     string[] buildTodo()
     {
         auto todo = compilerFlags
-            ~ [ "-of"~fullExeTemp ]
-            ~ [ "-od"~objDir ]
-            ~ [ "-I"~dirName(root) ]
+            ~ [ "-of" ~ fullExeTemp ]
+            ~ [ "-od" ~ objDir ]
+            ~ [ "-I" ~ dirName(root) ]
             ~ [ root ];
         foreach (k, objectFile; myDeps) {
             if(objectFile !is null)
@@ -515,7 +515,7 @@ private int rebuild(string root, string fullExe,
         // regardless of the operating system it's running on.
         std.file.write(rspName, array(map!escapeWindowsArgument(todo)).join(" "));
 
-        todo = [ "@"~rspName ];
+        todo = [ "@" ~ rspName ];
     }
 
     immutable result = run([ compiler ] ~ todo);
@@ -707,9 +707,9 @@ private string[string] getDependencies(string rootModule, string workDir,
 
     // Collect dependencies
     auto depsGetter =
-        // "cd "~shellQuote(rootDir)~" && "
+        // "cd " ~ shellQuote(rootDir) ~ " && "
         [ compiler ] ~ compilerFlags ~
-        ["-v", "-o-", rootModule, "-I"~rootDir];
+        ["-v", "-o-", rootModule, "-I" ~ rootDir];
 
     scope(failure)
     {
@@ -781,7 +781,7 @@ private bool newerThan(string source, SysTime target)
 private @property string helpString()
 {
     return
-"rdmd build "~thisVersion~"
+"rdmd build " ~ thisVersion ~ "
 Usage: rdmd [RDMD AND DMD OPTIONS]... program [PROGRAM OPTIONS]...
 Builds (with dependents) and runs a D program.
 Example: rdmd -release myprog --myprogparm 5
@@ -862,7 +862,7 @@ string makeEvalFile(string todo)
 {
     enum d = __DATE__;
     enum month = d[0 .. 3],
-        day = d[4] == ' ' ? "0"~d[5] : d[4 .. 6],
+        day = d[4] == ' ' ? "0" ~ d[5] : d[4 .. 6],
         year = d[7 .. $];
     enum monthNum
         = month == "Jan" ? "01"
@@ -878,8 +878,8 @@ string makeEvalFile(string todo)
         : month == "Nov" ? "11"
         : month == "Dec" ? "12"
         : "";
-    static assert(month != "", "Unknown month "~month);
-    return year[0]~year[1 .. $]~monthNum~day;
+    static assert(month != "", "Unknown month " ~ month);
+    return year[0] ~ year[1 .. $] ~ monthNum ~ day;
 }
 
 string which(string path)
