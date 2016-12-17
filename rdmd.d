@@ -228,11 +228,14 @@ int main(string[] args)
 
     if (lib)
     {
-        // When building libraries, DMD does not generate object files.
-        // Instead, it uses the -od parameter as the location for the library file.
-        // Thus, override objDir (which is normally a temporary directory)
-        // to be the target output directory.
-        objDir = exe.dirName;
+        // When using -lib, the behavior of the DMD -of switch
+        // changes: instead of being relative to the current
+        // directory, it becomes relative to the output directory.
+        // When building libraries, DMD does not generate any object
+        // files; thus, we can override objDir (which is normally a
+        // temporary directory) to be the current directory, so that
+        // the relative -of path becomes correct.
+        objDir = ".";
     }
 
     // Fetch dependencies

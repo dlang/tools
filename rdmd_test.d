@@ -28,11 +28,13 @@ version (Posix)
 {
     enum objExt = ".o";
     enum binExt = "";
+    enum libExt = ".a";
 }
 else version (Windows)
 {
     enum objExt = ".obj";
     enum binExt = ".exe";
+    enum libExt = ".lib";
 }
 else
 {
@@ -384,6 +386,44 @@ void runTests()
     res = execute([rdmdApp, compilerSwitch, "--tmpdir=" ~ tmpdir, forceSrc, "--build-only"]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("compile_force_src"));
+    }
+
+    /* RDMD fails at building a lib when the source is in a subdir: https://issues.dlang.org/show_bug.cgi?id=14296 */
+    {
+    TmpDir srcDir = "rdmdTest";
+    string srcName = srcDir.buildPath("test.d");
+    std.file.write(srcName, `void fun() {}`);
+
+    res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-lib", srcName]);
+    assert(res.status == 0, res.output);
+    assert(exists(srcDir.buildPath("test" ~ libExt)));
+    }
+
+    // Test with -od
+    {
+    TmpDir srcDir = "rdmdTestSrc";
+    TmpDir libDir = "rdmdTestLib";
+
+    string srcName = srcDir.buildPath("test.d");
+    std.file.write(srcName, `void fun() {}`);
+
+    res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-lib", "-od" ~ libDir, srcName]);
+    assert(res.status == 0, res.output);
+    assert(exists(libDir.buildPath("test" ~ libExt)));
+    }
+
+    // Test with -of
+    {
+    TmpDir srcDir = "rdmdTestSrc";
+    TmpDir libDir = "rdmdTestLib";
+
+    string srcName = srcDir.buildPath("test.d");
+    std.file.write(srcName, `void fun() {}`);
+    string libName = libDir.buildPath("libtest" ~ libExt);
+
+    res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-lib", "-of" ~ libName, srcName]);
+    assert(res.status == 0, res.output);
+    assert(exists(libName));
     }
 }
 
