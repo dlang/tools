@@ -425,6 +425,17 @@ void runTests()
     assert(res.status == 0, res.output);
     assert(exists(libName));
     }
+
+    /* rdmd --build-only --force -c main.d fails: ./main: No such file or directory: https://issues.dlang.org/show_bug.cgi?id=16962 */
+
+    TmpDir srcDir = "rdmdTest";
+    string srcName = srcDir.buildPath("test.d");
+    std.file.write(srcName, `void main() {}`);
+    string objName = srcDir.buildPath("test" ~ objExt);
+
+    res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-c", "-of" ~ objName, srcName]);
+    assert(res.status == 0, res.output);
+    assert(exists(objName));
 }
 
 void runConcurrencyTest()
