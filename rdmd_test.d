@@ -355,24 +355,36 @@ void runTests()
     assert(res.status == 0, res.output ~ "\nCan't run with --compiler=" ~ fullCompilerPath);
     assert(res.output.canFind("compile_force_src"));
 
-    /* tmpdir */
+    // Create an empty temporary directory and clean it up when exiting scope
+    static struct TmpDir
+    {
+        string name;
+        this(string name)
+        {
+            this.name = name;
+            if (exists(name)) rmdirRecurse(name);
+            mkdir(name);
+        }
+        @disable this(this);
+        ~this()
+        {
+            import core.thread;
+            Thread.sleep(100.msecs); // Hack around Windows locking the directory
+            rmdirRecurse(name);
+        }
+        alias name this;
+    }
 
+    /* tmpdir */
+    {
     res = execute([rdmdApp, compilerSwitch, forceSrc, "--build-only"]);
     assert(res.status == 0, res.output);
 
-    auto tmpdir = "rdmdTest";
-    if (exists(tmpdir)) rmdirRecurse(tmpdir);
-    mkdir(tmpdir);
-    scope(exit)
-    {
-        import core.thread;
-        Thread.sleep(100.msecs); // Hack around Windows locking the directory
-        rmdirRecurse(tmpdir);
-    }
-
+    TmpDir tmpdir = "rdmdTest";
     res = execute([rdmdApp, compilerSwitch, "--tmpdir=" ~ tmpdir, forceSrc, "--build-only"]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("compile_force_src"));
+    }
 }
 
 void runConcurrencyTest()
