@@ -429,7 +429,7 @@ void runTests()
     }
 
     /* rdmd --build-only --force -c main.d fails: ./main: No such file or directory: https://issues.dlang.org/show_bug.cgi?id=16962 */
-
+    {
     TmpDir srcDir = "rdmdTest";
     string srcName = srcDir.buildPath("test.d");
     std.file.write(srcName, `void main() {}`);
@@ -438,6 +438,26 @@ void runTests()
     res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-c", "-of" ~ objName, srcName]);
     assert(res.status == 0, res.output);
     assert(exists(objName));
+    }
+
+    /* [REG2.072.0] pragma(lib) is broken with rdmd: https://issues.dlang.org/show_bug.cgi?id=16978 */
+
+    version (linux)
+    {
+    TmpDir srcDir = "rdmdTest";
+    string libSrcName = srcDir.buildPath("libfun.d");
+    std.file.write(libSrcName, `extern(C) void fun() {}`);
+
+    res = execute([rdmdApp, compilerSwitch, "--build-only", "-lib", libSrcName]);
+    assert(res.status == 0, res.output);
+    assert(exists(srcDir.buildPath("libfun" ~ libExt)));
+
+    string mainSrcName = srcDir.buildPath("main.d");
+    std.file.write(mainSrcName, `extern(C) void fun(); pragma(lib, "fun"); void main() { fun(); }`);
+
+    res = execute([rdmdApp, compilerSwitch, "-L-L" ~ srcDir, mainSrcName]);
+    assert(res.status == 0, res.output);
+    }
 }
 
 void runConcurrencyTest()
