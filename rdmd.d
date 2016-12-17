@@ -205,6 +205,9 @@ int main(string[] args)
     assert(argsBeforeProgram.length >= 1);
     auto compilerFlags = argsBeforeProgram[1 .. $];
 
+    // Assume --build-only for -c and -lib.
+    buildOnly |= compilerFlags.canFind!(flag => flag == "-c" || flag == "-lib");
+
     bool lib = compilerFlags.canFind("-lib");
     string outExt = lib ? libExt : binExt;
 

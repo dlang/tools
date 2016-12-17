@@ -435,7 +435,7 @@ void runTests()
     std.file.write(srcName, `void main() {}`);
     string objName = srcDir.buildPath("test" ~ objExt);
 
-    res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-c", "-of" ~ objName, srcName]);
+    res = execute([rdmdApp, compilerSwitch, "--force", "-c", "-of" ~ objName, srcName]);
     assert(res.status == 0, res.output);
     assert(exists(objName));
     }
@@ -448,7 +448,7 @@ void runTests()
     string libSrcName = srcDir.buildPath("libfun.d");
     std.file.write(libSrcName, `extern(C) void fun() {}`);
 
-    res = execute([rdmdApp, compilerSwitch, "--build-only", "-lib", libSrcName]);
+    res = execute([rdmdApp, compilerSwitch, "-lib", libSrcName]);
     assert(res.status == 0, res.output);
     assert(exists(srcDir.buildPath("libfun" ~ libExt)));
 
