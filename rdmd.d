@@ -698,6 +698,9 @@ private string[string] getDependencies(string rootModule, string workDir,
 
     immutable rootDir = dirName(rootModule);
 
+    // Filter out -lib. With -o-, it will create an empty library file.
+    compilerFlags = compilerFlags.filter!(flag => flag != "-lib").array();
+
     // Collect dependencies
     auto depsGetter =
         // "cd "~shellQuote(rootDir)~" && "

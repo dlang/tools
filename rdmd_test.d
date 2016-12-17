@@ -393,10 +393,12 @@ void runTests()
     TmpDir srcDir = "rdmdTest";
     string srcName = srcDir.buildPath("test.d");
     std.file.write(srcName, `void fun() {}`);
+    if (exists("test" ~ libExt)) remove("test" ~ libExt);
 
     res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-lib", srcName]);
     assert(res.status == 0, res.output);
     assert(exists(srcDir.buildPath("test" ~ libExt)));
+    assert(!exists("test" ~ libExt));
     }
 
     // Test with -od
