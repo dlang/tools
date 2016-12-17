@@ -370,8 +370,11 @@ void runTests()
         @disable this(this);
         ~this()
         {
-            import core.thread;
-            Thread.sleep(100.msecs); // Hack around Windows locking the directory
+            version (Windows)
+            {
+                import core.thread;
+                Thread.sleep(100.msecs); // Hack around Windows locking the directory
+            }
             rmdirRecurse(name);
         }
         alias name this;
