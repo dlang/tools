@@ -435,7 +435,7 @@ void runTests()
     std.file.write(srcName, `void main() {}`);
     string objName = srcDir.buildPath("test" ~ objExt);
 
-    res = execute([rdmdApp, compilerSwitch, "--force", "-c", "-of" ~ objName, srcName]);
+    res = execute([rdmdApp, compilerSwitch, "--force", "-c", srcName]);
     assert(res.status == 0, res.output);
     assert(exists(objName));
     }

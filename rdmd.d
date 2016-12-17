@@ -205,11 +205,12 @@ int main(string[] args)
     assert(argsBeforeProgram.length >= 1);
     auto compilerFlags = argsBeforeProgram[1 .. $];
 
-    // Assume --build-only for -c and -lib.
-    buildOnly |= compilerFlags.canFind!(flag => flag == "-c" || flag == "-lib");
-
+    bool obj = compilerFlags.canFind("-c");
     bool lib = compilerFlags.canFind("-lib");
-    string outExt = lib ? libExt : binExt;
+    string outExt = lib ? libExt : obj ? objExt : binExt;
+
+    // Assume --build-only for -c and -lib.
+    buildOnly |= obj || lib;
 
     // --build-only implies the user would like a binary in the program's directory
     if (buildOnly && !exe.ptr)
