@@ -33,14 +33,27 @@ class TestVisitor : ASTVisitor
     ubyte[] sourceCode;
     string moduleName;
 
-    this(string outFileName, string moduleName, ubyte[] sourceCode)
+    this(File outFile, ubyte[] sourceCode)
     {
-        this.outFile = File(outFileName, "w");
-        this.moduleName = moduleName;
+        this.outFile = outFile;
         this.sourceCode = sourceCode;
     }
 
     alias visit = ASTVisitor.visit;
+
+    override void visit(const Module m)
+    {
+        if (m.moduleDeclaration !is null)
+        {
+            moduleName = m.moduleDeclaration.moduleName.identifiers.map!(i => i.text).join(".");
+        }
+        else
+        {
+            // fallback: convert the file path to its module path, e.g. std/uni.d -> std.uni
+            moduleName = outFile.name.replace(".d", "").replace(dirSeparator, ".").replace(".package", "");
+        }
+        m.accept(this);
+    }
 
     override void visit(const Unittest u)
     {
@@ -74,35 +87,31 @@ class TestVisitor : ASTVisitor
     }
 }
 
-void parseTests(string fileName, string moduleName, string outFileName)
+void parseTests(File inFile, File outFile)
 {
     import dparse.lexer;
     import dparse.parser;
     import dparse.rollback_allocator;
     import std.array : uninitializedArray;
 
-    assert(exists(fileName));
-
-    File f = File(fileName);
-
-    if (f.size == 0)
+    if (inFile.size == 0)
     {
-        warningf("%s is empty", fileName);
+        warningf("%s is empty", inFile.name);
         return;
     }
 
-    ubyte[] sourceCode = uninitializedArray!(ubyte[])(to!size_t(f.size));
-    f.rawRead(sourceCode);
+    ubyte[] sourceCode = uninitializedArray!(ubyte[])(to!size_t(inFile.size));
+    inFile.rawRead(sourceCode);
     LexerConfig config;
     StringCache cache = StringCache(StringCache.defaultBucketCount);
     auto tokens = getTokensForParser(sourceCode, config, &cache);
     RollbackAllocator rba;
-    Module m = parseModule(tokens.array, fileName, &rba);
-    auto visitor = new TestVisitor(outFileName, moduleName, sourceCode);
+    Module m = parseModule(tokens.array, inFile.name, &rba);
+    auto visitor = new TestVisitor(outFile, sourceCode);
     visitor.visit(m);
 }
 
-void parseFile(string inputDir, string fileName, string outputDir, string modulePrefix = "")
+void parseFile(string inputDir, string fileName, string outputDir)
 {
     import std.path : buildPath, dirSeparator, buildNormalizedPath;
 
@@ -116,20 +125,17 @@ void parseFile(string inputDir, string fileName, string outputDir, string module
             fileNameNormalized[0 .. dirSeparator.length] == dirSeparator)
         fileNameNormalized = fileNameNormalized[dirSeparator.length .. $];
 
-    // convert the file path to its module path, e.g. std/uni.d -> std.uni
-    string moduleName = modulePrefix ~ fileNameNormalized.replace(".d", "")
-                                                         .replace(dirSeparator, ".")
-                                                         .replace(".package", "");
-
     // convert the file path to a nice output file, e.g. std/uni.d -> std_uni.d
     string outName = fileNameNormalized.replace(dirSeparator, "_");
 
-    parseTests(fileName, moduleName, buildPath(outputDir, outName));
+    assert(exists(fileName));
+    parseTests(File(fileName, "r"), File(buildPath(outputDir, outName), "w"));
 }
 
 void main(string[] args)
 {
     import std.getopt;
+    import std.variant : Algebraic, visit;
 
     string inputDir;
     string outputDir = "./out";
@@ -138,8 +144,7 @@ void main(string[] args)
 
     auto helpInfo = getopt(args, config.required,
             "inputdir|i", "Folder to start the recursive search for unittest blocks (can be a single file)", &inputDir,
-            "outputdir|o", "Folder to which the extracted test files should be saved", &outputDir,
-            "moduleprefix", "Module prefix to use for all files (e.g. std.algorithm)", &modulePrefix,
+            "outputdir|o", "Folder to which the extracted test files should be saved (stdout for a single file)", &outputDir,
             "ignore", "Comma-separated list of files to exclude (partial matching is supported)", &ignoredFilesStr);
 
     if (helpInfo.helpWanted)
@@ -153,7 +158,7 @@ to in the output directory.
     }
 
     inputDir = inputDir.asNormalizedPath.array;
-    outputDir = outputDir.asNormalizedPath.array;
+    Algebraic!(string, File) outputLocation = cast(string) outputDir.asNormalizedPath.array;
 
     if (!exists(outputDir))
         mkdir(outputDir);
@@ -168,6 +173,11 @@ to in the output directory.
     {
         files = [DirEntry(inputDir)];
         inputDir = ".";
+        // for single files use stdout by default
+        if (outputDir == "./out")
+        {
+            outputLocation = stdout;
+        }
     }
     else
     {
@@ -181,12 +191,15 @@ to in the output directory.
     {
         if (!ignoringFiles.any!(x => file.name.canFind(x)))
         {
-            writeln("parsing ", file);
-            parseFile(inputDir, file, outputDir, modulePrefix);
+            stderr.writeln("parsing ", file);
+            outputLocation.visit!(
+                (string outputFolder) => parseFile(inputDir, file, outputFolder),
+                (File outputFile) => parseTests(File(file.name, "r"), outputFile),
+            );
         }
         else
         {
-            writeln("ignoring ", file);
+            stderr.writeln("ignoring ", file);
         }
     }
 }
