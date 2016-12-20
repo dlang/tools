@@ -47,7 +47,11 @@ class TestVisitor : ASTVisitor
                 if (lastFun !is null && !hasPublicUnittest)
                     triggerError(lastFun);
 
-                lastFun = cast(FunctionDeclaration) decl.functionDeclaration;
+                if (hasDocComment(decl.functionDeclaration))
+                    lastFun = cast(FunctionDeclaration) decl.functionDeclaration;
+                else
+                    lastFun = null;
+
                 //debug {
                     //lastFun.name.text.writeln;
                 //}
@@ -116,6 +120,11 @@ private:
             return true;
 
         return false;
+    }
+
+    bool hasDocComment(Decl)(const Decl decl)
+    {
+        return decl.comment.length > 0;
     }
 
     bool isPublic(const Attribute[] attrs)
