@@ -1,0 +1,16 @@
+dependency "libdparse" version="~>0.7.0-beta.2"
+name "styles"
+targetType "executable"
+sourceFiles "utils.d"
+
+configuration "has_public_example" {
+	name "has_public_example"
+	targetName "has_public_example"
+	sourceFiles "has_public_example.d"
+}
+
+configuration "tests_extractor" {
+	name "test_extractor"
+	targetName "test_extractor"
+	sourceFiles "tests_extractor.d"
+}
