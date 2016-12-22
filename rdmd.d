@@ -243,26 +243,6 @@ int main(string[] args)
         objDir = exe.dirName;
     }
 
-    // Fetch dependencies
-    const myDeps = compileRootAndGetDeps(root, workDir, objDir, compilerFlags,
-        addStubMain);
-
-    // --makedepend mode. Just print dependencies and exit.
-    if (makeDepend)
-    {
-        writeDeps(exe, root, myDeps, stdout);
-        return 0;
-    }
-
-    // --makedepfile mode. Print dependencies to a file and continue.
-    // This is similar to GCC's -MF option, very useful to update the
-    // dependencies file and compile in one go:
-    // -include .deps.mak
-    // prog:
-    //      rdmd --makedepfile=.deps.mak --build-only prog.d
-    if (makeDepFile !is null)
-        writeDeps(exe, root, myDeps, File(makeDepFile, "w"));
-
     // Compute executable name, check for freshness, rebuild
     /*
       We need to be careful about using -o. Normally the generated
@@ -298,6 +278,26 @@ int main(string[] args)
         yap("stat ", buildWitness);
         lastBuildTime = buildWitness.timeLastModified(SysTime.min);
     }
+
+    // Fetch dependencies
+    const myDeps = compileRootAndGetDeps(root, workDir, objDir, compilerFlags,
+        addStubMain, lastBuildTime);
+
+    // --makedepend mode. Just print dependencies and exit.
+    if (makeDepend)
+    {
+        writeDeps(exe, root, myDeps, stdout);
+        return 0;
+    }
+
+    // --makedepfile mode. Print dependencies to a file and continue.
+    // This is similar to GCC's -MF option, very useful to update the
+    // dependencies file and compile in one go:
+    // -include .deps.mak
+    // prog:
+    //      rdmd --makedepfile=.deps.mak --build-only prog.d
+    if (makeDepFile !is null)
+        writeDeps(exe, root, myDeps, File(makeDepFile, "w"));
 
     // Have at it
     if (chain(root.only, myDeps.byKey).anyNewerThan(lastBuildTime))
@@ -563,7 +563,7 @@ private int rebuild(string root, string fullExe,
 // Run a program optionally writing the command line first
 // If "replace" is true and the OS supports it, replace the current process.
 
-private int run(string[] args, string output = null, bool replace = false)
+private int run(const string[] args, string output = null, bool replace = false)
 {
     import std.conv;
     yap(replace ? "exec " : "spawn ", args.text);
@@ -601,10 +601,10 @@ private int exec(string[] args)
 // rootModule.
 
 private string[string] compileRootAndGetDeps(string rootModule, string workDir,
-        string objDir, string[] compilerFlags, bool addStubMain)
+        string objDir, string[] compilerFlags, bool addStubMain,
+        SysTime lastBuildTime)
 {
     immutable depsFilename = buildPath(workDir, "rdmd.deps");
-
     string[string] readDepsFile()
     {
         string d2obj(string dfile)
@@ -695,6 +695,14 @@ private string[string] compileRootAndGetDeps(string rootModule, string workDir,
         return result;
     }
 
+    immutable rootDir = dirName(rootModule);
+    const compileCmd = [ compiler ] ~ compilerFlags ~ [
+        "-c",
+        "-of" ~ buildPath(objDir, rootModule.baseName(".d") ~ objExt),
+        rootModule,
+        "-I" ~ rootDir
+    ];
+
     // Check if the old dependency file is fine
     if (!force)
     {
@@ -708,23 +716,26 @@ private string[string] compileRootAndGetDeps(string rootModule, string workDir,
             bool mustRebuildDeps = allDeps.anyNewerThan(depsT);
             if (!mustRebuildDeps)
             {
-                // Cool, we're in good shape
+                /* Cool, we're in good shape. Don't need to read dependencies.
+                Still may have to compile the root module. This can happen
+                when the user deletes the executable. */
+                if (lastBuildTime < depsT)
+                {
+                    immutable exitCode = run(compileCmd);
+                    if (exitCode)
+                    {
+                        stderr.writefln("Failed: %s", compileCmd);
+                        exit(exitCode);
+                    }
+                }
                 return deps;
             }
             // Fall through to rebuilding the deps file
         }
     }
 
-    immutable rootDir = dirName(rootModule);
-
     // Collect dependencies
-    auto depsGetter = [ compiler ] ~ compilerFlags ~ [
-        "-v",
-        "-c",
-        "-of" ~ buildPath(objDir, rootModule.baseName(".d") ~ objExt),
-        rootModule,
-        "-I" ~ rootDir
-    ];
+    auto depsGetter = compileCmd ~ "-v";
 
     // Need to add void main(){}?
     if (addStubMain)
