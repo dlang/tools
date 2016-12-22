@@ -3,6 +3,7 @@
 *.exe
 *.tag
 *.pdb
+.dub
 
 /generated
 GNUmakefile
