@@ -20,7 +20,6 @@ bool hadError;
 
 class TestVisitor : ASTVisitor
 {
-
     this(string fileName, ubyte[] sourceCode)
     {
         this.fileName = fileName;
@@ -31,7 +30,7 @@ class TestVisitor : ASTVisitor
 
     override void visit(const Module mod)
     {
-        FunctionDeclaration lastFun;
+        Declaration lastDecl;
         bool hasPublicUnittest;
 
         foreach (decl; mod.declarations)
@@ -39,92 +38,72 @@ class TestVisitor : ASTVisitor
             if (!isPublic(decl.attributes))
                 continue;
 
-            if (decl.functionDeclaration !is null)
+            if (decl.functionDeclaration !is null || decl.templateDeclaration !is null)
             {
-                if (hasDitto(decl.functionDeclaration))
+                if (lastDecl !is null &&
+                    (hasDitto(decl.functionDeclaration) || hasDitto(decl.templateDeclaration)))
                     continue;
 
-                if (lastFun !is null && !hasPublicUnittest)
-                    triggerError(lastFun);
+                if (lastDecl !is null && !hasPublicUnittest)
+                    triggerError(lastDecl);
 
-                if (hasDocComment(decl.functionDeclaration))
-                    lastFun = cast(FunctionDeclaration) decl.functionDeclaration;
+                if (hasDdocHeader(sourceCode, decl))
+                    lastDecl = cast(Declaration) decl;
                 else
-                    lastFun = null;
+                    lastDecl = null;
 
-                //debug {
-                    //lastFun.name.text.writeln;
-                //}
                 hasPublicUnittest = false;
                 continue;
             }
 
             if (decl.unittest_ !is null)
             {
-                hasPublicUnittest |= validate(lastFun, decl);
+                // ignore module header unittest blocks or already validated functions
+                hasPublicUnittest |= lastDecl is null || hasDdocHeader(sourceCode, decl);
                 continue;
             }
 
             // ignore dittoed template declarations
-            if (decl.templateDeclaration !is null)
-                if (hasDitto(decl.templateDeclaration))
-                    continue;
-
-            // ignore dittoed struct declarations
-            if (decl.structDeclaration !is null)
-                if (hasDitto(decl.structDeclaration))
+            if (decl.classDeclaration !is null && hasDitto(decl.classDeclaration)
+                || decl.structDeclaration !is null && hasDitto(decl.structDeclaration))
                     continue;
 
             // ran into struct or something else -> reset
-            if (lastFun !is null && !hasPublicUnittest)
-                triggerError(lastFun);
+            if (lastDecl !is null && !hasPublicUnittest)
+                triggerError(lastDecl);
 
-            lastFun = null;
+            lastDecl = null;
         }
 
-        if (lastFun !is null && !hasPublicUnittest)
-            triggerError(lastFun);
+        if (lastDecl !is null && !hasPublicUnittest)
+            triggerError(lastDecl);
     }
 
 private:
     string fileName;
     ubyte[] sourceCode;
 
-    void triggerError(const FunctionDeclaration decl)
+    void triggerError(const Declaration decl)
     {
-        stderr.writefln("%s:%d %s has no public unittest", fileName, decl.name.line, decl.name.text);
+        if (auto fn = decl.functionDeclaration)
+            stderr.writefln("function %s in %s:%d has no public unittest", fn.name.text, fileName, fn.name.line);
+        if (auto tpl = decl.templateDeclaration)
+            stderr.writefln("template %s in %s:%d has no public unittest", tpl.name.text, fileName, tpl.name.line);
         hadError = true;
-    }
-
-    bool validate(const FunctionDeclaration lastFun, const Declaration decl)
-    {
-        // ignore module header unittest blocks or already validated functions
-        if (lastFun is null)
-            return true;
-
-        if (!hasUnittestDdocHeader(sourceCode, decl))
-            return false;
-
-        return true;
     }
 
     bool hasDitto(Decl)(const Decl decl)
     {
+        if (decl is null)
+            return false;
+
         if (decl.comment is null)
             return false;
 
-        if (decl.comment == "ditto")
-            return true;
-
-        if (decl.comment == "Ditto")
+        if (decl.comment.among!("ditto", "Ditto"))
             return true;
 
         return false;
-    }
-
-    bool hasDocComment(Decl)(const Decl decl)
-    {
-        return decl.comment.length > 0;
     }
 
     bool isPublic(const Attribute[] attrs)
@@ -135,9 +114,8 @@ private:
 
         enum tokPrivate = tok!"private", tokProtected = tok!"protected", tokPackage = tok!"package";
 
-        if (attrs !is null)
-            if (attrs.map!`a.attribute`.any!(x => x == tokPrivate || x == tokProtected || x == tokPackage))
-                return false;
+        if (attrs.map!`a.attribute`.any!(x => x == tokPrivate || x == tokProtected || x == tokPackage))
+            return false;
 
         return true;
     }
@@ -150,7 +128,7 @@ void parseFile(string fileName)
     import dparse.rollback_allocator : RollbackAllocator;
     import std.array : uninitializedArray;
 
-    auto inFile = File(fileName, "r");
+    auto inFile = File(fileName);
     if (inFile.size == 0)
         warningf("%s is empty", inFile.name);
 

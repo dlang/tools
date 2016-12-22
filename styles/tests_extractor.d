@@ -54,7 +54,7 @@ class TestVisitor : ASTVisitor
     {
         if (decl.unittest_ !is null)
         {
-           if (hasUnittestDdocHeader(sourceCode, decl))
+           if (hasDdocHeader(sourceCode, decl))
                 print(decl.unittest_);
         }
     }
@@ -123,7 +123,7 @@ void parseFileDir(string inputDir, string fileName, string outputDir)
     // convert the file path to a nice output file, e.g. std/uni.d -> std_uni.d
     string outName = fileNameNormalized.replace(dirSeparator, "_");
 
-    parseFile(File(fileName, "r"), File(buildPath(outputDir, outName), "w"));
+    parseFile(File(fileName), File(buildPath(outputDir, outName), "w"));
 }
 
 void main(string[] args)
