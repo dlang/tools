@@ -161,10 +161,9 @@ void main(string[] args)
 
     if (helpInfo.helpWanted)
     {
-        return defaultGetoptPrinter(`example_validator
-Searches the input directory recursively to ensure that all public functions
-have a public unittest blocks, i.e.
-unittest blocks that are annotated with three slashes (///).
+        return defaultGetoptPrinter(`has_public_example
+Searches the input directory recursively to ensure that all public, ddoced functions
+have at least one public, ddoced unittest blocks.
 `, helpInfo.options);
     }
 
