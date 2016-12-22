@@ -11,99 +11,78 @@
 
 import dparse.ast;
 import std.algorithm;
+import std.ascii : whitespace;
 import std.conv : to;
 import std.experimental.logger;
 import std.range;
 import std.stdio : File;
 
-bool hasUnittestDdocHeader(ubyte[] sourceCode, const Declaration decl)
+bool hasDdocHeader(const(ubyte)[] sourceCode, const Declaration decl)
 {
     import std.algorithm.comparison : min;
-    import std.ascii : whitespace;
-    import std.string : indexOf;
 
-    const Unittest u = decl.unittest_;
-    size_t firstPos = getAttributesStartLocation(sourceCode, decl.attributes, u.location);
+    bool hasComment;
+    size_t firstPos = size_t.max;
+
+    if (decl.unittest_ !is null) 
+    {
+        firstPos = decl.unittest_.location;
+        hasComment = decl.unittest_.comment.length > 0;
+    }
+    else if (decl.functionDeclaration !is null) 
+    {
+        // skip the return type
+        firstPos = sourceCode.skipPreviousWord(decl.functionDeclaration.name.index);
+        if (auto stClasses = decl.functionDeclaration.storageClasses)
+            firstPos = min(firstPos, stClasses[0].token.index);
+        hasComment = decl.functionDeclaration.comment.length > 0;
+    }
+    else if (decl.templateDeclaration !is null) 
+    {
+        // skip the word `template`
+        firstPos = sourceCode.skipPreviousWord(decl.templateDeclaration.name.index);
+        hasComment = decl.templateDeclaration.comment.length > 0;
+    }
+
+    // libdparse will put any ddoc comment with at least one character in the comment field
+    if (hasComment)
+        return true;
+
+    firstPos = min(firstPos, getAttributesStartLocation(decl.attributes));
 
     // scan the previous line for ddoc header -> skip to last real character
     auto prevLine = sourceCode[0 .. firstPos].retro.find!(c => whitespace.countUntil(c) < 0);
 
-    auto ddocCommentSlashes = prevLine.until('\n').count('/');
-
-    // only look for comments annotated with three slashes (///)
-    if (ddocCommentSlashes == 3)
-        return true;
-
-    if (u.comment !is null)
-    {
-        // detect other common comment forms - be careful: reverse form
-        // to be public it must start with either /** or /++
-        auto lastTwoSymbols = prevLine.take(2);
-        if (lastTwoSymbols.equal("/*"))
-            return isDdocCommentLexer!'*'(prevLine.drop(2));
-        if (prevLine.take(2).equal("/+"))
-            return isDdocCommentLexer!'+'(prevLine.drop(2));
-    }
-	return false;
+    // if there is no comment annotation, only three possible cases remain.
+    // one line ddoc: ///, multi-line comments: /** */ or /++ +/
+    return prevLine.filter!(c => !whitespace.canFind(c)).startsWith("///", "/+++/", "/***/") > 0;
 }
 
-private auto isDdocCommentLexer(char symbol, Range)(Range r)
+/**
+The location of unittest token is known, but there might be attributes preceding it.
+*/
+private size_t getAttributesStartLocation(const Attribute[] attrs)
 {
-    size_t symbolSeen;
-    foreach (s; r)
-    {
-        switch (s)
-        {
-            case symbol:
-                symbolSeen++;
-                break;
-            case '/':
-                if (symbolSeen > 0)
-                    return symbolSeen > 1;
-                break;
-            default:
-                symbolSeen = 0;
-        }
-    }
-    warning("invalid comment structure detected");
-    return false;
-}
+    import dparse.lexer : tok;
 
-size_t getAttributesStartLocation(ubyte[] sourceCode, const Attribute[] attrs, size_t firstPos)
-{
-	import dparse.lexer : tok;
-	if (attrs.length == 0)
-	    return firstPos;
+    if (attrs.length == 0)
+        return size_t.max;
 
-    // shortcut if atAttribute is the first attribute
     if (attrs[0].atAttribute !is null)
-        return min(firstPos, attrs[0].atAttribute.startLocation);
+        return attrs[0].atAttribute.startLocation;
 
-    foreach_reverse (attr; attrs)
-    {
-        if (attr.atAttribute !is null)
-            firstPos = min(firstPos, attr.atAttribute.startLocation);
+    if (attrs[0].attribute != tok!"")
+        return attrs[0].attribute.index;
 
-        // if an attribute is defined we can safely jump over it
-        if (attr.attribute.type != tok!"")
-        {
-            auto str = tokenRep(attr.attribute);
-            auto whitespaceLength = sourceCode[0 .. firstPos].retro.countUntil(str.retro);
-            firstPos -= str.length + whitespaceLength;
-        }
-    }
-    return firstPos;
+    return size_t.max;
 }
 
-// from dparse.formatter
-import dparse.lexer : str, Token, IdType;
-
-string tokenRep(Token t)
+private size_t skipPreviousWord(const(ubyte)[] sourceCode, size_t index)
 {
-    return t.text.length ? t.text : tokenRep(t.type);
-}
-
-string tokenRep(IdType t)
-{
-    return t ? str(t) : "";
+    return index - sourceCode[0 .. index]
+                  .retro
+                  .enumerate
+                  .find!(c => !whitespace.canFind(c.value))
+                  .find!(c => whitespace.canFind(c.value))
+                  .front.index;
 }
