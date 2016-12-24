@@ -28,11 +28,13 @@ version (Posix)
 {
     enum objExt = ".o";
     enum binExt = "";
+    enum libExt = ".a";
 }
 else version (Windows)
 {
     enum objExt = ".obj";
     enum binExt = ".exe";
+    enum libExt = ".lib";
 }
 else
 {
@@ -355,24 +357,110 @@ void runTests()
     assert(res.status == 0, res.output ~ "\nCan't run with --compiler=" ~ fullCompilerPath);
     assert(res.output.canFind("compile_force_src"));
 
-    /* tmpdir */
-
-    res = execute([rdmdApp, compilerSwitch, forceSrc, "--build-only"]);
-    assert(res.status == 0, res.output);
-
-    auto tmpdir = "rdmdTest";
-    if (exists(tmpdir)) rmdirRecurse(tmpdir);
-    mkdir(tmpdir);
-    scope(exit)
+    // Create an empty temporary directory and clean it up when exiting scope
+    static struct TmpDir
     {
-        import core.thread;
-        Thread.sleep(100.msecs); // Hack around Windows locking the directory
-        rmdirRecurse(tmpdir);
+        string name;
+        this(string name)
+        {
+            this.name = name;
+            if (exists(name)) rmdirRecurse(name);
+            mkdir(name);
+        }
+        @disable this(this);
+        ~this()
+        {
+            version (Windows)
+            {
+                import core.thread;
+                Thread.sleep(100.msecs); // Hack around Windows locking the directory
+            }
+            rmdirRecurse(name);
+        }
+        alias name this;
     }
 
-    res = execute([rdmdApp, compilerSwitch, "--tmpdir=" ~ tmpdir, forceSrc, "--build-only"]);
-    assert(res.status == 0, res.output);
-    assert(res.output.canFind("compile_force_src"));
+    /* tmpdir */
+    {
+        res = execute([rdmdApp, compilerSwitch, forceSrc, "--build-only"]);
+        assert(res.status == 0, res.output);
+
+        TmpDir tmpdir = "rdmdTest";
+        res = execute([rdmdApp, compilerSwitch, "--tmpdir=" ~ tmpdir, forceSrc, "--build-only"]);
+        assert(res.status == 0, res.output);
+        assert(res.output.canFind("compile_force_src"));
+    }
+
+    /* RDMD fails at building a lib when the source is in a subdir: https://issues.dlang.org/show_bug.cgi?id=14296 */
+    {
+        TmpDir srcDir = "rdmdTest";
+        string srcName = srcDir.buildPath("test.d");
+        std.file.write(srcName, `void fun() {}`);
+        if (exists("test" ~ libExt)) remove("test" ~ libExt);
+
+        res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-lib", srcName]);
+        assert(res.status == 0, res.output);
+        assert(exists(srcDir.buildPath("test" ~ libExt)));
+        assert(!exists("test" ~ libExt));
+    }
+
+    // Test with -od
+    {
+        TmpDir srcDir = "rdmdTestSrc";
+        TmpDir libDir = "rdmdTestLib";
+
+        string srcName = srcDir.buildPath("test.d");
+        std.file.write(srcName, `void fun() {}`);
+
+        res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-lib", "-od" ~ libDir, srcName]);
+        assert(res.status == 0, res.output);
+        assert(exists(libDir.buildPath("test" ~ libExt)));
+    }
+
+    // Test with -of
+    {
+        TmpDir srcDir = "rdmdTestSrc";
+        TmpDir libDir = "rdmdTestLib";
+
+        string srcName = srcDir.buildPath("test.d");
+        std.file.write(srcName, `void fun() {}`);
+        string libName = libDir.buildPath("libtest" ~ libExt);
+
+        res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-lib", "-of" ~ libName, srcName]);
+        assert(res.status == 0, res.output);
+        assert(exists(libName));
+    }
+
+    /* rdmd --build-only --force -c main.d fails: ./main: No such file or directory: https://issues.dlang.org/show_bug.cgi?id=16962 */
+    {
+        TmpDir srcDir = "rdmdTest";
+        string srcName = srcDir.buildPath("test.d");
+        std.file.write(srcName, `void main() {}`);
+        string objName = srcDir.buildPath("test" ~ objExt);
+
+        res = execute([rdmdApp, compilerSwitch, "--force", "-c", srcName]);
+        assert(res.status == 0, res.output);
+        assert(exists(objName));
+    }
+
+    /* [REG2.072.0] pragma(lib) is broken with rdmd: https://issues.dlang.org/show_bug.cgi?id=16978 */
+
+    version (linux)
+    {
+        TmpDir srcDir = "rdmdTest";
+        string libSrcName = srcDir.buildPath("libfun.d");
+        std.file.write(libSrcName, `extern(C) void fun() {}`);
+
+        res = execute([rdmdApp, compilerSwitch, "-lib", libSrcName]);
+        assert(res.status == 0, res.output);
+        assert(exists(srcDir.buildPath("libfun" ~ libExt)));
+
+        string mainSrcName = srcDir.buildPath("main.d");
+        std.file.write(mainSrcName, `extern(C) void fun(); pragma(lib, "fun"); void main() { fun(); }`);
+
+        res = execute([rdmdApp, compilerSwitch, "-L-L" ~ srcDir, mainSrcName]);
+        assert(res.status == 0, res.output);
+    }
 }
 
 void runConcurrencyTest()
