@@ -1,13 +1,10 @@
-#!/usr/bin/env dub
-/+ dub.sdl:
-name "check_phobos"
-dependency "libdparse" version="~>0.7.0-beta.2"
-+/
 /*
  * Parses all public unittests that are visible on dlang.org
  * (= annotated with three slashes)
  *
  * Copyright (C) 2016 by D Language Foundation
+ *
+ * Author: Sebastian Wilzbach
  *
  * Distributed under the Boost Software License, Version 1.0.
  *    (See accompanying file LICENSE_1_0.txt or copy at
@@ -23,9 +20,9 @@ import std.experimental.logger;
 import std.file;
 import std.path;
 import std.range;
-import std.regex;
 import std.stdio;
-import std.string;
+
+import utils;
 
 class TestVisitor : ASTVisitor
 {
@@ -33,25 +30,40 @@ class TestVisitor : ASTVisitor
     ubyte[] sourceCode;
     string moduleName;
 
-    this(string outFileName, string moduleName, ubyte[] sourceCode)
+    this(File outFile, ubyte[] sourceCode)
     {
-        this.outFile = File(outFileName, "w");
-        this.moduleName = moduleName;
+        this.outFile = outFile;
         this.sourceCode = sourceCode;
     }
 
     alias visit = ASTVisitor.visit;
 
-    override void visit(const Unittest u)
+    override void visit(const Module m)
     {
-        // scan the previous line for ddoc header
-        auto prevLine = sourceCode[0 .. u.location].retro;
-        prevLine.findSkip("\n"); // skip forward to the previous line
-        auto ddocCommentSlashes = prevLine.until('\n').count('/');
+        if (m.moduleDeclaration !is null)
+        {
+            moduleName = m.moduleDeclaration.moduleName.identifiers.map!(i => i.text).join(".");
+        }
+        else
+        {
+            // fallback: convert the file path to its module path, e.g. std/uni.d -> std.uni
+            moduleName = outFile.name.replace(".d", "").replace(dirSeparator, ".").replace(".package", "");
+        }
+        m.accept(this);
+    }
 
-        // only look for comments annotated with three slashes (///)
-        if (ddocCommentSlashes != 3)
-            return;
+    override void visit(const Declaration decl)
+    {
+        if (decl.unittest_ !is null)
+        {
+           if (hasDdocHeader(sourceCode, decl))
+                print(decl.unittest_);
+        }
+    }
+
+private:
+    void print(const Unittest u)
+    {
 
         // write the origin source code line
         outFile.writefln("// Line %d", u.line);
@@ -74,35 +86,29 @@ class TestVisitor : ASTVisitor
     }
 }
 
-void parseTests(string fileName, string moduleName, string outFileName)
+void parseFile(File inFile, File outFile)
 {
     import dparse.lexer;
-    import dparse.parser;
-    import dparse.rollback_allocator;
+    import dparse.parser : parseModule;
+    import dparse.rollback_allocator : RollbackAllocator;
     import std.array : uninitializedArray;
 
-    assert(exists(fileName));
+    if (inFile.size == 0)
+        warningf("%s is empty", inFile.name);
 
-    File f = File(fileName);
-
-    if (f.size == 0)
-    {
-        warningf("%s is empty", fileName);
-        return;
-    }
-
-    ubyte[] sourceCode = uninitializedArray!(ubyte[])(to!size_t(f.size));
-    f.rawRead(sourceCode);
+    ubyte[] sourceCode = uninitializedArray!(ubyte[])(to!size_t(inFile.size));
+    inFile.rawRead(sourceCode);
     LexerConfig config;
-    StringCache cache = StringCache(StringCache.defaultBucketCount);
+    auto cache = StringCache(StringCache.defaultBucketCount);
     auto tokens = getTokensForParser(sourceCode, config, &cache);
+
     RollbackAllocator rba;
-    Module m = parseModule(tokens.array, fileName, &rba);
-    auto visitor = new TestVisitor(outFileName, moduleName, sourceCode);
+    auto m = parseModule(tokens.array, inFile.name, &rba);
+    auto visitor = new TestVisitor(outFile, sourceCode);
     visitor.visit(m);
 }
 
-void parseFile(string inputDir, string fileName, string outputDir, string modulePrefix = "")
+void parseFileDir(string inputDir, string fileName, string outputDir)
 {
     import std.path : buildPath, dirSeparator, buildNormalizedPath;
 
@@ -116,20 +122,16 @@ void parseFile(string inputDir, string fileName, string outputDir, string module
             fileNameNormalized[0 .. dirSeparator.length] == dirSeparator)
         fileNameNormalized = fileNameNormalized[dirSeparator.length .. $];
 
-    // convert the file path to its module path, e.g. std/uni.d -> std.uni
-    string moduleName = modulePrefix ~ fileNameNormalized.replace(".d", "")
-                                                         .replace(dirSeparator, ".")
-                                                         .replace(".package", "");
-
     // convert the file path to a nice output file, e.g. std/uni.d -> std_uni.d
     string outName = fileNameNormalized.replace(dirSeparator, "_");
 
-    parseTests(fileName, moduleName, buildPath(outputDir, outName));
+    parseFile(File(fileName), File(buildPath(outputDir, outName), "w"));
 }
 
 void main(string[] args)
 {
     import std.getopt;
+    import std.variant : Algebraic, visit;
 
     string inputDir;
     string outputDir = "./out";
@@ -138,8 +140,7 @@ void main(string[] args)
 
     auto helpInfo = getopt(args, config.required,
             "inputdir|i", "Folder to start the recursive search for unittest blocks (can be a single file)", &inputDir,
-            "outputdir|o", "Folder to which the extracted test files should be saved", &outputDir,
-            "moduleprefix", "Module prefix to use for all files (e.g. std.algorithm)", &modulePrefix,
+            "outputdir|o", "Folder to which the extracted test files should be saved (stdout for a single file)", &outputDir,
             "ignore", "Comma-separated list of files to exclude (partial matching is supported)", &ignoredFilesStr);
 
     if (helpInfo.helpWanted)
@@ -153,7 +154,7 @@ to in the output directory.
     }
 
     inputDir = inputDir.asNormalizedPath.array;
-    outputDir = outputDir.asNormalizedPath.array;
+    Algebraic!(string, File) outputLocation = cast(string) outputDir.asNormalizedPath.array;
 
     if (!exists(outputDir))
         mkdir(outputDir);
@@ -168,6 +169,11 @@ to in the output directory.
     {
         files = [DirEntry(inputDir)];
         inputDir = ".";
+        // for single files use stdout by default
+        if (outputDir == "./out")
+        {
+            outputLocation = stdout;
+        }
     }
     else
     {
@@ -181,12 +187,15 @@ to in the output directory.
     {
         if (!ignoringFiles.any!(x => file.name.canFind(x)))
         {
-            writeln("parsing ", file);
-            parseFile(inputDir, file, outputDir, modulePrefix);
+            stderr.writeln("parsing ", file);
+            outputLocation.visit!(
+                (string outputFolder) => parseFileDir(inputDir, file, outputFolder),
+                (File outputFile) => parseFile(File(file.name, "r"), outputFile),
+            );
         }
         else
         {
-            writeln("ignoring ", file);
+            stderr.writeln("ignoring ", file);
         }
     }
 }
