@@ -299,50 +299,6 @@ void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
     }
 }
 
-string toString(Month month){
-    string s = void;
-    with(Month)
-    final switch (month) {
-        case jan:
-            s = "January";
-            break;
-        case feb:
-            s = "February";
-            break;
-        case mar:
-            s = "March";
-            break;
-        case apr:
-            s = "April";
-            break;
-        case may:
-            s = "May";
-            break;
-        case jun:
-            s = "June";
-            break;
-        case jul:
-            s = "July";
-            break;
-        case aug:
-            s = "August";
-            break;
-        case sep:
-            s = "September";
-            break;
-        case oct:
-            s = "October";
-            break;
-        case nov:
-            s = "November";
-            break;
-        case dec:
-            s = "December";
-            break;
-    }
-    return s;
-}
-
 int main(string[] args)
 {
     auto outputFile = "./changelog.dd";
@@ -350,7 +306,7 @@ int main(string[] args)
 
     auto currDate = Clock.currTime();
     auto nextVersionDate = "%s %02d, %04d"
-        .format(currDate.month.toString, currDate.day, currDate.year);
+        .format(currDate.month.to!string.capitalize, currDate.day, currDate.year);
 
     string previousVersion = "Previous version";
     bool hideTextChanges = false;
