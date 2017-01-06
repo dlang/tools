@@ -363,7 +363,7 @@ Please supply a bugzilla version
                           Repo("tools", "Tools changes")];
 
             auto changedRepos = repos
-                 .map!(repo => Repo(buildPath("..", repo.path, "changelog"), repo.headline))
+                 .map!(repo => Repo(buildPath("..", repo.path, repo.path == "dlang.org" ? "language-changelog" : "changelog"), repo.headline))
                  .filter!(r => r.path.exists)
                  .map!(r => tuple!("headline", "changes")(r.headline, r.path.readTextChanges.array))
                  .filter!(r => !r.changes.empty);
