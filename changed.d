@@ -262,7 +262,7 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
     foreach(change; changes)
     {
         w.formattedWrite("$(LI $(LNAME2 %s,%s)\n", change.basename, change.title);
-        scope(exit) w.put(")\n");
+        scope(exit) w.put(")\n\n");
         w.formattedWrite("    $(P %s  )\n", change.description);
     }
 }
