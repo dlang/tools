@@ -244,7 +244,7 @@ void writeTextChangesHeader(Entries, Writer)(Entries changes, Writer w, string h
     scope(exit) w.put("\n)\n\n");
     foreach(change; changes)
     {
-        w.formattedWrite("$(LI $(RELATIVE_LINK2 %s,%s))\n", change.basename, change.title.escapeParens);
+        w.formattedWrite("$(LI $(RELATIVE_LINK2 %s,%s))\n", change.basename, change.title);
     }
 }
 /**
@@ -261,9 +261,38 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
     scope(exit) w.put("\n)\n\n");
     foreach(change; changes)
     {
-        w.formattedWrite("$(LI $(LNAME2 %s,%s)\n", change.basename, change.title.escapeParens);
-        scope(exit) w.put(")\n");
-        w.formattedWrite("    $(P %s  )\n", change.description.escapeParens);
+        w.formattedWrite("$(LI $(LNAME2 %s,%s)\n", change.basename, change.title);
+        scope(exit) w.put(")\n\n");
+
+        bool inPara, inCode;
+        foreach (line; change.description.splitLines)
+        {
+            if (line.startsWith("---"))
+            {
+                if (inPara)
+                {
+                    w.put("    )\n");
+                    inPara = false;
+                }
+                inCode = !inCode;
+            }
+            else if (!inCode && !inPara && !line.empty)
+            {
+                w.put("    $(P\n");
+                inPara = true;
+            }
+            else if (inPara && line.empty)
+            {
+                w.put("    )\n");
+                inPara = false;
+            }
+            if (!line.empty)
+                w.put(inPara ? "        " : "    ");
+            w.put(line);
+            w.put("\n");
+        }
+        if (inPara)
+            w.put("    )\n");
     }
 }
 
@@ -299,50 +328,6 @@ void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
     }
 }
 
-string toString(Month month){
-    string s = void;
-    with(Month)
-    final switch (month) {
-        case jan:
-            s = "January";
-            break;
-        case feb:
-            s = "February";
-            break;
-        case mar:
-            s = "March";
-            break;
-        case apr:
-            s = "April";
-            break;
-        case may:
-            s = "May";
-            break;
-        case jun:
-            s = "June";
-            break;
-        case jul:
-            s = "July";
-            break;
-        case aug:
-            s = "August";
-            break;
-        case sep:
-            s = "September";
-            break;
-        case oct:
-            s = "October";
-            break;
-        case nov:
-            s = "November";
-            break;
-        case dec:
-            s = "December";
-            break;
-    }
-    return s;
-}
-
 int main(string[] args)
 {
     auto outputFile = "./changelog.dd";
@@ -350,7 +335,7 @@ int main(string[] args)
 
     auto currDate = Clock.currTime();
     auto nextVersionDate = "%s %02d, %04d"
-        .format(currDate.month.toString, currDate.day, currDate.year);
+        .format(currDate.month.to!string.capitalize, currDate.day, currDate.year);
 
     string previousVersion = "Previous version";
     bool hideTextChanges = false;
@@ -407,7 +392,7 @@ Please supply a bugzilla version
                           Repo("tools", "Tools changes")];
 
             auto changedRepos = repos
-                 .map!(repo => Repo(buildPath("..", repo.path, "changelog"), repo.headline))
+                 .map!(repo => Repo(buildPath("..", repo.path, repo.path == "dlang.org" ? "language-changelog" : "changelog"), repo.headline))
                  .filter!(r => r.path.exists)
                  .map!(r => tuple!("headline", "changes")(r.headline, r.path.readTextChanges.array))
                  .filter!(r => !r.changes.empty);
@@ -441,7 +426,8 @@ Please supply a bugzilla version
     // write own macros
     w.formattedWrite(`Macros:
     VER=%s
-    TITLE=Change Log: $(VER)`, nextVersionString);
+    TITLE=Change Log: $(VER)
+`, nextVersionString);
 
     writefln("Change log generated to: '%s'", outputFile);
     return 0;
