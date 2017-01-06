@@ -244,7 +244,7 @@ void writeTextChangesHeader(Entries, Writer)(Entries changes, Writer w, string h
     scope(exit) w.put("\n)\n\n");
     foreach(change; changes)
     {
-        w.formattedWrite("$(LI $(RELATIVE_LINK2 %s,%s))\n", change.basename, change.title.escapeParens);
+        w.formattedWrite("$(LI $(RELATIVE_LINK2 %s,%s))\n", change.basename, change.title);
     }
 }
 /**
@@ -261,9 +261,9 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
     scope(exit) w.put("\n)\n\n");
     foreach(change; changes)
     {
-        w.formattedWrite("$(LI $(LNAME2 %s,%s)\n", change.basename, change.title.escapeParens);
+        w.formattedWrite("$(LI $(LNAME2 %s,%s)\n", change.basename, change.title);
         scope(exit) w.put(")\n");
-        w.formattedWrite("    $(P %s  )\n", change.description.escapeParens);
+        w.formattedWrite("    $(P %s  )\n", change.description);
     }
 }
 
