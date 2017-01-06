@@ -397,7 +397,8 @@ Please supply a bugzilla version
     // write own macros
     w.formattedWrite(`Macros:
     VER=%s
-    TITLE=Change Log: $(VER)`, nextVersionString);
+    TITLE=Change Log: $(VER)
+`, nextVersionString);
 
     writefln("Change log generated to: '%s'", outputFile);
     return 0;
