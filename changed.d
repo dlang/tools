@@ -263,7 +263,36 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
     {
         w.formattedWrite("$(LI $(LNAME2 %s,%s)\n", change.basename, change.title);
         scope(exit) w.put(")\n\n");
-        w.formattedWrite("    $(P %s  )\n", change.description);
+
+        bool inPara, inCode;
+        foreach (line; change.description.splitLines)
+        {
+            if (line.startsWith("---"))
+            {
+                if (inPara)
+                {
+                    w.put("    )\n");
+                    inPara = false;
+                }
+                inCode = !inCode;
+            }
+            else if (!inCode && !inPara && !line.empty)
+            {
+                w.put("    $(P\n");
+                inPara = true;
+            }
+            else if (inPara && line.empty)
+            {
+                w.put("    )\n");
+                inPara = false;
+            }
+            if (!line.empty)
+                w.put(inPara ? "        " : "    ");
+            w.put(line);
+            w.put("\n");
+        }
+        if (inPara)
+            w.put("    )\n");
     }
 }
 
