@@ -461,6 +461,18 @@ void runTests()
         res = execute([rdmdApp, compilerSwitch, "-L-L" ~ srcDir, mainSrcName]);
         assert(res.status == 0, res.output);
     }
+
+    /* https://issues.dlang.org/show_bug.cgi?id=16966 */
+    {
+        immutable voidMainExe = setExtension(voidMain, binExt);
+        res = execute([rdmdApp, compilerSwitch, voidMain]);
+        assert(res.status == 0, res.output);
+        assert(!exists(voidMainExe));
+        res = execute([rdmdApp, compilerSwitch, "--build-only", voidMain]);
+        assert(res.status == 0, res.output);
+        assert(exists(voidMainExe));
+        remove(voidMainExe);
+    }
 }
 
 void runConcurrencyTest()

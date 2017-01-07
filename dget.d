@@ -15,7 +15,7 @@ void usage()
 
 int main(string[] args)
 {
-    if (args.length == 1) return usage(), 1;
+    if (args.length == 1) { usage(); return 1; }
 
     import std.getopt;
     bool clone, help;
@@ -23,7 +23,7 @@ int main(string[] args)
            "clone|c", &clone,
            "help|h", &help);
 
-    if (help) return usage(), 0;
+    if (help) { usage(); return 0; }
 
     import std.typetuple;
     string user, repo;
