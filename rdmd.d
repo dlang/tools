@@ -232,7 +232,7 @@ int main(string[] args)
     string objDir = buildPath(workDir, "objs");
     yap("mkdirRecurse ", objDir);
     if (!dryRun)
-        mkdirRecurse(objDir);
+        mkUsableDirRecurse(objDir);
 
     if (lib)
     {
@@ -391,8 +391,10 @@ private @property string myOwnTmpDir()
         tmpRoot = tmpRoot.replace("/", dirSeparator).buildPath(".rdmd");
 
     yap("mkdirRecurse ", tmpRoot);
+
     if (!dryRun)
-        mkdirRecurse(tmpRoot);
+        mkUsableDirRecurse(tmpRoot);
+
     return tmpRoot;
 }
 
@@ -423,7 +425,7 @@ private string getWorkPath(in string root, in string[] compilerFlags)
 
     yap("mkdirRecurse ", workPath);
     if (!dryRun)
-        mkdirRecurse(workPath);
+        mkUsableDirRecurse(workPath);
 
     return workPath;
 }
@@ -942,4 +944,19 @@ void yap(size_t line = __LINE__, T...)(auto ref T stuff)
     if (!chatty) return;
     debug stderr.writeln(line, ": ", stuff);
     else stderr.writeln(stuff);
+}
+
+/// Makes directory and all parent directories as needed.
+/// In addition to mkdirRecurse, makes directory searchable,
+/// no matter umask
+void mkUsableDirRecurse (in char[] pathname)
+{
+    mkdirRecurse(pathname);
+
+    version (Posix)
+    {
+        import core.sys.posix.sys.stat: S_IRUSR, S_IWUSR, S_IXUSR;
+        setAttributes(pathname,
+                getAttributes(pathname) | S_IRUSR | S_IWUSR | S_IXUSR);
+    }
 }
