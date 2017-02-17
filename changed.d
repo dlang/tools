@@ -128,12 +128,17 @@ auto getIssues(string revRange)
 /** Generate and return the change log as a string. */
 auto getBugzillaChanges(string revRange)
 {
-    auto req = generateRequest(templateRequest, getIssues(revRange));
-    debug stderr.writeln(req);  // write text
-    auto data = req.get;
-
     // component (e.g. DMD) -> bug type (e.g. regression) -> list of bug entries
     BugzillaEntry[][string][string] entries;
+
+    auto issues = getIssues(revRange);
+    // abort prematurely if no issues are found in all git logs
+    if (issues.empty)
+        return entries;
+
+    auto req = generateRequest(templateRequest, issues);
+    debug stderr.writeln(req);  // write text
+    auto data = req.get;
 
     foreach (fields; csvReader!(Tuple!(int, string, string, string))(data, null))
     {
@@ -146,6 +151,7 @@ auto getBugzillaChanges(string revRange)
             case "installer": comp = "Installer"; break;
             case "phobos": comp = "Phobos"; break;
             case "tools": comp = "Tools"; break;
+            case "visuald": comp = "VisualD"; break;
             default: assert(0, comp);
         }
 
@@ -364,7 +370,7 @@ Please supply a bugzilla version
         // extract the previous version
         auto parts = revRange.split("..");
         if (parts.length > 1)
-            previousVersion = parts[0];
+            previousVersion = parts[0].replace("v", "");
     }
     else
     {
