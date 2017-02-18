@@ -91,8 +91,10 @@ string escapeParens(string input)
 /** Get a list of all bugzilla issues mentioned in revRange */
 auto getIssues(string revRange)
 {
-    import std.process : pipeProcess, Redirect, wait;
+    import std.process : execute, pipeProcess, Redirect, wait;
     import std.regex : ctRegex, match, splitter;
+
+    enum gitNamespace = ["GIT_NAMESPACE": "changed"];
 
     // see https://github.com/github/github-services/blob/2e886f407696261bd5adfc99b16d36d5e7b50241/lib/services/bugzilla.rb#L155
     enum closedRE = ctRegex!(`((close|fix|address)e?(s|d)? )?(ticket|bug|tracker item|issue)s?:? *([\d ,\+&#and]+)`, "i");
@@ -101,12 +103,13 @@ auto getIssues(string revRange)
     foreach (repo; ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"]
              .map!(r => buildPath("..", r)))
     {
-        auto cmd = ["git", "-C", repo, "fetch", "upstream", "--tags"];
-        auto p = pipeProcess(cmd, Redirect.stdout);
+        auto cmd = ["git", "-C", repo, "fetch", "--tags", "https://github.com/dlang/" ~ repo.baseName,
+                           "+refs/heads/*:refs/remotes/upstream/*"];
+        auto p = pipeProcess(cmd, Redirect.stdout, gitNamespace);
         enforce(wait(p.pid) == 0, "Failed to execute '%(%s %)'.".format(cmd));
 
         cmd = ["git", "-C", repo, "log", revRange];
-        p = pipeProcess(cmd, Redirect.stdout);
+        p = pipeProcess(cmd, Redirect.stdout, gitNamespace);
         scope(exit) enforce(wait(p.pid) == 0, "Failed to execute '%(%s %)'.".format(cmd));
 
         foreach (line; p.stdout.byLine())
