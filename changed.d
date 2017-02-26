@@ -185,25 +185,46 @@ Returns: The parsed `ChangelogEntry`
 */
 ChangelogEntry readChangelog(string filename)
 {
-    import std.algorithm.searching : countUntil;
-    import std.file : read;
+    import std.array : appender;
+    import std.algorithm.searching : startsWith;
     import std.path : baseName, stripExtension;
     import std.string : strip;
 
-    auto fileRead = cast(ubyte[]) filename.read;
-    auto firstLineBreak = fileRead.countUntil("\n");
-
-    // filter empty files
-    if (firstLineBreak < 0)
-        return ChangelogEntry.init;
+    auto changelog = File(filename).byLine;
 
     // filter ddoc files
-    if (fileRead.length < 4 || fileRead[0..4] == "Ddoc")
+    if (changelog.empty || changelog.front.startsWith("Ddoc"))
+        return ChangelogEntry.init;
+
+    string title;
+    Appender!string description;
+    bool inTitle = true;
+    foreach (line; changelog)
+    {
+        // after an empty line the description follows
+        if (!inTitle)
+        {
+            description ~= line;
+            description ~= "\n";
+        }
+        else if (!line.length)
+        {
+            inTitle = false;
+        }
+        else if (inTitle)
+        {
+            title ~= line;
+            title ~= " "; // replace newlines with whitespace
+        }
+    }
+
+    // filter empty files
+    if (!description.data.length || !title)
         return ChangelogEntry.init;
 
     ChangelogEntry entry = {
-        title: (cast(string) fileRead[0..firstLineBreak]).strip,
-        description: (cast(string) fileRead[firstLineBreak..$]).strip,
+        title: title.strip,
+        description: description.data.strip,
         basename: filename.baseName.stripExtension
     };
     return entry;
