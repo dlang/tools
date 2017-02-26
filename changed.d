@@ -91,7 +91,7 @@ string escapeParens(string input)
 /** Get a list of all bugzilla issues mentioned in revRange */
 auto getIssues(string revRange)
 {
-    import std.process : pipeProcess, Redirect, wait;
+    import std.process : execute, pipeProcess, Redirect, wait;
     import std.regex : ctRegex, match, splitter;
 
     // see https://github.com/github/github-services/blob/2e886f407696261bd5adfc99b16d36d5e7b50241/lib/services/bugzilla.rb#L155
@@ -101,7 +101,8 @@ auto getIssues(string revRange)
     foreach (repo; ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"]
              .map!(r => buildPath("..", r)))
     {
-        auto cmd = ["git", "-C", repo, "fetch", "upstream", "--tags"];
+        auto cmd = ["git", "-C", repo, "fetch", "--tags", "https://github.com/dlang/" ~ repo.baseName,
+                           "+refs/heads/*:refs/remotes/upstream/*"];
         auto p = pipeProcess(cmd, Redirect.stdout);
         enforce(wait(p.pid) == 0, "Failed to execute '%(%s %)'.".format(cmd));
 
@@ -128,12 +129,17 @@ auto getIssues(string revRange)
 /** Generate and return the change log as a string. */
 auto getBugzillaChanges(string revRange)
 {
-    auto req = generateRequest(templateRequest, getIssues(revRange));
-    debug stderr.writeln(req);  // write text
-    auto data = req.get;
-
     // component (e.g. DMD) -> bug type (e.g. regression) -> list of bug entries
     BugzillaEntry[][string][string] entries;
+
+    auto issues = getIssues(revRange);
+    // abort prematurely if no issues are found in all git logs
+    if (issues.empty)
+        return entries;
+
+    auto req = generateRequest(templateRequest, issues);
+    debug stderr.writeln(req);  // write text
+    auto data = req.get;
 
     foreach (fields; csvReader!(Tuple!(int, string, string, string))(data, null))
     {
@@ -146,6 +152,7 @@ auto getBugzillaChanges(string revRange)
             case "installer": comp = "Installer"; break;
             case "phobos": comp = "Phobos"; break;
             case "tools": comp = "Tools"; break;
+            case "visuald": comp = "VisualD"; break;
             default: assert(0, comp);
         }
 
@@ -364,7 +371,7 @@ Please supply a bugzilla version
         // extract the previous version
         auto parts = revRange.split("..");
         if (parts.length > 1)
-            previousVersion = parts[0];
+            previousVersion = parts[0].replace("v", "");
     }
     else
     {
