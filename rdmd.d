@@ -412,6 +412,7 @@ private string getWorkPath(in string root, in string[] compilerFlags)
         if (irrelevantSwitches.canFind(flag)) continue;
         context.put(flag.representation);
     }
+    foreach (f; extraFiles) context.put(f.representation);
     auto digest = context.finish();
     string hash = toHexString(digest);
 
