@@ -278,28 +278,26 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
             {
                 if (inPara)
                 {
-                    w.put("    )\n");
+                    w.put(")\n");
                     inPara = false;
                 }
                 inCode = !inCode;
             }
             else if (!inCode && !inPara && !line.empty)
             {
-                w.put("    $(P\n");
+                w.put("$(P\n");
                 inPara = true;
             }
             else if (inPara && line.empty)
             {
-                w.put("    )\n");
+                w.put(")\n");
                 inPara = false;
             }
-            if (!line.empty)
-                w.put(inPara ? "        " : "    ");
             w.put(line);
             w.put("\n");
         }
         if (inPara)
-            w.put("    )\n");
+            w.put(")\n");
     }
 }
 
