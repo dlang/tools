@@ -1,4 +1,4 @@
-DMD = ../dmd/src/dmd
+DMD = ../dmd/generated/$(OS)/release/$(MODEL)/dmd
 CC = gcc
 INSTALL_DIR = ../install
 DRUNTIME_PATH = ../druntime
