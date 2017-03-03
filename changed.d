@@ -413,10 +413,12 @@ Please supply a bugzilla version
             changedRepos.each!(r => r.changes.writeTextChangesHeader(w, r.headline));
 
             if (!revRange.empty)
+            {
                 if (useNightlyTemplate)
                     w.put("$(BR)$(BIG $(RELATIVE_LINK2 bugfix-list, List of all upcoming bug fixes and enhancements.))\n\n");
                 else
                     w.put("$(BR)$(BIG $(RELATIVE_LINK2 bugfix-list, List of all bug fixes and enhancements in D $(VER).))\n\n");
+            }
 
             w.put("$(HR)\n\n");
 
