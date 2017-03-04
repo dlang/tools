@@ -446,7 +446,7 @@ void runTests()
     /* [REG2.072.0] pragma(lib) is broken with rdmd: https://issues.dlang.org/show_bug.cgi?id=16978 */
 
     version (linux)
-    {
+    {{
         TmpDir srcDir = "rdmdTest";
         string libSrcName = srcDir.buildPath("libfun.d");
         std.file.write(libSrcName, `extern(C) void fun() {}`);
@@ -460,7 +460,7 @@ void runTests()
 
         res = execute([rdmdApp, compilerSwitch, "-L-L" ~ srcDir, mainSrcName]);
         assert(res.status == 0, res.output);
-    }
+    }}
 
     /* https://issues.dlang.org/show_bug.cgi?id=16966 */
     {
@@ -472,6 +472,25 @@ void runTests()
         assert(res.status == 0, res.output);
         assert(exists(voidMainExe));
         remove(voidMainExe);
+    }
+
+    /* https://issues.dlang.org/show_bug.cgi?id=17198 - rdmd does not recompile
+    when --extra-file is added */
+    {
+        TmpDir srcDir = "rdmdTest";
+        immutable string src1 = srcDir.buildPath("test.d");
+        immutable string src2 = srcDir.buildPath("test2.d");
+        std.file.write(src1, "int x = 1; int main() { return x; }");
+        std.file.write(src2, "import test; static this() { x = 0; }");
+
+        res = execute([rdmdApp, compilerSwitch, src1]);
+        assert(res.status == 1, res.output);
+
+        res = execute([rdmdApp, compilerSwitch, "--extra-file=" ~ src2, src1]);
+        assert(res.status == 0, res.output);
+
+        res = execute([rdmdApp, compilerSwitch, src1]);
+        assert(res.status == 1, res.output);
     }
 }
 
