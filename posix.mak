@@ -1,4 +1,4 @@
-DMD = ../dmd/src/dmd
+DMD = ../dmd/generated/$(OS)/release/$(MODEL)/dmd
 CC = gcc
 INSTALL_DIR = ../install
 DRUNTIME_PATH = ../druntime
@@ -7,45 +7,7 @@ PHOBOS_PATH = ../phobos
 WITH_DOC = no
 DOC = ../dlang.org
 
-ifeq (,$(OS))
-    uname_S:=$(shell uname -s)
-    ifeq (Darwin,$(uname_S))
-        OS=osx
-    endif
-    ifeq (Linux,$(uname_S))
-        OS=linux
-    endif
-    ifeq (FreeBSD,$(uname_S))
-        OS=freebsd
-    endif
-    ifeq (OpenBSD,$(uname_S))
-        OS=openbsd
-    endif
-    ifeq (Solaris,$(uname_S))
-        OS=solaris
-    endif
-    ifeq (SunOS,$(uname_S))
-        OS=solaris
-    endif
-    ifeq (,$(OS))
-        $(error Unrecognized or unsupported OS for uname: $(uname_S))
-    endif
-endif
-
-ifeq (,$(MODEL))
-    uname_M:=$(shell uname -m)
-    ifeq (x86_64,$(uname_M))
-        MODEL=64
-    else
-        ifeq (i686,$(uname_M))
-            MODEL=32
-        else
-            $(error Cannot figure 32/64 model from uname -m: $(uname_M))
-        endif
-    endif
-endif
-
-MODEL_FLAG=-m$(MODEL)
+include osmodel.mak
 
 ROOT_OF_THEM_ALL = generated
 ROOT = $(ROOT_OF_THEM_ALL)/$(OS)/$(MODEL)

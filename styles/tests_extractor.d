@@ -54,11 +54,10 @@ class TestVisitor : ASTVisitor
 
     override void visit(const Declaration decl)
     {
-        if (decl.unittest_ !is null)
-        {
-           if (hasDdocHeader(sourceCode, decl))
-                print(decl.unittest_);
-        }
+        if (decl.unittest_ !is null && hasDdocHeader(sourceCode, decl))
+            print(decl.unittest_);
+
+        decl.accept(this);
     }
 
 private:

@@ -91,7 +91,7 @@ string escapeParens(string input)
 /** Get a list of all bugzilla issues mentioned in revRange */
 auto getIssues(string revRange)
 {
-    import std.process : pipeProcess, Redirect, wait;
+    import std.process : execute, pipeProcess, Redirect, wait;
     import std.regex : ctRegex, match, splitter;
 
     // see https://github.com/github/github-services/blob/2e886f407696261bd5adfc99b16d36d5e7b50241/lib/services/bugzilla.rb#L155
@@ -101,7 +101,8 @@ auto getIssues(string revRange)
     foreach (repo; ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"]
              .map!(r => buildPath("..", r)))
     {
-        auto cmd = ["git", "-C", repo, "fetch", "upstream", "--tags"];
+        auto cmd = ["git", "-C", repo, "fetch", "--tags", "https://github.com/dlang/" ~ repo.baseName,
+                           "+refs/heads/*:refs/remotes/upstream/*"];
         auto p = pipeProcess(cmd, Redirect.stdout);
         enforce(wait(p.pid) == 0, "Failed to execute '%(%s %)'.".format(cmd));
 
@@ -128,12 +129,17 @@ auto getIssues(string revRange)
 /** Generate and return the change log as a string. */
 auto getBugzillaChanges(string revRange)
 {
-    auto req = generateRequest(templateRequest, getIssues(revRange));
-    debug stderr.writeln(req);  // write text
-    auto data = req.get;
-
     // component (e.g. DMD) -> bug type (e.g. regression) -> list of bug entries
     BugzillaEntry[][string][string] entries;
+
+    auto issues = getIssues(revRange);
+    // abort prematurely if no issues are found in all git logs
+    if (issues.empty)
+        return entries;
+
+    auto req = generateRequest(templateRequest, issues);
+    debug stderr.writeln(req);  // write text
+    auto data = req.get;
 
     foreach (fields; csvReader!(Tuple!(int, string, string, string))(data, null))
     {
@@ -146,6 +152,7 @@ auto getBugzillaChanges(string revRange)
             case "installer": comp = "Installer"; break;
             case "phobos": comp = "Phobos"; break;
             case "tools": comp = "Tools"; break;
+            case "visuald": comp = "VisualD"; break;
             default: assert(0, comp);
         }
 
@@ -271,28 +278,26 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
             {
                 if (inPara)
                 {
-                    w.put("    )\n");
+                    w.put(")\n");
                     inPara = false;
                 }
                 inCode = !inCode;
             }
             else if (!inCode && !inPara && !line.empty)
             {
-                w.put("    $(P\n");
+                w.put("$(P\n");
                 inPara = true;
             }
             else if (inPara && line.empty)
             {
-                w.put("    )\n");
+                w.put(")\n");
                 inPara = false;
             }
-            if (!line.empty)
-                w.put(inPara ? "        " : "    ");
             w.put(line);
             w.put("\n");
         }
         if (inPara)
-            w.put("    )\n");
+            w.put(")\n");
     }
 }
 
@@ -332,6 +337,7 @@ int main(string[] args)
 {
     auto outputFile = "./changelog.dd";
     auto nextVersionString = "LATEST";
+    bool useNightlyTemplate;
 
     auto currDate = Clock.currTime();
     auto nextVersionDate = "%s %02d, %04d"
@@ -347,6 +353,7 @@ int main(string[] args)
         "output|o", &outputFile,
         "date", &nextVersionDate,
         "version", &nextVersionString,
+        "nightly", &useNightlyTemplate,
         "prev-version", &previousVersion, // this can automatically be detected
         "no-text", &hideTextChanges);
 
@@ -364,7 +371,7 @@ Please supply a bugzilla version
         // extract the previous version
         auto parts = revRange.split("..");
         if (parts.length > 1)
-            previousVersion = parts[0];
+            previousVersion = parts[0].replace("v", "");
     }
     else
     {
@@ -377,7 +384,12 @@ Please supply a bugzilla version
     w.formattedWrite("$(CHANGELOG_NAV_LAST %s)\n\n", previousVersion);
 
     {
-        w.formattedWrite("$(VERSION %s, =================================================,\n\n", nextVersionDate);
+        // NITGHLY_VERSION is a special ddoc macro with e.g. different download links
+        if (useNightlyTemplate)
+            w.formattedWrite("$(NIGHTLY_VERSION %s,\n,\n,", nextVersionDate);
+        else
+            w.formattedWrite("$(VERSION %s, =================================================,\n\n", nextVersionDate);
+
         scope(exit) w.put(")\n");
 
         if (!hideTextChanges)
@@ -401,7 +413,12 @@ Please supply a bugzilla version
             changedRepos.each!(r => r.changes.writeTextChangesHeader(w, r.headline));
 
             if (!revRange.empty)
-                w.put("$(BR)$(BIG $(RELATIVE_LINK2 bugfix-list, List of all bug fixes and enhancements in D $(VER).))\n\n");
+            {
+                if (useNightlyTemplate)
+                    w.put("$(BR)$(BIG $(RELATIVE_LINK2 bugfix-list, List of all upcoming bug fixes and enhancements.))\n\n");
+                else
+                    w.put("$(BR)$(BIG $(RELATIVE_LINK2 bugfix-list, List of all bug fixes and enhancements in D $(VER).))\n\n");
+            }
 
             w.put("$(HR)\n\n");
 
