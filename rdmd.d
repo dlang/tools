@@ -809,6 +809,7 @@ addition to compiler options, rdmd recognizes the following options:
                      (needs dmd's option `-of` to be present)
   --man              open web browser on manual page
   --shebang          rdmd is in a shebang line (put as first argument)
+  --tmpdir           set an alternative temporary directory
 ".format(defaultCompiler, defaultExclusions);
 }
 
