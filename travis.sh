@@ -41,7 +41,7 @@ test_rdmd() {
 
 setup_repos()
 {
-    for repo in dmd druntime phobos dlang.org ; do
+    for repo in dmd druntime phobos dlang.org installer ; do
         if [ ! -d "../${repo}" ] ; then
             if [ $TRAVIS_BRANCH != master ] && [ $TRAVIS_BRANCH != stable ] &&
                    ! git ls-remote --exit-code --heads https://github.com/dlang/$proj.git $TRAVIS_BRANCH > /dev/null; then
