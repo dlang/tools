@@ -61,13 +61,7 @@ $(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
 
 #dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
-$(CURL_TOOLS): $(ROOT)/%: %.d
-	$(DMD) $(MODEL_FLAG) $(DFLAGS) -c -of$(@).o $(<)
-# grep for the linker invocation and append -lcurl
-	LINKCMD=$$($(DMD) $(MODEL_FLAG) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep $(@).o); \
-	$${LINKCMD} -lcurl
-
-$(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
+$(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(MODEL_FLAG) $(DFLAGS) -of$(@) $(<)
 
 ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
