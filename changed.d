@@ -197,20 +197,25 @@ ChangelogEntry readChangelog(string filename)
     import std.path : baseName, stripExtension;
     import std.string : strip;
 
-    auto fileRead = cast(ubyte[]) filename.read;
-    auto firstLineBreak = fileRead.countUntil("\n");
+    auto lines = filename.readText().splitLines();
 
     // filter empty files
-    if (firstLineBreak < 0)
+    if (lines.empty)
         return ChangelogEntry.init;
 
     // filter ddoc files
-    if (fileRead.length < 4 || fileRead[0..4] == "Ddoc")
+    if (lines[0].startsWith("Ddoc"))
         return ChangelogEntry.init;
 
+    enforce(lines.length >= 3 &&
+        !lines[0].empty &&
+         lines[1].empty &&
+        !lines[2].empty,
+        "Changelog entries should consist of one title line, a blank separator line, and a description.");
+
     ChangelogEntry entry = {
-        title: (cast(string) fileRead[0..firstLineBreak]).strip,
-        description: (cast(string) fileRead[firstLineBreak..$]).strip,
+        title: lines[0].strip,
+        description: lines[2..$].join("\n").strip,
         basename: filename.baseName.stripExtension
     };
     return entry;
