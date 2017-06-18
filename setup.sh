@@ -168,9 +168,10 @@ function update() {
 function makeWorld() {
 # First make dmd
     (
+        which dmd >/dev/null || BT="AUTO_BOOTSTRAP=1"
         cd "$wd/dmd/src" &&
-        $makecmd -f posix.mak clean MODEL=$model &&
-        $makecmd -f posix.mak -j $parallel MODEL=$model
+        $makecmd -f posix.mak clean MODEL=$model $BT &&
+        $makecmd -f posix.mak -j $parallel MODEL=$model $BT
     )
 
 # Update the running dmd version
