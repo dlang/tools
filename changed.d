@@ -237,6 +237,7 @@ auto readTextChanges(string changelogDir)
 
     return dirEntries(changelogDir, SpanMode.shallow)
             .filter!(a => a.name().endsWith(".dd"))
+            .array.sort()
             .map!readChangelog
             .filter!(a => a.title.length > 0);
 }
