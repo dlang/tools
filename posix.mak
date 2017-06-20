@@ -3,6 +3,7 @@ CC = gcc
 INSTALL_DIR = ../install
 DRUNTIME_PATH = ../druntime
 PHOBOS_PATH = ../phobos
+DUB=dub
 
 WITH_DOC = no
 DOC = ../dlang.org
@@ -26,10 +27,10 @@ ifeq (,$(findstring win,$(OS)))
 	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.so
 endif
 
-# default include/link paths, override by setting DMD (e.g. make -f posix.mak DMD=dmd)
-DMD += -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)
-
-DFLAGS = -w
+# default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
+DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
+		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG)
+DFLAGS += -w
 
 TOOLS = \
     $(ROOT)/rdmd \
@@ -58,17 +59,17 @@ dman:      $(ROOT)/dman
 dustmite:  $(ROOT)/dustmite
 
 $(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
-	$(DMD) $(MODEL_FLAG) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
+	$(DMD) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
 
 #dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
 $(CURL_TOOLS): $(ROOT)/%: %.d
-	$(DMD) $(MODEL_FLAG) $(DFLAGS) -c -of$(@).o $(<)
+	$(DMD) $(DFLAGS) -c -of$(@).o $(<)
 # grep for the linker invocation and append -lcurl
-	LINKCMD=$$($(DMD) $(MODEL_FLAG) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep $(@).o); \
+	LINKCMD=$$($(DMD) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep $(@).o); \
 	$${LINKCMD} -lcurl
 
 $(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
-	$(DMD) $(MODEL_FLAG) $(DFLAGS) -of$(@) $(<)
+	$(DMD) $(DFLAGS) -of$(@) $(<)
 
 ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
 
@@ -84,6 +85,15 @@ install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 
 clean:
 	rm -f $(ROOT)/dustmite $(TOOLS) $(CURL_TOOLS) $(DOC_TOOLS) $(TAGS) *.o $(ROOT)/*.o
+
+$(ROOT)/tests_extractor: tests_extractor.d
+	mkdir -p $(ROOT)
+	$(DUB) build \
+		   --single $< --force --compiler=$(abspath $(DMD)) && mv ./tests_extractor $@
+
+test: $(ROOT)/tests_extractor
+	$< -i ./test/tests_extractor/ascii.d | diff - ./test/tests_extractor/ascii.d.ext
+	$< -i ./test/tests_extractor/iteration.d | diff - ./test/tests_extractor/iteration.d.ext
 
 ifeq ($(WITH_DOC),yes)
 all install: $(DOC_TOOLS)

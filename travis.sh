@@ -40,5 +40,8 @@ install_digger
 
 dmd --version
 rdmd --help | head -n 1
+dub --version
 
 test_rdmd
+
+make -f posix.mak test DMD=$(which dmd)
