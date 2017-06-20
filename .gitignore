@@ -6,3 +6,5 @@
 
 /generated
 GNUmakefile
+/.dub
+/tests_extractor
