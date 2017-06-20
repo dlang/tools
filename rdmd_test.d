@@ -54,6 +54,13 @@ void main(string[] args)
         "concurrency", &concurrencyTest,
     );
 
+    // if the compiler contains a dir separator, it's not the in the global PATH
+    // but a relative path
+    // an absolute path or executable in the PATH is required as the test suite
+    // used chdir
+    if (compiler.canFind(dirSeparator))
+        compiler = compiler.asAbsolutePath.array;
+
     enforce(rdmd.exists, "Path to rdmd does not exist: %s".format(rdmd));
 
     rdmdApp = tempDir().buildPath("rdmd_app_") ~ binExt;
@@ -347,15 +354,20 @@ void runTests()
     assert(res.status == 0, res.output);
     assert(!res.output.canFind("compile_force_src"));
 
-    auto fullCompilerPath = environment["PATH"]
-        .splitter(pathSeparator)
-        .map!(dir => dir.buildPath(compiler ~ binExt))
-        .filter!exists
-        .front;
+    // for absolute compiler path, we make the path relative again
+    string fullCompilerPath = void;
+    if (compiler.isAbsolute)
+        fullCompilerPath = compiler.asRelativePath(getcwd()).array;
+    else
+        fullCompilerPath = environment["PATH"]
+            .splitter(pathSeparator)
+            .map!(dir => dir.buildPath(compiler ~ binExt))
+            .filter!exists
+            .front;
 
     res = execute([rdmdApp, "--compiler=" ~ fullCompilerPath, forceSrc]);
     assert(res.status == 0, res.output ~ "\nCan't run with --compiler=" ~ fullCompilerPath);
-    assert(res.output.canFind("compile_force_src"));
+    assert(res.output.canFind("compile_force_src"), "Can't find compile_force_src");
 
     // Create an empty temporary directory and clean it up when exiting scope
     static struct TmpDir
