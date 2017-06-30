@@ -1,0 +1,221 @@
+// Line 109
+unittest
+{
+    import std.ascii;
+
+    assert( isAlphaNum('A'));
+    assert( isAlphaNum('1'));
+    assert(!isAlphaNum('#'));
+
+    // N.B.: does not return true for non-ASCII Unicode alphanumerics:
+    assert(!isAlphaNum('á'));
+}
+
+// Line 140
+unittest
+{
+    import std.ascii;
+
+    assert( isAlpha('A'));
+    assert(!isAlpha('1'));
+    assert(!isAlpha('#'));
+
+    // N.B.: does not return true for non-ASCII Unicode alphabetic characters:
+    assert(!isAlpha('á'));
+}
+
+// Line 170
+unittest
+{
+    import std.ascii;
+
+    assert( isLower('a'));
+    assert(!isLower('A'));
+    assert(!isLower('#'));
+
+    // N.B.: does not return true for non-ASCII Unicode lowercase letters
+    assert(!isLower('á'));
+    assert(!isLower('Á'));
+}
+
+// Line 201
+unittest
+{
+    import std.ascii;
+
+    assert( isUpper('A'));
+    assert(!isUpper('a'));
+    assert(!isUpper('#'));
+
+    // N.B.: does not return true for non-ASCII Unicode uppercase letters
+    assert(!isUpper('á'));
+    assert(!isUpper('Á'));
+}
+
+// Line 232
+unittest
+{
+    import std.ascii;
+
+    assert( isDigit('3'));
+    assert( isDigit('8'));
+    assert(!isDigit('B'));
+    assert(!isDigit('#'));
+
+    // N.B.: does not return true for non-ASCII Unicode numbers
+    assert(!isDigit('０')); // full-width digit zero (U+FF10)
+    assert(!isDigit('４')); // full-width digit four (U+FF14)
+}
+
+// Line 264
+unittest
+{
+    import std.ascii;
+
+    assert( isOctalDigit('0'));
+    assert( isOctalDigit('7'));
+    assert(!isOctalDigit('8'));
+    assert(!isOctalDigit('A'));
+    assert(!isOctalDigit('#'));
+}
+
+// Line 293
+unittest
+{
+    import std.ascii;
+
+    assert( isHexDigit('0'));
+    assert( isHexDigit('A'));
+    assert( isHexDigit('f')); // lowercase hex digits are accepted
+    assert(!isHexDigit('g'));
+    assert(!isHexDigit('G'));
+    assert(!isHexDigit('#'));
+}
+
+// Line 325
+unittest
+{
+    import std.ascii;
+
+    assert( isWhite(' '));
+    assert( isWhite('\t'));
+    assert( isWhite('\n'));
+    assert(!isWhite('1'));
+    assert(!isWhite('a'));
+    assert(!isWhite('#'));
+
+    // N.B.: Does not return true for non-ASCII Unicode whitespace characters.
+    static import std.uni;
+    assert(std.uni.isWhite('\u00A0'));
+    assert(!isWhite('\u00A0')); // std.ascii.isWhite
+}
+
+// Line 360
+unittest
+{
+    import std.ascii;
+
+    assert( isControl('\0'));
+    assert( isControl('\022'));
+    assert( isControl('\n')); // newline is both whitespace and control
+    assert(!isControl(' '));
+    assert(!isControl('1'));
+    assert(!isControl('a'));
+    assert(!isControl('#'));
+
+    // N.B.: non-ASCII Unicode control characters are not recognized:
+    assert(!isControl('\u0080'));
+    assert(!isControl('\u2028'));
+    assert(!isControl('\u2029'));
+}
+
+// Line 399
+unittest
+{
+    import std.ascii;
+
+    assert( isPunctuation('.'));
+    assert( isPunctuation(','));
+    assert( isPunctuation(':'));
+    assert( isPunctuation('!'));
+    assert( isPunctuation('#'));
+    assert( isPunctuation('~'));
+    assert( isPunctuation('+'));
+    assert( isPunctuation('_'));
+
+    assert(!isPunctuation('1'));
+    assert(!isPunctuation('a'));
+    assert(!isPunctuation(' '));
+    assert(!isPunctuation('\n'));
+    assert(!isPunctuation('\0'));
+
+    // N.B.: Non-ASCII Unicode punctuation characters are not recognized.
+    assert(!isPunctuation('\u2012')); // (U+2012 = en-dash)
+}
+
+// Line 443
+unittest
+{
+    import std.ascii;
+
+    assert( isGraphical('1'));
+    assert( isGraphical('a'));
+    assert( isGraphical('#'));
+    assert(!isGraphical(' ')); // whitespace is not graphical
+    assert(!isGraphical('\n'));
+    assert(!isGraphical('\0'));
+
+    // N.B.: Unicode graphical characters are not regarded as such.
+    assert(!isGraphical('á'));
+}
+
+// Line 479
+unittest
+{
+    import std.ascii;
+
+    assert( isPrintable(' '));  // whitespace is printable
+    assert( isPrintable('1'));
+    assert( isPrintable('a'));
+    assert( isPrintable('#'));
+    assert(!isPrintable('\0')); // control characters are not printable
+
+    // N.B.: Printable non-ASCII Unicode characters are not recognized.
+    assert(!isPrintable('á'));
+}
+
+// Line 515
+unittest
+{
+    import std.ascii;
+
+    assert( isASCII('a'));
+    assert(!isASCII('á'));
+}
+
+// Line 556
+unittest
+{
+    import std.ascii;
+
+    assert(toLower('a') == 'a');
+    assert(toLower('A') == 'a');
+    assert(toLower('#') == '#');
+
+    // N.B.: Non-ASCII Unicode uppercase letters are not converted.
+    assert(toLower('Á') == 'Á');
+}
+
+// Line 618
+unittest
+{
+    import std.ascii;
+
+    assert(toUpper('a') == 'A');
+    assert(toUpper('A') == 'A');
+    assert(toUpper('#') == '#');
+
+    // N.B.: Non-ASCII Unicode lowercase letters are not converted.
+    assert(toUpper('á') == 'á');
+}
+
