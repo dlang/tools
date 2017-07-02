@@ -561,7 +561,7 @@ private int run(string[] args, string output = null, bool replace = false)
             { /* Windows doesn't have exec, fall back to spawnProcess+wait */ }
         else
         {
-            import std.c.process;
+            import std.process : execv;
             auto argv = args.map!toStringz.chain(null.only).array;
             return execv(argv[0], argv.ptr);
         }
