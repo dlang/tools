@@ -30,7 +30,7 @@ endif
 # default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
 DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
 		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG)
-DFLAGS += -w
+DFLAGS += -w -de
 
 TOOLS = \
     $(ROOT)/rdmd \
