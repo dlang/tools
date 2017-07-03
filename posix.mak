@@ -30,7 +30,7 @@ endif
 # default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
 DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
 		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG)
-DFLAGS += -w
+DFLAGS += -w -de
 
 TOOLS = \
     $(ROOT)/rdmd \
@@ -61,14 +61,7 @@ dustmite:  $(ROOT)/dustmite
 $(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
 	$(DMD) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
 
-#dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
-$(CURL_TOOLS): $(ROOT)/%: %.d
-	$(DMD) $(DFLAGS) -c -of$(@).o $(<)
-# grep for the linker invocation and append -lcurl
-	LINKCMD=$$($(DMD) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep $(@).o); \
-	$${LINKCMD} -lcurl
-
-$(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
+$(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(DFLAGS) -of$(@) $(<)
 
 ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???

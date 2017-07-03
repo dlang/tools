@@ -143,7 +143,7 @@ string CHeader(string topic)
     static string[] dmccmds =
     [
         "assert.h",     "complex.h",   "ctype.h",      "fenv.h",
-        "float.h",      "locale.h",    "math.h",       "setjmp.h,"
+        "float.h",      "locale.h",    "math.h",       "setjmp.h",
         "signal.h",     "stdarg.h",    "stddef.h",     "stdio.h",
         "stdlib.h",     "string.h",    "time.h",       "gc.h",
         "bios.h",       "cerror.h",    "disp.h",       "dos.h",

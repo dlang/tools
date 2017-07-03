@@ -44,4 +44,5 @@ dub --version
 
 test_rdmd
 
+make -f posix.mak all DMD=$(which dmd)
 make -f posix.mak test DMD=$(which dmd)
