@@ -1,4 +1,5 @@
-DMD = ../dmd/generated/$(OS)/release/$(MODEL)/dmd
+DMD_DIR = ../dmd
+DMD = $(DMD_DIR)/generated/$(OS)/release/$(MODEL)/dmd
 CC = gcc
 INSTALL_DIR = ../install
 DRUNTIME_PATH = ../druntime
@@ -8,7 +9,8 @@ DUB=dub
 WITH_DOC = no
 DOC = ../dlang.org
 
-include osmodel.mak
+$(shell [ ! -d $(DMD_DIR) ] && git clone --depth=1 https://github.com/dlang/dmd $(DMD_DIR))
+include $(DMD_DIR)/src/osmodel.mak
 
 ROOT_OF_THEM_ALL = generated
 ROOT = $(ROOT_OF_THEM_ALL)/$(OS)/$(MODEL)
