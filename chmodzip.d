@@ -26,16 +26,14 @@ int main(string[] args)
             zr.expand(de);
             writefln("name = %s", de.name);
             writefln("\tcomment = %s", de.comment);
-            writefln("\tmadeVersion = x%04x", de.madeVersion);
             writefln("\textractVersion = x%04x", de.extractVersion);
             writefln("\tflags = x%04x", de.flags);
             writefln("\tcompressionMethod = %d", de.compressionMethod);
             writefln("\tcrc32 = x%08x", de.crc32);
             writefln("\texpandedSize = %s", de.expandedSize);
             writefln("\tcompressedSize = %s", de.compressedSize);
-            writefln("\teattr = %03o, %03o", de.externalAttributes >> 16, de.externalAttributes & 0xFFFF);
+            writefln("\teattr = %03o, %03o", de.fileAttributes);
             writefln("\tiattr = %03o", de.internalAttributes);
-            //writefln("\tdate = %s", std.date.toString(std.date.toDtime(de.time)));
             writefln("\tdate = %s", SysTime(unixTimeToStdTime((de.time))));
         }
         return 0;
@@ -74,11 +72,10 @@ L1:
 
         foreach (member; members)
         {
-            if (de.name == member && ((de.externalAttributes >> 16) & octal!7777) != newattr)
+            if (de.name == member && (de.fileAttributes & octal!7777) != newattr)
             {
                 changes = true;
-                de._madeVersion = 0x317; // necessary or linux unzip will ignore attributes
-                de.externalAttributes = (de.externalAttributes & ~(octal!7777 << 16)) | (newattr << 16);
+                de.fileAttributes = de.fileAttributes & ~octal!7777 | newattr;
                 break;
             }
         }

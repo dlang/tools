@@ -45,3 +45,4 @@ dub --version
 test_rdmd
 
 make -f posix.mak test DMD=$(which dmd)
+dmd -c chmodzip.d
