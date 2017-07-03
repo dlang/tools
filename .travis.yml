@@ -2,14 +2,16 @@ language: d
 d:
   - dmd
 sudo: false
-addons:
-  apt:
-    packages:
-    - g++-multilib
-    - libcurl3-gnutls:i386
-env:
-  - MODEL=32
-  - MODEL=64
+
+matrix:
+  include:
+    - env: MODEL=64
+    - env: MODEL=32
+      addons:
+        apt:
+          packages:
+            - g++-multilib
+            - libcurl4-openssl-dev:i386
 
 script:
   - ./travis.sh
