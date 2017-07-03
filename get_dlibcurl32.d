@@ -1,3 +1,4 @@
+#!/usr/bin/env rdmd
 /++
 This Windows-only tool automatically downloads Win32 libcurl binaries and
 generates a libcurl.lib compatible with Win32 DMD (which is needed by

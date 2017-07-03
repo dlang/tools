@@ -1,3 +1,4 @@
+#!/usr/bin/env rdmd
 
 import core.stdc.stdlib;
 import std.conv;
