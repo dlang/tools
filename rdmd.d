@@ -1,3 +1,4 @@
+#!/usr/bin/env rdmd
 /*
  *  Copyright (C) 2008 by Andrei Alexandrescu
  *  Written by Andrei Alexandrescu, www.erdani.org
