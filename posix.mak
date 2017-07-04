@@ -104,7 +104,7 @@ test_tests_extractor: $(ROOT)/tests_extractor
 	$< -i ./test/tests_extractor/iteration.d | diff - ./test/tests_extractor/iteration.d.ext
 
 test_rdmd: $(ROOT)/rdmd_test $(ROOT)/rdmd
-	$< --compiler=$(abspath $(DMD))
+	$< --compiler=$(abspath $(DMD)) -m$(MODEL)
 	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d
 
 test: test_tests_extractor test_rdmd
