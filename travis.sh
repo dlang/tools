@@ -17,7 +17,7 @@ build_digger() {
 
 install_digger() {
     $DIGGER build --model=$MODEL "master"
-    export PATH=$PWD/result/bin:$PATH
+    export PATH=$PWD/work/result/bin:$PATH
 }
 
 if ! [ -d "$DIGGER_DIR" ] ; then

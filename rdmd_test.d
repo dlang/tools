@@ -356,7 +356,6 @@ void runTests()
 
     res = execute([rdmdApp, "--compiler=" ~ fullCompilerPath, forceSrc]);
     assert(res.status == 0, res.output ~ "\nCan't run with --compiler=" ~ fullCompilerPath);
-    assert(res.output.canFind("compile_force_src"));
 
     // Create an empty temporary directory and clean it up when exiting scope
     static struct TmpDir
