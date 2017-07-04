@@ -12,6 +12,7 @@ fi
 
 build_digger() {
     git clone --recursive https://github.com/CyberShadow/Digger "$DIGGER_DIR"
+    git -C "$DIGGER_DIR" checkout v3.0.0-alpha-5
     (cd "$DIGGER_DIR" && rdmd --build-only -debug digger)
 }
 
