@@ -33,3 +33,4 @@ dub --version
 
 make -f posix.mak all DMD=$(which dmd)
 make -f posix.mak test DMD=$(which dmd)
+dmd -c chmodzip.d
