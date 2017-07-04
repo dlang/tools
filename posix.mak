@@ -36,6 +36,9 @@ DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
 		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG)
 DFLAGS += -w -de
 
+# Default DUB flags (DUB uses a different architecture format)
+DUBFLAGS = --arch=$(subst 32,x86,$(subst 64,x86_64,$(MODEL)))
+
 TOOLS = \
     $(ROOT)/rdmd \
     $(ROOT)/ddemangle \
@@ -89,7 +92,8 @@ clean:
 $(ROOT)/tests_extractor: tests_extractor.d
 	mkdir -p $(ROOT)
 	$(DUB) build \
-		   --single $< --force --compiler=$(abspath $(DMD)) && mv ./tests_extractor $@
+		   --single $< --force --compiler=$(abspath $(DMD)) $(DUBFLAGS) \
+		   && mv ./tests_extractor $@
 
 ################################################################################
 # Build & run tests
