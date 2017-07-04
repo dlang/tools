@@ -36,6 +36,9 @@ DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
 		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG)
 DFLAGS += -w -de
 
+# Default DUB flags (DUB uses a different architecture format)
+DUBFLAGS = --arch=$(subst 32,x86,$(subst 64,x86_64,$(MODEL)))
+
 TOOLS = \
     $(ROOT)/rdmd \
     $(ROOT)/ddemangle \
@@ -49,6 +52,9 @@ CURL_TOOLS = \
 
 DOC_TOOLS = \
     $(ROOT)/dman
+
+TEST_TOOLS = \
+    $(ROOT)/rdmd_test
 
 all: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 
@@ -65,7 +71,7 @@ dustmite:  $(ROOT)/dustmite
 $(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
 	$(DMD) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
 
-$(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS): $(ROOT)/%: %.d
+$(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS) $(TEST_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(DFLAGS) -of$(@) $(<)
 
 ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
@@ -86,11 +92,22 @@ clean:
 $(ROOT)/tests_extractor: tests_extractor.d
 	mkdir -p $(ROOT)
 	$(DUB) build \
-		   --single $< --force --compiler=$(abspath $(DMD)) && mv ./tests_extractor $@
+		   --single $< --force --compiler=$(abspath $(DMD)) $(DUBFLAGS) \
+		   && mv ./tests_extractor $@
 
-test: $(ROOT)/tests_extractor
+################################################################################
+# Build & run tests
+################################################################################
+
+test_tests_extractor: $(ROOT)/tests_extractor
 	$< -i ./test/tests_extractor/ascii.d | diff - ./test/tests_extractor/ascii.d.ext
 	$< -i ./test/tests_extractor/iteration.d | diff - ./test/tests_extractor/iteration.d.ext
+
+test_rdmd: $(ROOT)/rdmd_test $(ROOT)/rdmd
+	$< --compiler=$(abspath $(DMD)) -m$(MODEL)
+	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d
+
+test: test_tests_extractor test_rdmd
 
 ifeq ($(WITH_DOC),yes)
 all install: $(DOC_TOOLS)
