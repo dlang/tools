@@ -40,15 +40,15 @@ DFLAGS += -w -de
 DUBFLAGS = --arch=$(subst 32,x86,$(subst 64,x86_64,$(MODEL)))
 
 TOOLS = \
-    $(ROOT)/rdmd \
-    $(ROOT)/ddemangle \
     $(ROOT)/catdoc \
+    $(ROOT)/ddemangle \
     $(ROOT)/detab \
+    $(ROOT)/rdmd \
     $(ROOT)/tolf
 
 CURL_TOOLS = \
-    $(ROOT)/dget \
-    $(ROOT)/changed
+    $(ROOT)/changed \
+    $(ROOT)/dget
 
 DOC_TOOLS = \
     $(ROOT)/dman
