@@ -41,6 +41,7 @@ DUBFLAGS = --arch=$(subst 32,x86,$(subst 64,x86_64,$(MODEL)))
 
 TOOLS = \
     $(ROOT)/catdoc \
+    $(ROOT)/checkwhitespace \
     $(ROOT)/ddemangle \
     $(ROOT)/detab \
     $(ROOT)/rdmd \
