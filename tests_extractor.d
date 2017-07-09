@@ -64,6 +64,9 @@ class TestVisitor : ASTVisitor
         decl.accept(this);
     }
 
+    // ignore `version` blocks
+    override void visit(const ConditionalDeclaration decl) {}
+
 private:
     void print(const Unittest u)
     {
