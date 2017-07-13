@@ -431,7 +431,7 @@ Please supply a bugzilla version
             // print the detailed descriptions
             changedRepos.each!(x => x.changes.writeTextChangesBody(w, x.headline));
 
-            if (revRange.length)
+            if (revRange.empty)
                 w.put("$(BR)$(BIG $(LNAME2 bugfix-list, List of all bug fixes and enhancements in D $(VER):))\n\n");
         }
         else
