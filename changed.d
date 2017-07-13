@@ -344,6 +344,7 @@ int main(string[] args)
     auto outputFile = "./changelog.dd";
     auto nextVersionString = "LATEST";
     bool useNightlyTemplate;
+    string releaseType = "stable";
 
     auto currDate = Clock.currTime();
     auto nextVersionDate = "%s %02d, %04d"
@@ -360,6 +361,7 @@ int main(string[] args)
         "date", &nextVersionDate,
         "version", &nextVersionString,
         "nightly", &useNightlyTemplate,
+        "release-type", &releaseType,     // e.g. beta or nightly (stable by default)
         "prev-version", &previousVersion, // this can automatically be detected
         "no-text", &hideTextChanges);
 
@@ -390,11 +392,8 @@ Please supply a bugzilla version
     w.formattedWrite("$(CHANGELOG_NAV_LAST %s)\n\n", previousVersion);
 
     {
-        // NITGHLY_VERSION is a special ddoc macro with e.g. different download links
-        if (useNightlyTemplate)
-            w.formattedWrite("$(NIGHTLY_VERSION %s,\n,\n,", nextVersionDate);
-        else
-            w.formattedWrite("$(VERSION %s, =================================================,\n\n", nextVersionDate);
+        import std.uni : asUpperCase;
+        w.formattedWrite("$(%sVERSION %s, =================================================,\n\n", text(releaseType.asUpperCase, "_"), nextVersionDate);
 
         scope(exit) w.put(")\n");
 
