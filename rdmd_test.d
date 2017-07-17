@@ -310,6 +310,16 @@ void runTests()
         assert(res.status == -SIGSEGV, format("%s", res));
     }
 
+    /* https://issues.dlang.org/show_bug.cgi?id=11997- rdmd should search its
+    binary path for the compiler */
+    string localDMD = buildPath(tempDir(), baseName(compiler));
+    std.file.write(localDMD, "empty shell");
+    scope(exit) std.file.remove(localDMD);
+
+    res = execute(rdmdApp ~ [modelSwitch, "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
+    assert(res.status == 1, res.output);
+    assert(res.output.canFind(`spawn ["` ~ localDMD ~ `",`));
+
     /* -of doesn't append .exe on Windows: https://d.puremagic.com/issues/show_bug.cgi?id=12149 */
 
     version (Windows)
