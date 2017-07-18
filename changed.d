@@ -344,6 +344,7 @@ int main(string[] args)
     auto outputFile = "./changelog.dd";
     auto nextVersionString = "LATEST";
     bool useNightlyTemplate;
+    string releaseType = "stable";
 
     auto currDate = Clock.currTime();
     auto nextVersionDate = "%s %02d, %04d"
@@ -359,7 +360,8 @@ int main(string[] args)
         "output|o", &outputFile,
         "date", &nextVersionDate,
         "version", &nextVersionString,
-        "nightly", &useNightlyTemplate,
+        "nightly", &useNightlyTemplate,   // deprecated, use --version=nightly
+        "release-type", &releaseType,     // e.g. beta or nightly (stable by default)
         "prev-version", &previousVersion, // this can automatically be detected
         "no-text", &hideTextChanges);
 
@@ -384,17 +386,20 @@ Please supply a bugzilla version
         writeln("Skipped querying Bugzilla for changes. Please define a revision range e.g ./changed v2.072.2..upstream/stable");
     }
 
+    if (useNightlyTemplate)
+    {
+        stderr.writeln("--nightly is deprecated. Use --release-type=nightly instead.");
+        releaseType = "nightly";
+    }
+
     auto f = File(outputFile, "w");
     auto w = f.lockingTextWriter();
     w.put("Ddoc\n\n");
     w.formattedWrite("$(CHANGELOG_NAV_LAST %s)\n\n", previousVersion);
 
     {
-        // NITGHLY_VERSION is a special ddoc macro with e.g. different download links
-        if (useNightlyTemplate)
-            w.formattedWrite("$(NIGHTLY_VERSION %s,\n,\n,", nextVersionDate);
-        else
-            w.formattedWrite("$(VERSION %s, =================================================,\n\n", nextVersionDate);
+        import std.uni : asUpperCase;
+        w.formattedWrite("$(%sVERSION %s, =================================================,\n\n", text(releaseType.asUpperCase, "_"), nextVersionDate);
 
         scope(exit) w.put(")\n");
 
@@ -419,19 +424,14 @@ Please supply a bugzilla version
             changedRepos.each!(r => r.changes.writeTextChangesHeader(w, r.headline));
 
             if (!revRange.empty)
-            {
-                if (useNightlyTemplate)
-                    w.put("$(BR)$(BIG $(RELATIVE_LINK2 bugfix-list, List of all upcoming bug fixes and enhancements.))\n\n");
-                else
-                    w.put("$(BR)$(BIG $(RELATIVE_LINK2 bugfix-list, List of all bug fixes and enhancements in D $(VER).))\n\n");
-            }
+                w.put("$(BR)$(BIG $(RELATIVE_LINK2 bugfix-list, List of all bug fixes and enhancements in D $(VER).))\n\n");
 
             w.put("$(HR)\n\n");
 
             // print the detailed descriptions
             changedRepos.each!(x => x.changes.writeTextChangesBody(w, x.headline));
 
-            if (revRange.length)
+            if (revRange.empty)
                 w.put("$(BR)$(BIG $(LNAME2 bugfix-list, List of all bug fixes and enhancements in D $(VER):))\n\n");
         }
         else
