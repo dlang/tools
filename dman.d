@@ -128,12 +128,13 @@ string DmcCommands(string topic)
 
 string D(string topic)
 {
-    static struct IndexEntry { string keyword; string[] urls; }
-    static IndexEntry[] entries = mixin (import("d.tag"));
+    static immutable tagJson = import("d-tags.json");
 
-    foreach (entry; entries)
-        if (entry.keyword == topic && entry.urls.length)
-            return entry.urls[0];
+    import std.json;
+    JSONValue tags = parseJSON(tagJson);
+
+    if (topic in tags && tags[topic].array.length)
+        return tags[topic][0].str;
 
     return null;
 }

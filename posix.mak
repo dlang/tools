@@ -77,10 +77,10 @@ $(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS) $(TEST_TOOLS): $(ROOT)/%: %.d
 
 ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
 
-$(DOC)/d.tag : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
-	${MAKE} --directory=${DOC} -f posix.mak d.tag
+$(DOC)/d-tags.json : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
+	${MAKE} --directory=${DOC} -f posix.mak d-tags.json
 
-$(ROOT)/dman: $(DOC)/d.tag
+$(ROOT)/dman: $(DOC)/d-tags.json
 $(ROOT)/dman: DFLAGS += -J$(DOC)
 
 install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
