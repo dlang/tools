@@ -1,0 +1,13 @@
+rdmd now checks for a D compiler binary in the directory it's in first
+
+If you downloaded a zip/tar file with the compiler before
+and ran `rdmd`, it would invoke the D compiler from the system
+`PATH` rather than the compiler right next to it, failing if
+there wasn't one in the `PATH`. `rdmd` will now try to use
+the D compiler next to it first, and only fall back to the
+`PATH` if there isn't one adjacent. If you want rdmd to run a
+specific compiler, add the `--compiler` flag to force it, as
+always.
+
+To restore the old behaviour of only using the compiler from
+your `PATH`, add `--compiler=dmd` (or `ldmd2` or `gdmd`).

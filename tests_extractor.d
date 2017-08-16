@@ -1,8 +1,13 @@
+#!/usr/bin/env dub
+/++dub.sdl:
+name "tests_extractor"
+dependency "libdparse" version="~>0.7.1-beta.5"
++/
 /*
  * Parses all public unittests that are visible on dlang.org
  * (= annotated with three slashes)
  *
- * Copyright (C) 2016 by D Language Foundation
+ * Copyright (C) 2017 by D Language Foundation
  *
  * Author: Sebastian Wilzbach
  *
@@ -14,6 +19,7 @@
 
 import dparse.ast;
 import std.algorithm;
+import std.ascii : whitespace;
 import std.conv;
 import std.exception;
 import std.experimental.logger;
@@ -21,8 +27,6 @@ import std.file;
 import std.path;
 import std.range;
 import std.stdio;
-
-import utils;
 
 class TestVisitor : ASTVisitor
 {
@@ -197,4 +201,74 @@ to in the output directory.
             stderr.writeln("ignoring ", file);
         }
     }
+}
+
+bool hasDdocHeader(const(ubyte)[] sourceCode, const Declaration decl)
+{
+    import std.algorithm.comparison : min;
+
+    bool hasComment;
+    size_t firstPos = size_t.max;
+
+    if (decl.unittest_ !is null)
+    {
+        firstPos = decl.unittest_.location;
+        hasComment = decl.unittest_.comment.length > 0;
+    }
+    else if (decl.functionDeclaration !is null)
+    {
+        // skip the return type
+        firstPos = sourceCode.skipPreviousWord(decl.functionDeclaration.name.index);
+        if (auto stClasses = decl.functionDeclaration.storageClasses)
+            firstPos = min(firstPos, stClasses[0].token.index);
+        hasComment = decl.functionDeclaration.comment.length > 0;
+    }
+    else if (decl.templateDeclaration !is null)
+    {
+        // skip the word `template`
+        firstPos = sourceCode.skipPreviousWord(decl.templateDeclaration.name.index);
+        hasComment = decl.templateDeclaration.comment.length > 0;
+    }
+
+    // libdparse will put any ddoc comment with at least one character in the comment field
+    if (hasComment)
+        return true;
+
+    firstPos = min(firstPos, getAttributesStartLocation(decl.attributes));
+
+    // scan the previous line for ddoc header -> skip to last real character
+    auto prevLine = sourceCode[0 .. firstPos].retro.find!(c => whitespace.countUntil(c) < 0);
+
+    // if there is no comment annotation, only three possible cases remain.
+    // one line ddoc: ///, multi-line comments: /** */ or /++ +/
+    return prevLine.filter!(c => !whitespace.canFind(c)).startsWith("///", "/+++/", "/***/") > 0;
+}
+
+/**
+The location of unittest token is known, but there might be attributes preceding it.
+*/
+private size_t getAttributesStartLocation(const Attribute[] attrs)
+{
+    import dparse.lexer : tok;
+
+    if (attrs.length == 0)
+        return size_t.max;
+
+    if (attrs[0].atAttribute !is null)
+        return attrs[0].atAttribute.startLocation;
+
+    if (attrs[0].attribute != tok!"")
+        return attrs[0].attribute.index;
+
+    return size_t.max;
+}
+
+private size_t skipPreviousWord(const(ubyte)[] sourceCode, size_t index)
+{
+    return index - sourceCode[0 .. index]
+                  .retro
+                  .enumerate
+                  .find!(c => !whitespace.canFind(c.value))
+                  .find!(c => whitespace.canFind(c.value))
+                  .front.index;
 }

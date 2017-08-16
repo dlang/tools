@@ -1,3 +1,4 @@
+#!/usr/bin/env rdmd
 /*
  * Distributed under the Boost Software License, Version 1.0.
  *    (See accompanying file LICENSE_1_0.txt or copy at
@@ -43,6 +44,8 @@ else
 
 string rdmdApp; // path/to/rdmd.exe (once built)
 string compiler = "dmd";  // e.g. dmd/gdmd/ldmd
+string model = "64"; // build architecture for dmd
+string[] rdmdArgs; // path to rdmd + common arguments (compiler, model)
 
 void main(string[] args)
 {
@@ -52,6 +55,7 @@ void main(string[] args)
         "compiler", &compiler,
         "rdmd", &rdmd,
         "concurrency", &concurrencyTest,
+        "m|model", &model,
     );
 
     enforce(rdmd.exists, "Path to rdmd does not exist: %s".format(rdmd));
@@ -59,10 +63,12 @@ void main(string[] args)
     rdmdApp = tempDir().buildPath("rdmd_app_") ~ binExt;
     if (rdmdApp.exists) std.file.remove(rdmdApp);
 
-    auto res = execute([compiler, "-of" ~ rdmdApp, rdmd]);
+    auto res = execute([compiler, modelSwitch, "-of" ~ rdmdApp, rdmd]);
 
     enforce(res.status == 0, res.output);
     enforce(rdmdApp.exists);
+
+    rdmdArgs = [rdmdApp, compilerSwitch, modelSwitch];
 
     runTests();
     if (concurrencyTest)
@@ -70,6 +76,7 @@ void main(string[] args)
 }
 
 @property string compilerSwitch() { return "--compiler=" ~ compiler; }
+@property string modelSwitch() { return "-m" ~ model; }
 
 void runTests()
 {
@@ -87,15 +94,15 @@ void runTests()
     string forceSrc = tempDir().buildPath("force_src_.d");
     std.file.write(forceSrc, `void main() { pragma(msg, "compile_force_src"); }`);
 
-    res = execute([rdmdApp, compilerSwitch, forceSrc]);
+    res = execute(rdmdArgs ~ [forceSrc]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("compile_force_src"));
 
-    res = execute([rdmdApp, compilerSwitch, forceSrc]);
+    res = execute(rdmdArgs ~ [forceSrc]);
     assert(res.status == 0, res.output);
     assert(!res.output.canFind("compile_force_src"));  // second call will not re-compile
 
-    res = execute([rdmdApp, compilerSwitch, "--force", forceSrc]);
+    res = execute(rdmdArgs ~ ["--force", forceSrc]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("compile_force_src"));  // force will re-compile
 
@@ -103,49 +110,49 @@ void runTests()
     string failRuntime = tempDir().buildPath("fail_runtime_.d");
     std.file.write(failRuntime, "void main() { assert(0); }");
 
-    res = execute([rdmdApp, compilerSwitch, "--force", "--build-only", failRuntime]);
+    res = execute(rdmdArgs ~ ["--force", "--build-only", failRuntime]);
     assert(res.status == 0, res.output);  // only built, assert(0) not called.
 
-    res = execute([rdmdApp, compilerSwitch, "--force", failRuntime]);
+    res = execute(rdmdArgs ~ ["--force", failRuntime]);
     assert(res.status == 1, res.output);  // assert(0) called, rdmd execution failed.
 
     string failComptime = tempDir().buildPath("fail_comptime_.d");
     std.file.write(failComptime, "void main() { static assert(0); }");
 
-    res = execute([rdmdApp, compilerSwitch, "--force", "--build-only", failComptime]);
+    res = execute(rdmdArgs ~ ["--force", "--build-only", failComptime]);
     assert(res.status == 1, res.output);  // building will fail for static assert(0).
 
-    res = execute([rdmdApp, compilerSwitch, "--force", failComptime]);
+    res = execute(rdmdArgs ~ ["--force", failComptime]);
     assert(res.status == 1, res.output);  // ditto.
 
     /* Test --chatty. */
     string voidMain = tempDir().buildPath("void_main_.d");
     std.file.write(voidMain, "void main() { }");
 
-    res = execute([rdmdApp, compilerSwitch, "--force", "--chatty", voidMain]);
+    res = execute(rdmdArgs ~ ["--force", "--chatty", voidMain]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("stat "));  // stat should be called.
 
     /* Test --dry-run. */
-    res = execute([rdmdApp, compilerSwitch, "--force", "--dry-run", failComptime]);
+    res = execute(rdmdArgs ~ ["--force", "--dry-run", failComptime]);
     assert(res.status == 0, res.output);  // static assert(0) not called since we did not build.
     assert(res.output.canFind("mkdirRecurse "), res.output);  // --dry-run implies chatty
 
-    res = execute([rdmdApp, compilerSwitch, "--force", "--dry-run", "--build-only", failComptime]);
+    res = execute(rdmdArgs ~ ["--force", "--dry-run", "--build-only", failComptime]);
     assert(res.status == 0, res.output);  // --build-only should not interfere with --dry-run
 
     /* Test --eval. */
-    res = execute([rdmdApp, compilerSwitch, "--force", "-de", "--eval=writeln(`eval_works`);"]);
+    res = execute(rdmdArgs ~ ["--force", "-de", "--eval=writeln(`eval_works`);"]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("eval_works"));  // there could be a "DMD v2.xxx header in the output"
 
     // compiler flags
-    res = execute([rdmdApp, compilerSwitch, "--force", "-debug",
+    res = execute(rdmdArgs ~ ["--force", "-debug",
         "--eval=debug {} else assert(false);"]);
     assert(res.status == 0, res.output);
 
     // vs program file
-    res = execute([rdmdApp, compilerSwitch, "--force",
+    res = execute(rdmdArgs ~ ["--force",
         "--eval=assert(true);", voidMain]);
     assert(res.status != 0);
     assert(res.output.canFind("Cannot have both --eval and a program file ('" ~
@@ -162,16 +169,16 @@ void runTests()
     std.file.write(subModSrc, "module dsubpack.submod; void foo() { }");
 
     // build an object file out of the dependency
-    res = execute([compiler, "-c", "-of" ~ subModObj, subModSrc]);
+    res = execute([compiler, modelSwitch, "-c", "-of" ~ subModObj, subModSrc]);
     assert(res.status == 0, res.output);
 
     string subModUser = tempDir().buildPath("subModUser_.d");
     std.file.write(subModUser, "module subModUser_; import dsubpack.submod; void main() { foo(); }");
 
-    res = execute([rdmdApp, compilerSwitch, "--force", "--exclude=dsubpack", subModUser]);
+    res = execute(rdmdArgs ~ ["--force", "--exclude=dsubpack", subModUser]);
     assert(res.status == 1, res.output);  // building without the dependency fails
 
-    res = execute([rdmdApp, compilerSwitch, "--force", "--exclude=dsubpack", subModObj, subModUser]);
+    res = execute(rdmdArgs ~ ["--force", "--exclude=dsubpack", subModObj, subModUser]);
     assert(res.status == 0, res.output);  // building with the dependency succeeds
 
     /* Test --include. */
@@ -185,10 +192,10 @@ void runTests()
 
     std.file.write(subModUser, "import std.foo; void main() { foobar(); }");
 
-    res = execute([rdmdApp, compilerSwitch, "--force", subModUser]);
+    res = execute(rdmdArgs ~ ["--force", subModUser]);
     assert(res.status == 1, res.output);  // building without the --include fails
 
-    res = execute([rdmdApp, compilerSwitch, "--force", "--include=std", subModUser]);
+    res = execute(rdmdArgs ~ ["--force", "--include=std", subModUser]);
     assert(res.status == 0, res.output);  // building with the --include succeeds
 
     /* Test --extra-file. */
@@ -201,10 +208,10 @@ void runTests()
     std.file.write(extraFileMain,
             "module extraFileMain_; import extraFile_; void main() { f(); }");
 
-    res = execute([rdmdApp, compilerSwitch, "--force", extraFileMain]);
+    res = execute(rdmdArgs ~ ["--force", extraFileMain]);
     assert(res.status == 1, res.output); // undefined reference to f()
 
-    res = execute([rdmdApp, compilerSwitch, "--force",
+    res = execute(rdmdArgs ~ ["--force",
             "--extra-file=" ~ extraFileD, extraFileMain]);
     assert(res.status == 0, res.output); // now OK
 
@@ -212,7 +219,7 @@ void runTests()
     {
     auto testLines = "foo\nbar\ndoo".split("\n");
 
-    auto pipes = pipeProcess([rdmdApp, compilerSwitch, "--force", "--loop=writeln(line);"], Redirect.stdin | Redirect.stdout);
+    auto pipes = pipeProcess(rdmdArgs ~ ["--force", "--loop=writeln(line);"], Redirect.stdin | Redirect.stdout);
     foreach (input; testLines)
         pipes.stdin.writeln(input);
     pipes.stdin.close();
@@ -229,7 +236,7 @@ void runTests()
     }
 
     // vs program file
-    res = execute([rdmdApp, compilerSwitch, "--force",
+    res = execute(rdmdArgs ~ ["--force",
         "--loop=assert(true);", voidMain]);
     assert(res.status != 0);
     assert(res.output.canFind("Cannot have both --loop and a program file ('" ~
@@ -243,13 +250,13 @@ void runTests()
     /+ res = execute([rdmdApp, " %s", noMain));
     assert(res.status == 1, res.output);  // main missing +/
 
-    res = execute([rdmdApp, compilerSwitch, "--main", noMain]);
+    res = execute(rdmdArgs ~ ["--main", noMain]);
     assert(res.status == 0, res.output);  // main added
 
     string intMain = tempDir().buildPath("int_main_.d");
     std.file.write(intMain, "int main(string[] args) { return args.length; }");
 
-    res = execute([rdmdApp, compilerSwitch, "--main", intMain]);
+    res = execute(rdmdArgs ~ ["--main", intMain]);
     assert(res.status == 1, res.output);  // duplicate main
 
     /* Test --makedepend. */
@@ -259,7 +266,7 @@ void runTests()
     string depMod = packRoot.buildPath("depMod_.d");
     std.file.write(depMod, "module depMod_; import dsubpack.submod; void main() { }");
 
-    res = execute([rdmdApp, compilerSwitch, "-I" ~ packRoot, "--makedepend",
+    res = execute(rdmdArgs ~ ["-I" ~ packRoot, "--makedepend",
             "-of" ~ depMod[0..$-2], depMod]);
 
     import std.ascii : newline;
@@ -277,7 +284,7 @@ void runTests()
     std.file.write(depModFail, "module depMod_; import dsubpack.submod; void main() { assert(0); }");
 
     string depMak = packRoot.buildPath("depMak_.mak");
-    res = execute([rdmdApp, compilerSwitch, "--force", "--build-only",
+    res = execute(rdmdArgs ~ ["--force", "--build-only",
             "-I" ~ packRoot, "--makedepfile=" ~ depMak,
             "-of" ~ depModFail[0..$-2], depModFail]);
     scope (exit) std.file.remove(depMak);
@@ -299,9 +306,19 @@ void runTests()
         import core.sys.posix.signal;
         string crashSrc = tempDir().buildPath("crash_src_.d");
         std.file.write(crashSrc, `void main() { int *p; *p = 0; }`);
-        res = execute([rdmdApp, compilerSwitch, crashSrc]);
+        res = execute(rdmdArgs ~ [crashSrc]);
         assert(res.status == -SIGSEGV, format("%s", res));
     }
+
+    /* https://issues.dlang.org/show_bug.cgi?id=11997- rdmd should search its
+    binary path for the compiler */
+    string localDMD = buildPath(tempDir(), baseName(compiler));
+    std.file.write(localDMD, "empty shell");
+    scope(exit) std.file.remove(localDMD);
+
+    res = execute(rdmdApp ~ [modelSwitch, "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
+    assert(res.status == 1, res.output);
+    assert(res.output.canFind(`spawn ["` ~ localDMD ~ `",`));
 
     /* -of doesn't append .exe on Windows: https://d.puremagic.com/issues/show_bug.cgi?id=12149 */
 
@@ -315,7 +332,7 @@ void runTests()
 
     /* Current directory change should not trigger rebuild */
 
-    res = execute([rdmdApp, compilerSwitch, forceSrc]);
+    res = execute(rdmdArgs ~ [forceSrc]);
     assert(res.status == 0, res.output);
     assert(!res.output.canFind("compile_force_src"));
 
@@ -324,7 +341,7 @@ void runTests()
         scope(exit) chdir(cwd);
         chdir(tempDir);
 
-        res = execute([rdmdApp, compilerSwitch, forceSrc.baseName()]);
+        res = execute(rdmdArgs ~ [forceSrc.baseName()]);
         assert(res.status == 0, res.output);
         assert(!res.output.canFind("compile_force_src"));
     }
@@ -338,12 +355,12 @@ void runTests()
             rmdirRecurse(conflictDir);
     }
     mkdir(conflictDir);
-    res = execute([rdmdApp, compilerSwitch, "-of" ~ conflictDir, forceSrc]);
+    res = execute(rdmdArgs ~ ["-of" ~ conflictDir, forceSrc]);
     assert(res.status != 0, "-of set to a directory should fail");
 
     /* rdmd should force rebuild when --compiler changes: https://issues.dlang.org/show_bug.cgi?id=15031 */
 
-    res = execute([rdmdApp, compilerSwitch, forceSrc]);
+    res = execute(rdmdArgs ~ [forceSrc]);
     assert(res.status == 0, res.output);
     assert(!res.output.canFind("compile_force_src"));
 
@@ -355,7 +372,6 @@ void runTests()
 
     res = execute([rdmdApp, "--compiler=" ~ fullCompilerPath, forceSrc]);
     assert(res.status == 0, res.output ~ "\nCan't run with --compiler=" ~ fullCompilerPath);
-    assert(res.output.canFind("compile_force_src"));
 
     // Create an empty temporary directory and clean it up when exiting scope
     static struct TmpDir
@@ -382,11 +398,11 @@ void runTests()
 
     /* tmpdir */
     {
-        res = execute([rdmdApp, compilerSwitch, forceSrc, "--build-only"]);
+        res = execute(rdmdArgs ~ [forceSrc, "--build-only"]);
         assert(res.status == 0, res.output);
 
         TmpDir tmpdir = "rdmdTest";
-        res = execute([rdmdApp, compilerSwitch, "--tmpdir=" ~ tmpdir, forceSrc, "--build-only"]);
+        res = execute(rdmdArgs ~ ["--tmpdir=" ~ tmpdir, forceSrc, "--build-only"]);
         assert(res.status == 0, res.output);
         assert(res.output.canFind("compile_force_src"));
     }
@@ -398,7 +414,7 @@ void runTests()
         std.file.write(srcName, `void fun() {}`);
         if (exists("test" ~ libExt)) remove("test" ~ libExt);
 
-        res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-lib", srcName]);
+        res = execute(rdmdArgs ~ ["--build-only", "--force", "-lib", srcName]);
         assert(res.status == 0, res.output);
         assert(exists(srcDir.buildPath("test" ~ libExt)));
         assert(!exists("test" ~ libExt));
@@ -412,7 +428,7 @@ void runTests()
         string srcName = srcDir.buildPath("test.d");
         std.file.write(srcName, `void fun() {}`);
 
-        res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-lib", "-od" ~ libDir, srcName]);
+        res = execute(rdmdArgs ~ ["--build-only", "--force", "-lib", "-od" ~ libDir, srcName]);
         assert(res.status == 0, res.output);
         assert(exists(libDir.buildPath("test" ~ libExt)));
     }
@@ -426,7 +442,7 @@ void runTests()
         std.file.write(srcName, `void fun() {}`);
         string libName = libDir.buildPath("libtest" ~ libExt);
 
-        res = execute([rdmdApp, compilerSwitch, "--build-only", "--force", "-lib", "-of" ~ libName, srcName]);
+        res = execute(rdmdArgs ~ ["--build-only", "--force", "-lib", "-of" ~ libName, srcName]);
         assert(res.status == 0, res.output);
         assert(exists(libName));
     }
@@ -438,7 +454,7 @@ void runTests()
         std.file.write(srcName, `void main() {}`);
         string objName = srcDir.buildPath("test" ~ objExt);
 
-        res = execute([rdmdApp, compilerSwitch, "--force", "-c", srcName]);
+        res = execute(rdmdArgs ~ ["--force", "-c", srcName]);
         assert(res.status == 0, res.output);
         assert(exists(objName));
     }
@@ -451,24 +467,24 @@ void runTests()
         string libSrcName = srcDir.buildPath("libfun.d");
         std.file.write(libSrcName, `extern(C) void fun() {}`);
 
-        res = execute([rdmdApp, compilerSwitch, "-lib", libSrcName]);
+        res = execute(rdmdArgs ~ ["-lib", libSrcName]);
         assert(res.status == 0, res.output);
         assert(exists(srcDir.buildPath("libfun" ~ libExt)));
 
         string mainSrcName = srcDir.buildPath("main.d");
         std.file.write(mainSrcName, `extern(C) void fun(); pragma(lib, "fun"); void main() { fun(); }`);
 
-        res = execute([rdmdApp, compilerSwitch, "-L-L" ~ srcDir, mainSrcName]);
+        res = execute(rdmdArgs ~ ["-L-L" ~ srcDir, mainSrcName]);
         assert(res.status == 0, res.output);
     }}
 
     /* https://issues.dlang.org/show_bug.cgi?id=16966 */
     {
         immutable voidMainExe = setExtension(voidMain, binExt);
-        res = execute([rdmdApp, compilerSwitch, voidMain]);
+        res = execute(rdmdArgs ~ [voidMain]);
         assert(res.status == 0, res.output);
         assert(!exists(voidMainExe));
-        res = execute([rdmdApp, compilerSwitch, "--build-only", voidMain]);
+        res = execute(rdmdArgs ~ ["--build-only", voidMain]);
         assert(res.status == 0, res.output);
         assert(exists(voidMainExe));
         remove(voidMainExe);
@@ -483,13 +499,13 @@ void runTests()
         std.file.write(src1, "int x = 1; int main() { return x; }");
         std.file.write(src2, "import test; static this() { x = 0; }");
 
-        res = execute([rdmdApp, compilerSwitch, src1]);
+        res = execute(rdmdArgs ~ [src1]);
         assert(res.status == 1, res.output);
 
-        res = execute([rdmdApp, compilerSwitch, "--extra-file=" ~ src2, src1]);
+        res = execute(rdmdArgs ~ ["--extra-file=" ~ src2, src1]);
         assert(res.status == 0, res.output);
 
-        res = execute([rdmdApp, compilerSwitch, src1]);
+        res = execute(rdmdArgs ~ [src1]);
         assert(res.status == 1, res.output);
     }
 }
@@ -500,8 +516,8 @@ void runConcurrencyTest()
     std.file.write(sleep100, "void main() { import core.thread; Thread.sleep(100.msecs); }");
     auto argsVariants =
     [
-        [rdmdApp, compilerSwitch, sleep100],
-        [rdmdApp, compilerSwitch, "--force", sleep100],
+        rdmdArgs ~ [sleep100],
+        rdmdArgs ~ ["--force", sleep100],
     ];
     import std.parallelism, std.range, std.random;
     foreach (rnd; rndGen.parallel(1))

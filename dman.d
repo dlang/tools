@@ -1,3 +1,4 @@
+#!/usr/bin/env rdmd
 /* Distributed under the Boost Software License, Version 1.0.
  *    (See accompanying file LICENSE_1_0.txt or copy at
  *          http://www.boost.org/LICENSE_1_0.txt)
@@ -127,12 +128,13 @@ string DmcCommands(string topic)
 
 string D(string topic)
 {
-    static struct IndexEntry { string keyword; string[] urls; }
-    static IndexEntry[] entries = mixin (import("d.tag"));
+    static immutable tagJson = import("d-tags.json");
 
-    foreach (entry; entries)
-        if (entry.keyword == topic && entry.urls.length)
-            return entry.urls[0];
+    import std.json;
+    JSONValue tags = parseJSON(tagJson);
+
+    if (topic in tags && tags[topic].array.length)
+        return tags[topic][0].str;
 
     return null;
 }
@@ -142,7 +144,7 @@ string CHeader(string topic)
     static string[] dmccmds =
     [
         "assert.h",     "complex.h",   "ctype.h",      "fenv.h",
-        "float.h",      "locale.h",    "math.h",       "setjmp.h,"
+        "float.h",      "locale.h",    "math.h",       "setjmp.h",
         "signal.h",     "stdarg.h",    "stddef.h",     "stdio.h",
         "stdlib.h",     "string.h",    "time.h",       "gc.h",
         "bios.h",       "cerror.h",    "disp.h",       "dos.h",

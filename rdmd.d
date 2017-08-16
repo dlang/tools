@@ -1,3 +1,4 @@
+#!/usr/bin/env rdmd
 /*
  *  Copyright (C) 2008 by Andrei Alexandrescu
  *  Written by Andrei Alexandrescu, www.erdani.org
@@ -58,6 +59,12 @@ version(unittest) {} else
 int main(string[] args)
 {
     //writeln("Invoked with: ", args);
+    // Look for the D compiler rdmd invokes automatically in the same directory as rdmd
+    // and fall back to using the one in your path otherwise.
+    string compilerPath = buildPath(dirName(thisExePath()), defaultCompiler);
+    if (compilerPath.exists && compilerPath.isFile)
+        compiler = compilerPath;
+
     if (args.length > 1 && args[1].startsWith("--shebang ", "--shebang="))
     {
         // multiple options wrapped in one
@@ -561,7 +568,7 @@ private int run(string[] args, string output = null, bool replace = false)
             { /* Windows doesn't have exec, fall back to spawnProcess+wait */ }
         else
         {
-            import std.c.process;
+            import std.process : execv;
             auto argv = args.map!toStringz.chain(null.only).array;
             return execv(argv[0], argv.ptr);
         }
@@ -809,10 +816,11 @@ addition to compiler options, rdmd recognizes the following options:
                      (needs dmd's option `-of` to be present)
   --man              open web browser on manual page
   --shebang          rdmd is in a shebang line (put as first argument)
+  --tmpdir           set an alternative temporary directory
 ".format(defaultCompiler, defaultExclusions);
 }
 
-// For --eval
+// For --eval and --loop
 immutable string importWorld = "
 module temporary;
 import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
@@ -825,7 +833,7 @@ import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
     std.math, std.mathspecial, std.mmfile,
     std.numeric, std.outbuffer, std.parallelism, std.path, std.process,
     std.random, std.range, std.regex, std.signals, std.socket,
-    std.stdint, std.stdio, std.stdiobase,
+    std.stdint, std.stdio,
     std.string, std.windows.syserror, std.system, std.traits, std.typecons,
     std.typetuple, std.uni, std.uri, std.utf, std.variant, std.xml, std.zip,
     std.zlib;

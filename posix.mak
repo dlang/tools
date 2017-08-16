@@ -1,14 +1,19 @@
-DMD = ../dmd/generated/$(OS)/release/$(MODEL)/dmd
+DMD_DIR = ../dmd
+DMD = $(DMD_DIR)/generated/$(OS)/release/$(MODEL)/dmd
 CC = gcc
 INSTALL_DIR = ../install
 DRUNTIME_PATH = ../druntime
 PHOBOS_PATH = ../phobos
+DUB=dub
 
 WITH_DOC = no
 DOC = ../dlang.org
 
-include osmodel.mak
+# Load operating system $(OS) (e.g. linux, osx, ...) and $(MODEL) (e.g. 32, 64) detection Makefile from dmd
+$(shell [ ! -d $(DMD_DIR) ] && git clone --depth=1 https://github.com/dlang/dmd $(DMD_DIR))
+include $(DMD_DIR)/src/osmodel.mak
 
+# Build folder for all binaries
 ROOT_OF_THEM_ALL = generated
 ROOT = $(ROOT_OF_THEM_ALL)/$(OS)/$(MODEL)
 
@@ -26,24 +31,31 @@ ifeq (,$(findstring win,$(OS)))
 	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.so
 endif
 
-# default include/link paths, override by setting DMD (e.g. make -f posix.mak DMD=dmd)
-DMD += -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)
+# default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
+DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
+		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG)
+DFLAGS += -w -de
 
-DFLAGS = -w
+# Default DUB flags (DUB uses a different architecture format)
+DUBFLAGS = --arch=$(subst 32,x86,$(subst 64,x86_64,$(MODEL)))
 
 TOOLS = \
-    $(ROOT)/rdmd \
-    $(ROOT)/ddemangle \
     $(ROOT)/catdoc \
+    $(ROOT)/checkwhitespace \
+    $(ROOT)/ddemangle \
     $(ROOT)/detab \
+    $(ROOT)/rdmd \
     $(ROOT)/tolf
 
 CURL_TOOLS = \
-    $(ROOT)/dget \
-    $(ROOT)/changed
+    $(ROOT)/changed \
+    $(ROOT)/dget
 
 DOC_TOOLS = \
     $(ROOT)/dman
+
+TEST_TOOLS = \
+    $(ROOT)/rdmd_test
 
 all: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 
@@ -58,24 +70,17 @@ dman:      $(ROOT)/dman
 dustmite:  $(ROOT)/dustmite
 
 $(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
-	$(DMD) $(MODEL_FLAG) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
+	$(DMD) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
 
-#dreadful custom step because of libcurl dmd linking problem (Bugzilla 7044)
-$(CURL_TOOLS): $(ROOT)/%: %.d
-	$(DMD) $(MODEL_FLAG) $(DFLAGS) -c -of$(@).o $(<)
-# grep for the linker invocation and append -lcurl
-	LINKCMD=$$($(DMD) $(MODEL_FLAG) $(DFLAGS) -v -of$(@) $(@).o 2>/dev/null | grep $(@).o); \
-	$${LINKCMD} -lcurl
-
-$(TOOLS) $(DOC_TOOLS): $(ROOT)/%: %.d
-	$(DMD) $(MODEL_FLAG) $(DFLAGS) -of$(@) $(<)
+$(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS) $(TEST_TOOLS): $(ROOT)/%: %.d
+	$(DMD) $(DFLAGS) -of$(@) $(<)
 
 ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
 
-$(DOC)/d.tag : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
-	${MAKE} --directory=${DOC} -f posix.mak d.tag
+$(DOC)/d-tags.json : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
+	${MAKE} --directory=${DOC} -f posix.mak d-tags.json
 
-$(ROOT)/dman: $(DOC)/d.tag
+$(ROOT)/dman: $(DOC)/d-tags.json
 $(ROOT)/dman: DFLAGS += -J$(DOC)
 
 install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
@@ -84,6 +89,26 @@ install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 
 clean:
 	rm -f $(ROOT)/dustmite $(TOOLS) $(CURL_TOOLS) $(DOC_TOOLS) $(TAGS) *.o $(ROOT)/*.o
+
+$(ROOT)/tests_extractor: tests_extractor.d
+	mkdir -p $(ROOT)
+	$(DUB) build \
+		   --single $< --force --compiler=$(abspath $(DMD)) $(DUBFLAGS) \
+		   && mv ./tests_extractor $@
+
+################################################################################
+# Build & run tests
+################################################################################
+
+test_tests_extractor: $(ROOT)/tests_extractor
+	$< -i ./test/tests_extractor/ascii.d | diff - ./test/tests_extractor/ascii.d.ext
+	$< -i ./test/tests_extractor/iteration.d | diff - ./test/tests_extractor/iteration.d.ext
+
+test_rdmd: $(ROOT)/rdmd_test $(ROOT)/rdmd
+	$< --compiler=$(abspath $(DMD)) -m$(MODEL)
+	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d
+
+test: test_tests_extractor test_rdmd
 
 ifeq ($(WITH_DOC),yes)
 all install: $(DOC_TOOLS)

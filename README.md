@@ -19,7 +19,6 @@ dget                   | Internal | D source code downloader.
 dman                   | Public   | D documentation lookup tool.
 dustmite               | Public   | [Test case minimization tool](https://github.com/CyberShadow/DustMite/wiki).
 get_dlibcurl32         | Internal | Win32 libcurl downloader/converter.
-has_public_example 	   | Internal | Checks public functions for public examples (requires DUB)
 rdmd                   | Public   | [D build tool](http://dlang.org/rdmd.html).
 rdmd_test              | Internal | rdmd test suite.
 tests_extractor 	   | Internal | Extracts public unittests (requires DUB)
@@ -35,14 +34,16 @@ Running DUB tools
 -----------------
 
 Some tools require D's package manager DUB.
-By default DUB builds a binary and executes it:
+By default, DUB builds a binary and executes it. On a Posix system,
+the source files can directly be executed with DUB (e.g. `./tests_extractor.d`).
+Alternatively, the full single file execution command can be used:
 
 ```
-dub --root styles -c has_public_example
+dub --single tests_extractor.d
 ```
 
 Remember that when programs are run via DUB, you need to pass in `--` before
-the program's arguments, e.g `dub --root styles -c has_public_example -- -i ../phobos/std/algorithm`.
+the program's arguments, e.g `dub --single tests_extractor.d -- -i ../phobos/std/algorithm`.
 
 For more information, please see [DUB's documentation][dub-doc].
 

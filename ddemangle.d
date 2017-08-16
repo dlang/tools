@@ -1,3 +1,4 @@
+#!/usr/bin/env rdmd
 /**
  * An improved D symbol demangler.
  *

@@ -54,10 +54,10 @@ dustmite:  $(ROOT)\dustmite.exe
 
 ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
 
-$(DOC)\d.tag : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
-	cmd /C "cd $(DOC) && $(MAKE) -f win32.mak d.tag"
+$(DOC)\d-tags.json : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
+	cmd /C "cd $(DOC) && $(MAKE) -f win32.mak d-tags.json"
 
-$(ROOT)\dman.exe : dman.d $(DOC)\d.tag
+$(ROOT)\dman.exe : dman.d $(DOC)\d-tags.json
 	$(DMD) $(DFLAGS) -of$@ dman.d -J$(DOC)
 
 $(ROOT)\rdmd.exe : rdmd.d
