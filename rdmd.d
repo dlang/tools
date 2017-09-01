@@ -421,7 +421,7 @@ private string getWorkPath(in string root, in string[] compilerFlags)
     }
     foreach (f; extraFiles) context.put(f.representation);
     auto digest = context.finish();
-    string hash = toHexString(digest);
+    auto hash = toHexString(digest);
 
     const tmpRoot = myOwnTmpDir;
     workPath = buildPath(tmpRoot,
