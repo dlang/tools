@@ -9,6 +9,7 @@ import std.array;
 import std.ascii;
 import std.conv;
 import std.datetime;
+import std.datetime.stopwatch : StopWatch;
 import std.exception;
 import std.file;
 import std.getopt;
@@ -278,7 +279,7 @@ EOS");
 	else
 		reduce();
 
-	auto duration = cast(Duration)times.total.peek();
+	auto duration = times.total.peek();
 	duration = dur!"msecs"(duration.total!"msecs"); // truncate anything below ms, users aren't interested in that
 	if (foundAnything)
 	{
@@ -296,7 +297,7 @@ EOS");
 
 	if (showTimes)
 		foreach (i, t; times.tupleof)
-			writefln("%s: %s", times.tupleof[i].stringof, cast(Duration)times.tupleof[i].peek());
+			writefln("%s: %s", times.tupleof[i].stringof, times.tupleof[i].peek());
 
 	return 0;
 }
@@ -1424,9 +1425,17 @@ bool test(Reduction reduction)
 			{
 				if (!process.pid && !lookaheadIter.done)
 				{
+					auto initialReduction = lookaheadIter.front;
+					bool first = true;
+
 					while (true)
 					{
 						auto reduction = lookaheadIter.front;
+
+						if (!first && reduction == initialReduction)
+							break; // We've looped around using cached results
+						first = false;
+
 						auto digest = hash(reduction);
 
 						if (digest in cache || digest in lookaheadResults || lookaheadProcesses[].canFind!(p => p.digest == digest))
