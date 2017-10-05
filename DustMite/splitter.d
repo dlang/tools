@@ -8,6 +8,7 @@ import std.ascii;
 import std.algorithm;
 import std.array;
 import std.conv;
+import std.exception;
 import std.file;
 import std.functional;
 import std.path;
@@ -77,6 +78,7 @@ enum Splitter
 	lines,     /// Split by line ends
 	words,     /// Split by whitespace
 	D,         /// Parse D source code
+	diff,      /// Unified diffs
 }
 immutable string[] splitterNames = [EnumMembers!Splitter].map!(e => e.text().toLower()).array();
 
@@ -166,9 +168,11 @@ string strip(string s) { while (s.length && isWhite(s[0])) s = s[1..$]; while (s
 
 immutable ParseRule[] defaultRules =
 [
-	{ "*.d" , Splitter.D     },
-	{ "*.di", Splitter.D     },
-	{ "*"   , Splitter.files },
+	{ "*.d"    , Splitter.D     },
+	{ "*.di"   , Splitter.D     },
+	{ "*.diff" , Splitter.diff  },
+	{ "*.patch", Splitter.diff  },
+	{ "*"      , Splitter.files },
 ];
 
 Entity loadFile(string name, string path, ParseOptions options)
@@ -212,6 +216,9 @@ Entity loadFile(string name, string path, ParseOptions options)
 							return result;
 					}
 				}
+				case Splitter.diff:
+					result.children = parseDiff(result.contents);
+					return result;
 			}
 		}
 	assert(false); // default * rule should match everything
@@ -1189,6 +1196,50 @@ Entity[] parseSplit(alias fun)(string text)
 
 alias parseToWords = parseSplit!isNotAlphaNum;
 alias parseToLines = parseSplit!isNewline;
+
+/// Split s on end~start, preserving end and start on each chunk
+private string[] split2(string end, string start)(string s)
+{
+	enum sep = end ~ start;
+	return split2Impl(s, sep, end.length);
+}
+
+private string[] split2Impl(string s, string sep, size_t endLength)
+{
+	string[] result;
+	while (true)
+	{
+		auto i = s.indexOf(sep);
+		if (i < 0)
+			return result ~ s;
+		i += endLength;
+		result ~= s[0..i];
+		s = s[i..$];
+	}
+}
+
+unittest
+{
+	assert(split2!("]", "[")(null) == [""]);
+	assert(split2!("]", "[")("[foo]") == ["[foo]"]);
+	assert(split2!("]", "[")("[foo][bar]") == ["[foo]", "[bar]"]);
+	assert(split2!("]", "[")("[foo] [bar]") == ["[foo] [bar]"]);
+}
+
+Entity[] parseDiff(string s)
+{
+	return s
+		.split2!("\n", "diff ")
+		.map!(
+			(string file)
+			{
+				auto chunks = file.split2!("\n", "@@ ");
+				return new Entity(chunks[0], chunks[1..$].map!(chunk => new Entity(chunk)).array);
+			}
+		)
+		.array
+	;
+}
 
 private:
 
