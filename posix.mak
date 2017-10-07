@@ -49,7 +49,8 @@ TOOLS = \
     $(ROOT)/ddemangle \
     $(ROOT)/detab \
     $(ROOT)/rdmd \
-    $(ROOT)/tolf
+    $(ROOT)/tolf \
+    $(ROOT)/updatecopyright
 
 CURL_TOOLS = \
     $(ROOT)/changed \
