@@ -59,19 +59,25 @@ class TestVisitor : ASTVisitor
     override void visit(const Declaration decl)
     {
         if (decl.unittest_ !is null && hasDdocHeader(sourceCode, decl))
-            print(decl.unittest_);
+            print(decl.unittest_, decl.attributes);
 
         decl.accept(this);
     }
 
 private:
-    void print(const Unittest u)
+    void print(const Unittest u, const(Attribute)[] attributes)
     {
+        import dparse.formatter : format;
 
         // write the origin source code line
         outFile.writefln("// Line %d", u.line);
 
-        // write the unittest block
+        // write the unittest block with its attributes
+        foreach (attrib; attributes)
+        {
+            format(outFile.lockingTextWriter, attrib);
+            outFile.write(" ");
+        }
         outFile.write("unittest\n{\n");
         scope(exit) outFile.writeln("}\n");
 
