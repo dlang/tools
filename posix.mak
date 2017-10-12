@@ -34,7 +34,7 @@ endif
 # default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
 DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
 		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG)
-DFLAGS += -w -de
+DFLAGS += -w -de -fPIC
 
 # Default DUB flags (DUB uses a different architecture format)
 DUBFLAGS = --arch=$(subst 32,x86,$(subst 64,x86_64,$(MODEL)))
@@ -92,7 +92,7 @@ clean:
 
 $(ROOT)/tests_extractor: tests_extractor.d
 	mkdir -p $(ROOT)
-	$(DUB) build \
+	DFLAGS="$(DFLAGS)" $(DUB) build \
 		   --single $< --force --compiler=$(abspath $(DMD)) $(DUBFLAGS) \
 		   && mv ./tests_extractor $@
 
