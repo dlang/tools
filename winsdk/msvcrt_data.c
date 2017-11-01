@@ -4,30 +4,31 @@
 
 ULONG _tls_index = 0;
 
-#pragma section(".tls")
 #pragma section(".tls$AAA")
 #pragma section(".tls$ZZZ")
-#pragma section(".CRT$XLA")
-#pragma section(".CRT$XLZ")
-#pragma section(".CRT$XIA")
-#pragma section(".CRT$XIZ")
-#pragma section(".CRT$XCA")
-#pragma section(".CRT$XCZ")
-#pragma section(".CRT$XPA")
-#pragma section(".CRT$XPZ")
-#pragma section(".CRT$XTA")
-#pragma section(".CRT$XTZ")
+#pragma section(".CRT$XLA", long, read)
+#pragma section(".CRT$XLZ", long, read)
+#pragma section(".CRT$XIA", long, read)
+#pragma section(".CRT$XIZ", long, read)
+#pragma section(".CRT$XCA", long, read)
+#pragma section(".CRT$XCZ", long, read)
+#pragma section(".CRT$XPA", long, read)
+#pragma section(".CRT$XPZ", long, read)
+#pragma section(".CRT$XTA", long, read)
+#pragma section(".CRT$XTZ", long, read)
+#pragma section(".rdata$T", long, read)
+
+#pragma comment(linker, "/merge:.CRT=.rdata")
 
 /* TLS raw template data start and end. */
-_CRTALLOC(".tls$AAA") char _tls_start = 0;
-_CRTALLOC(".tls$ZZZ") char _tls_end = 0;
+_CRTALLOC(".tls$AAA") int _tls_start = 0;
+_CRTALLOC(".tls$ZZZ") int _tls_end = 0;
 
 // TLS init/exit callbacks
 _CRTALLOC(".CRT$XLA") PIMAGE_TLS_CALLBACK __xl_a = 0;
 _CRTALLOC(".CRT$XLZ") PIMAGE_TLS_CALLBACK __xl_z = 0;
 
-// #pragma section(".tls")
-_CRTALLOC(".tls") const IMAGE_TLS_DIRECTORY _tls_used =
+_CRTALLOC(".rdata$T") const IMAGE_TLS_DIRECTORY _tls_used =
 {
   (SIZE_T) &_tls_start,
   (SIZE_T) &_tls_end,

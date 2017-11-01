@@ -30,6 +30,8 @@ extern void _setargv (void);
 
 extern IMAGE_DOS_HEADER __ImageBase; // linker generated
 
+#pragma comment(lib, "kernel32.lib")
+
 #if _APPTYPE == __UNKNOWN_APP
 BOOL WINAPI
 DllMainCRTStartup (HANDLE hDll, DWORD dwReason, LPVOID lpReserved)
