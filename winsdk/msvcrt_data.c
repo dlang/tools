@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <stdlib.h>
 
 #define _CRTALLOC(x) __declspec(allocate(x))
 
@@ -38,7 +39,7 @@ _CRTALLOC(".rdata$T") const IMAGE_TLS_DIRECTORY _tls_used =
   (ULONG) 0 // Characteristics
 };
 
-typedef void(*_PVFV)();
+typedef void(*_PVFV)(void);
 
 // C init
 _CRTALLOC(".CRT$XIA") _PVFV __xi_a[] = { NULL };
@@ -57,3 +58,4 @@ char _fltused;
 
 int    _argc = 0;
 char **_argv = NULL;
+

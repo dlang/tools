@@ -46,7 +46,7 @@ void runShell(string cmd)
 // the appropriate import library
 //
 // x64: strip any @ from the symbol names
-bool def2implib(bool x64, string f, string dir)
+bool def2implib(bool x64, string f, string dir, string linkopt = null)
 {
     static auto re = regex(r"@?([a-zA-Z0-9_]+)(@[0-9]*)");
     char[] content = cast(char[])std.file.read(f);
@@ -105,7 +105,7 @@ bool def2implib(bool x64, string f, string dir)
     std.file.write(dirbase ~ ".c", csrc);
 
     runShell("cl /c /Fo" ~ dirbase ~ ".obj " ~ dirbase ~ ".c");
-    runShell("link /NOD /NOENTRY /DLL " ~ dirbase ~ ".obj /out:" ~ dirbase ~ ".dll /def:" ~ dirbase ~ ".def");
+    runShell("link /NOD /NOENTRY /DLL " ~ dirbase ~ ".obj /out:" ~ dirbase ~ ".dll /def:" ~ dirbase ~ ".def" ~ linkopt);
 
     // cleanup
     std.file.remove(dirbase ~ ".def");
@@ -118,7 +118,7 @@ bool def2implib(bool x64, string f, string dir)
 
 void buildLibs(bool x64, string defdir, string dir)
 {
-    mkdirRecurse(dir ~ "ddk");
+    mkdirRecurse(dir);
 
     //goto LnoDef;
     foreach(f; std.file.dirEntries("def", SpanMode.shallow))
@@ -128,9 +128,13 @@ void buildLibs(bool x64, string defdir, string dir)
         if (extension(f).toLower == ".def")
             def2implib(x64, f, dir);
 
-    foreach(f; std.file.dirEntries("def/ddk", SpanMode.shallow))
-        if (extension(f).toLower == ".def")
-            def2implib(x64, f, dir ~ "ddk/");
+    version(DDK) // disable for now
+    {
+        mkdirRecurse(dir ~ ddk);
+        foreach(f; std.file.dirEntries("def/ddk", SpanMode.shallow))
+            if (extension(f).toLower == ".def")
+                def2implib(x64, f, dir ~ "ddk/");
+    }
 }
 
 void buildMsvcrt(bool x64, string dir, string msvcdef)
@@ -138,26 +142,27 @@ void buildMsvcrt(bool x64, string dir, string msvcdef)
     string arch = x64 ? "x64" : "x86";
     string ml = x64 ? "ml64" : "ml";
     string lib = "lib /MACHINE:" ~ arch ~ " ";
-    string msvcrtlib = "msvcrt51.lib";
+    string msvcrtlib = "msvcrt100.lib";
 
-    // build msvcrt.lib for WinXP
-    runShell("cl /EP -D__MSVCRT_VERSION__=0x0501UL -D__DLLNAME__=msvcrt " ~ msvcdef ~ " >" ~ dir ~ "msvcrt.def");
+    // build msvcrt.lib for VS2010
+    runShell("cl /EP -D__MSVCRT_VERSION__=0x10000000UL -D__DLLNAME__=msvcr100 " ~ msvcdef ~ " >" ~ dir ~ "msvcrt.def");
     runShell(lib ~ "/OUT:" ~ dir ~ msvcrtlib ~ " /DEF:" ~ dir ~ "msvcrt.def"); // no translation necessary
     runShell("cl /c /Zl /Fo" ~ dir ~ "msvcrt_stub0.obj /D_APPTYPE=0 msvcrt_stub.c");
     runShell("cl /c /Zl /Fo" ~ dir ~ "msvcrt_stub1.obj /D_APPTYPE=1 msvcrt_stub.c");
     runShell("cl /c /Zl /Fo" ~ dir ~ "msvcrt_stub2.obj /D_APPTYPE=2 msvcrt_stub.c");
     runShell("cl /c /Zl /Fo" ~ dir ~ "msvcrt_data.obj msvcrt_data.c");
+    runShell("cl /c /Zl /Fo" ~ dir ~ "msvcrt_atexit.obj msvcrt_atexit.c");
     runShell(ml ~ " /c /Fo" ~ dir ~ "msvcrt_abs.obj msvcrt_abs.asm");
-    auto files = ["msvcrt_abs.obj", "msvcrt_stub0.obj", "msvcrt_stub1.obj", "msvcrt_stub2.obj", "msvcrt_data.obj" ];
+    auto files = ["msvcrt_abs.obj", "msvcrt_stub0.obj", "msvcrt_stub1.obj", "msvcrt_stub2.obj", "msvcrt_data.obj", "msvcrt_atexit.obj" ];
     auto objs = files.map!(a => dir ~ a).join(" ");
     runShell(lib ~ dir ~ msvcrtlib ~ " " ~ objs);
 
-    // create empty oldnames.lib (expected by dmd)
-    std.file.write(dir ~ "empty.c", "");
-    runShell("cl /c /Zl /Fo" ~ dir ~ "oldnames.obj " ~ dir ~ "empty.c");
+    // create oldnames.lib (expected by dmd)
+    runShell("cl /c /Zl /Fo" ~ dir ~ "oldnames.obj oldnames.c");
     runShell(lib ~ "/OUT:" ~ dir ~ "oldnames.lib " ~ dir ~ "oldnames.obj");
 
     // create empty uuid.lib (expected by dmd, but UUIDs already in druntime)
+    std.file.write(dir ~ "empty.c", "");
     runShell("cl /c /Zl /Fo" ~ dir ~ "uuid.obj " ~ dir ~ "empty.c");
     runShell(lib ~ "/OUT:" ~ dir ~ "uuid.lib " ~ dir ~ "uuid.obj");
 
