@@ -121,17 +121,17 @@ void buildLibs(bool x64, string defdir, string dir)
     mkdirRecurse(dir);
 
     //goto LnoDef;
-    foreach(f; std.file.dirEntries("def", SpanMode.shallow))
+    foreach(f; std.file.dirEntries(defdir, SpanMode.shallow))
         if (extension(f).toLower == ".def")
             def2implib(x64, f, dir);
-    foreach(f; std.file.dirEntries("def/directx", SpanMode.shallow))
+    foreach(f; std.file.dirEntries(defdir ~ "/directx", SpanMode.shallow))
         if (extension(f).toLower == ".def")
             def2implib(x64, f, dir);
 
     version(DDK) // disable for now
     {
         mkdirRecurse(dir ~ ddk);
-        foreach(f; std.file.dirEntries("def/ddk", SpanMode.shallow))
+        foreach(f; std.file.dirEntries(defdir ~ "/ddk", SpanMode.shallow))
             if (extension(f).toLower == ".def")
                 def2implib(x64, f, dir ~ "ddk/");
     }
@@ -140,7 +140,6 @@ void buildLibs(bool x64, string defdir, string dir)
 void buildMsvcrt(bool x64, string dir, string msvcdef)
 {
     string arch = x64 ? "x64" : "x86";
-    string ml = x64 ? "ml64" : "ml";
     string lib = "lib /MACHINE:" ~ arch ~ " ";
     string msvcrtlib = "msvcrt100.lib";
 
@@ -152,8 +151,12 @@ void buildMsvcrt(bool x64, string dir, string msvcdef)
     runShell("cl /c /Zl /Fo" ~ dir ~ "msvcrt_stub2.obj /D_APPTYPE=2 msvcrt_stub.c");
     runShell("cl /c /Zl /Fo" ~ dir ~ "msvcrt_data.obj msvcrt_data.c");
     runShell("cl /c /Zl /Fo" ~ dir ~ "msvcrt_atexit.obj msvcrt_atexit.c");
-    runShell(ml ~ " /c /Fo" ~ dir ~ "msvcrt_abs.obj msvcrt_abs.asm");
-    auto files = ["msvcrt_abs.obj", "msvcrt_stub0.obj", "msvcrt_stub1.obj", "msvcrt_stub2.obj", "msvcrt_data.obj", "msvcrt_atexit.obj" ];
+    auto files = ["msvcrt_stub0.obj", "msvcrt_stub1.obj", "msvcrt_stub2.obj", "msvcrt_data.obj", "msvcrt_atexit.obj" ];
+    if (!x64)
+    {
+        runShell("ml /c /Fo" ~ dir ~ "msvcrt_abs.obj msvcrt_abs.asm");
+        files ~= "msvcrt_abs.obj";
+    }
     auto objs = files.map!(a => dir ~ a).join(" ");
     runShell(lib ~ dir ~ msvcrtlib ~ " " ~ objs);
 
