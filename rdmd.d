@@ -717,7 +717,7 @@ private string[string] getDependencies(string rootModule, string workDir,
     auto depsGetter =
         // "cd " ~ shellQuote(rootDir) ~ " && "
         [ compiler ] ~ compilerFlags ~
-        ["-v", "-o-", rootModule, "-I" ~ rootDir];
+        ["-v", "-deps", "-o-", rootModule, "-I" ~ rootDir];
 
     scope(failure)
     {
