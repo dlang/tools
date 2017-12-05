@@ -89,7 +89,7 @@ auto findAuthors(string revRange, FindConfig config)
         scope(exit) enforce(wait(p.pid) == 0, "Failed to execute '%(%s %)'.".format(cmd));
 
         static immutable Author = "Author: ";
-        p.stdout
+        authors ~= p.stdout
             .byLineCopy
             .filter!(line => line.startsWith(Author))
             .tee!(_ => commits++)
@@ -97,8 +97,7 @@ auto findAuthors(string revRange, FindConfig config)
                 line.skipOver(Author);
                 return line.readUser;
             })
-            .filter!(a => a.name != "The Dlang Bot")
-            .each!(author => authors ~= author);
+            .filter!(a => a.name != "The Dlang Bot");
     }
     if (!config.showAllContributrs)
         stderr.writefln("Looked at %d commits in %s", commits, revRange);
@@ -113,7 +112,6 @@ auto reduceAuthors(GitAuthors)(GitAuthors authors)
     import std.uni : sicmp;
     return authors
             .sort!((a, b) => sicmp(a.name, b.name) < 0)
-            .release
             .uniq!((a, b) => a.name == b.name);
 }
 
