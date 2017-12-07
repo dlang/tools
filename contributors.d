@@ -39,17 +39,6 @@ struct GitAuthor
     }
 }
 
-/// Reads a GitAuthor in the format of "Name <my@email.com>"
-GitAuthor readUser(string s)
-{
-    auto ps = s.splitter("<");
-    GitAuthor author = {
-        name: ps.front.to!string.strip,
-        email: ps.dropOne.front.filter!(a => a != '"').until('>').to!string
-    };
-    return author;
-}
-
 /// Options for finding authors
 struct FindConfig
 {
@@ -79,7 +68,7 @@ auto findAuthors(string revRange, FindConfig config)
             enforce(wait(p.pid) == 0, "Failed to execute '%(%s %)'.".format(cmd));
         }
 
-        auto cmd = ["git", "-c", "mailmap.file=%s".format(config.mailmapFile), "-C", repo, "log", "--use-mailmap"];
+        auto cmd = ["git", "-c", "mailmap.file=%s".format(config.mailmapFile), "-C", repo, "log", "--use-mailmap", "--pretty=format:%aN|%aE"];
         if (!config.showAllContributrs)
             cmd ~= revRange;
         if (config.noMerges)
@@ -88,14 +77,12 @@ auto findAuthors(string revRange, FindConfig config)
         auto p = pipeProcess(cmd, Redirect.stdout);
         scope(exit) enforce(wait(p.pid) == 0, "Failed to execute '%(%s %)'.".format(cmd));
 
-        static immutable Author = "Author: ";
         authors ~= p.stdout
             .byLineCopy
-            .filter!(line => line.startsWith(Author))
             .tee!(_ => commits++)
             .map!((line){
-                line.skipOver(Author);
-                return line.readUser;
+                auto ps = line.splitter("|");
+                return GitAuthor(ps.front, ps.dropOne.front);
             })
             .filter!(a => a.name != "The Dlang Bot");
     }
