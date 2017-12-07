@@ -1,4 +1,3 @@
-DOC=..\dlang.org
 # Where scp command copies to
 SCPDIR=..\backup
 
@@ -52,13 +51,13 @@ ddemangle: $(ROOT)\ddemangle.exe
 changed:   $(ROOT)\changed.exe
 dustmite:  $(ROOT)\dustmite.exe
 
-ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
-
-$(DOC)\d-tags.json : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
-	cmd /C "cd $(DOC) && $(MAKE) -f win32.mak d-tags.json"
+d-tags.json :
+	@echo 'Build d-tags.json and copy it here, e.g. by running:'
+	@echo "    make -C ../dlang.org -f win32.mak d-tags.json && copy ../dlang.org/d-tags-latest.json d-tags.json"
+	@exit
 
 $(ROOT)\dman.exe : dman.d $(DOC)\d-tags.json
-	$(DMD) $(DFLAGS) -of$@ dman.d -J$(DOC)
+	$(DMD) $(DFLAGS) -of$@ dman.d -J.
 
 $(ROOT)\rdmd.exe : rdmd.d
 	$(DMD) $(DFLAGS) -of$@ rdmd.d advapi32.lib
