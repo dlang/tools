@@ -1,0 +1,22 @@
+platform: x64
+environment:
+ matrix:
+  - DC: dmd
+    DVersion: nightly
+    arch: x64
+  - DC: dmd
+    DVersion: nightly
+    arch: x86
+skip_tags: false
+build_script:
+ - ps: wget https://raw.githubusercontent.com/wilzbach/installer/appveyor-script/script/install.ps1 -OutFile install.ps1
+ - ps: .\install.ps1
+ - call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" %compilersetupargs%
+
+test_script:
+ - echo %PLATFORM%
+ - echo %Darch%
+ - echo %DC%
+ - echo %PATH%
+ - '%DC% --version'
+ - make -f win32.mak rdmd dustmite
