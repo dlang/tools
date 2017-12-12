@@ -56,7 +56,7 @@ d-tags.json :
 	@echo "    make -C ../dlang.org -f win32.mak d-tags.json && copy ../dlang.org/d-tags-latest.json d-tags.json"
 	@exit
 
-$(ROOT)\dman.exe : dman.d $(DOC)\d-tags.json
+$(ROOT)\dman.exe : dman.d d-tags.json
 	$(DMD) $(DFLAGS) -of$@ dman.d -J.
 
 $(ROOT)\rdmd.exe : rdmd.d
