@@ -390,6 +390,7 @@ Please supply a bugzilla version
     auto w = f.lockingTextWriter();
     w.put("Ddoc\n\n");
     w.formattedWrite("$(CHANGELOG_NAV_LAST %s)\n\n", previousVersion);
+    w.put("$(CHANGELOG_HEADER)\n");
 
     {
         w.formattedWrite("$(VERSION %s, =================================================,\n\n", nextVersionDate);
@@ -437,12 +438,15 @@ Please supply a bugzilla version
             revRange.getBugzillaChanges.writeBugzillaChanges(w);
     }
 
+    w.put("$(CHANGELOG_FOOTER)\n");
     w.formattedWrite("$(CHANGELOG_NAV_LAST %s)\n", previousVersion);
 
     // write own macros
     w.formattedWrite(`Macros:
     VER=%s
     TITLE=Change Log: $(VER)
+    CHANGELOG_HEADER=
+    CHANGELOG_FOOTER=
 `, nextVersionString);
 
     writefln("Change log generated to: '%s'", outputFile);
