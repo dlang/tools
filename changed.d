@@ -444,6 +444,22 @@ Please supply a bugzilla version
             revRange.getBugzillaChanges.writeBugzillaChanges(w);
     }
 
+    version(Contributors_Lib)
+    if (revRange)
+    {
+        import contributors : FindConfig, findAuthors, reduceAuthors;
+        FindConfig config = {
+            cwd: __FILE_FULL_PATH__.dirName.asNormalizedPath.to!string,
+        };
+        config.mailmapFile = config.cwd.buildPath(".mailmap");
+        auto authors = revRange.findAuthors(config).reduceAuthors;
+        w.formattedWrite("$(D_CONTRIBUTORS_HEADER %d)\n", authors.save.walkLength);
+        w.put("$(D_CONTRIBUTORS\n");
+        authors.each!(a => w.formattedWrite("    $(D_CONTRIBUTOR %s)\n", a.name));
+        w.put(")\n");
+        w.put("$(D_CONTRIBUTORS_FOOTER)\n");
+    }
+
     w.formattedWrite("$(CHANGELOG_NAV_LAST %s)\n", previousVersion);
 
     // write own macros
