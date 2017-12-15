@@ -102,6 +102,7 @@ auto reduceAuthors(GitAuthors)(GitAuthors authors)
             .uniq!((a, b) => a.name == b.name);
 }
 
+version(Contributors_Lib) {} else
 int main(string[] args)
 {
     import std.getopt;
