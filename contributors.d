@@ -57,18 +57,20 @@ auto findAuthors(string revRange, FindConfig config)
 {
     Appender!(GitAuthor[]) authors;
     int commits;
-    foreach (repo; ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"]
-             .map!(r => buildPath(config.cwd, "..", r)))
+    foreach (repo; ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"])
     {
+        scope(exit) chdir(config.cwd);
+        chdir(buildPath(config.cwd, "..", repo));
+
         if (config.refreshTags)
         {
-            auto cmd = ["git", "-C", repo, "fetch", "--tags", "https://github.com/dlang/" ~ repo.baseName,
+            auto cmd = ["git", "fetch", "--tags", "https://github.com/dlang/" ~ repo,
                                "+refs/heads/*:refs/remotes/upstream/*"];
             auto p = pipeProcess(cmd, Redirect.stdout);
             enforce(wait(p.pid) == 0, "Failed to execute '%(%s %)'.".format(cmd));
         }
 
-        auto cmd = ["git", "-c", "mailmap.file=%s".format(config.mailmapFile), "-C", repo, "log", "--use-mailmap", "--pretty=format:%aN|%aE"];
+        auto cmd = ["git", "-c", "mailmap.file=%s".format(config.mailmapFile), "log", "--pretty=format:%aN|%aE"];
         if (!config.showAllContributrs)
             cmd ~= revRange;
         if (config.noMerges)
