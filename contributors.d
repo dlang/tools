@@ -57,9 +57,19 @@ auto findAuthors(string revRange, FindConfig config)
 {
     Appender!(GitAuthor[]) authors;
     int commits;
-    foreach (repo; ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"]
-             .map!(r => buildPath(config.cwd, "..", r)))
+    auto repos = ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"];
+    if (config.showAllContributors)
+        repos ~= ["dub", "dub-registry", "dconf.org"];
+
+    foreach (repo; repos.map!(r => buildPath(config.cwd, "..", r)))
     {
+        if (!repo.exists)
+        {
+            stderr.writefln("Warning: %s doesn't exist. " ~
+                            "Consider running: git clone https://github.com/dlang/%s ../%2$s",
+                            repo, repo.baseName);
+            continue;
+        }
         if (config.refreshTags)
         {
             auto cmd = ["git", "-C", repo, "fetch", "--tags", "https://github.com/dlang/" ~ repo.baseName,
