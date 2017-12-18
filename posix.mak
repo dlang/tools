@@ -42,6 +42,7 @@ DUBFLAGS = --arch=$(subst 32,x86,$(subst 64,x86_64,$(MODEL)))
 TOOLS = \
     $(ROOT)/catdoc \
     $(ROOT)/checkwhitespace \
+    $(ROOT)/contributors \
     $(ROOT)/ddemangle \
     $(ROOT)/detab \
     $(ROOT)/rdmd \
@@ -75,13 +76,15 @@ $(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
 $(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS) $(TEST_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(DFLAGS) -of$(@) $(<)
 
-ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG = # ???
+d-tags.json:
+	@echo 'Build d-tags.json and copy it here, e.g. by running:'
+	@echo "    make -C ../dlang.org -f posix.mak d-tags-latest.json && cp ../dlang.org/d-tags-latest.json d-tags.json"
+	@echo 'or:'
+	@echo "    make -C ../dlang.org -f posix.mak d-tags-prerelease.json && cp ../dlang.org/d-tags-prerelease.json d-tags.json"
+	@exit 1
 
-$(DOC)/d-tags.json : $(ALL_OF_PHOBOS_DRUNTIME_AND_DLANG_ORG)
-	${MAKE} --directory=${DOC} -f posix.mak d-tags.json
-
-$(ROOT)/dman: $(DOC)/d-tags.json
-$(ROOT)/dman: DFLAGS += -J$(DOC)
+$(ROOT)/dman: d-tags.json
+$(ROOT)/dman: DFLAGS += -J.
 
 install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 	mkdir -p $(INSTALL_DIR)/bin
