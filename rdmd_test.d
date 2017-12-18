@@ -46,6 +46,7 @@ string rdmdApp; // path/to/rdmd.exe (once built)
 string compiler = "dmd";  // e.g. dmd/gdmd/ldmd
 string model = "64"; // build architecture for dmd
 string[] rdmdArgs; // path to rdmd + common arguments (compiler, model)
+bool verbose = false;
 
 void main(string[] args)
 {
@@ -56,12 +57,17 @@ void main(string[] args)
         "rdmd", &rdmd,
         "concurrency", &concurrencyTest,
         "m|model", &model,
+        "v|verbose", &verbose,
     );
 
     enforce(rdmd.exists, "Path to rdmd does not exist: %s".format(rdmd));
 
     rdmdApp = tempDir().buildPath("rdmd_app_") ~ binExt;
     if (rdmdApp.exists) std.file.remove(rdmdApp);
+
+    // compiler needs to be an absolute path because we change directories
+    if (compiler.canFind!isDirSeparator)
+        compiler = buildNormalizedPath(compiler.absolutePath());
 
     auto res = execute([compiler, modelSwitch, "-of" ~ rdmdApp, rdmd]);
 
@@ -77,6 +83,14 @@ void main(string[] args)
 
 @property string compilerSwitch() { return "--compiler=" ~ compiler; }
 @property string modelSwitch() { return "-m" ~ model; }
+
+auto execute(T...)(T args)
+{
+    import std.stdio : writefln;
+    if (verbose)
+        writefln("[execute] %s", args[0]);
+    return std.process.execute(args);
+}
 
 void runTests()
 {
