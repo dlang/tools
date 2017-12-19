@@ -1,6 +1,7 @@
 # See https://github.com/git/git/blob/master/Documentation/mailmap.txt
 # This file is sorted with:
 # (head -n3 .mailmap && tail -n+4 .mailmap | sort -i) > .mailmap.tmp && mv .mailmap.tmp .mailmap
+Adam D. Ruppe <destructionator@gmail.com>
 adil <adil@stockopedia.co.uk>
 adil <adil@stockopedia.co.uk> <adil@adil-ThinkCentre-A85>
 aG0aep6G <aG0aep6G@users.noreply.github.com>
@@ -15,6 +16,7 @@ Andrew Edwards <edwards.ac@gmail.com>
 Andrey Zherikov <andrey.zherikov@gmail.com>
 Brad Anderson <root>
 Brian Schott <briancschott@gmail.com>
+Brian Schott <briancschott@gmail.com> <Hackerpilot>
 Christian Juelg <c.juelg@gmail.com>
 Clement Courbet <legrosbuffle@somebod.com> <clem@somebod.com>
 D8174 <michaelpm394@gmail.com>
@@ -30,6 +32,7 @@ Ed McCardell <edmccard@hotmail.com>
 emstoudenmire <miles.stoudenmire@gmail.com>
 Hara Kenji <k.hara.pg+dev@gmail.com> <k.hara.pg@gmail.com>
 humdedum <humdedum@icloud.com>
+Iain Buclaw <ibuclaw@gdcproject.org>
 Iain Buclaw <ibuclaw@gdcproject.org> <ibuclaw@HP-G62.(none)>
 Iain Buclaw <ibuclaw@gdcproject.org> ibuclaw <ibuclaw@ubuntu.com>
 Ilya Yaroshenko <ilya@ilya-Aspire-7745G.(none)>
@@ -63,6 +66,8 @@ Mathias Lang <mathias.lang@sociomantic.com> <pro.mathias.lang@gmail.com>
 Miles <miles.stoudenmire@gmail.com>
 Miles Stoudenmire <miles.stoudenmire@gmail.com>
 monarchdodra <monarchdodra@gmail.com> <monarchdodra@gmail.com>
+Nick Sabalausky <bus_github@semitwist.com>
+Nick Sabalausky <bus_github@semitwist.com> <Abscissa@users.noreply.github.com>
 Petar Kirov <petar.p.kirov@gmail.com> <petar.p.kirov@gmail.com>
 ponce <aliloko@gmail.com> <aliloko@gmail.com>
 Михаил Страшун <public@dicebot.lv>
@@ -78,7 +83,9 @@ Simen Kjærås <simen.kjaras@gmail.com>
 Simen Kjærås <simen.kjaras@gmail.com> <biotronic@biotronic.(none)>
 skkestrel <sudo@pt-get.com>
 Stefan Koch <Uplink.Coder@googlemail.com>
+Stefan Koch <uplink.coder@googlemail.com> <UplinkCoder@users.noreply.github.com>
 Stefan Rohe <think@hotmail.de>
+Timothee Cour <timothee.cour@gmail.com>
 Timothee Cour <timothee.cour@gmail.com> <timothee.cour2@gmail.com>
 Tobias Stengel <tobias.stengel@student.kit.edu>
 Torarin <torarin@gmail.com>
