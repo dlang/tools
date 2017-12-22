@@ -1,0 +1,66 @@
+platform: x64
+environment:
+ matrix:
+  - DC: dmd
+    DVersion: nightly
+    arch: x64
+  - DC: dmd
+    DVersion: nightly
+    arch: x86
+skip_tags: false
+build_script:
+ - ps: >
+        function ResolveLatestDMD
+        {
+            $version = $env:DVersion;
+            if($version -eq "stable") {
+                $latest = (Invoke-WebRequest "http://downloads.dlang.org/releases/LATEST").toString();
+                $url = "http://downloads.dlang.org/releases/2.x/$($latest)/dmd.$($latest).windows.7z";
+            }elseif($version -eq "beta") {
+                $latest = (Invoke-WebRequest "http://downloads.dlang.org/pre-releases/LATEST").toString();
+                $latestVersion = $latest.split("-")[0].split("~")[0];
+                $url = "http://downloads.dlang.org/pre-releases/2.x/$($latestVersion)/dmd.$($latest).windows.7z";
+            }elseif($version -eq "nightly") {
+                $latest = (Invoke-WebRequest "https://nightlies.dlang.org/dmd-nightly/LATEST").toString().replace("`n","").replace("`r","");
+                $url = "https://nightlies.dlang.org/dmd-$($latest)/dmd.master.windows.7z"
+            }else {
+                $url = "http://downloads.dlang.org/releases/2.x/$($version)/dmd.$($version).windows.7z";
+            }
+            $env:PATH += ";C:\dmd2\windows\bin;";
+            return $url;
+        }
+        function SetUpDCompiler
+        {
+            $env:toolchain = "msvc";
+            echo "downloading ...";
+            $url = ResolveLatestDMD;
+            echo $url;
+            Invoke-WebRequest $url -OutFile "c:\dmd.7z";
+            echo "finished.";
+            pushd c:\\;
+            7z x dmd.7z > $null;
+            popd;
+        }
+        SetUpDCompiler
+
+        if($env:arch -eq "x86"){
+            $env:compilersetupargs = "x86";
+            $env:Darch = "x86";
+            $env:DConf = "m32";
+        }elseif($env:arch -eq "x64"){
+            $env:compilersetupargs = "amd64";
+            $env:Darch = "x86_64";
+            $env:DConf = "m64";
+        }
+        # This needs to be done more generically (currently only works on AppVeyor)
+        $env:compilersetup = "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall";
+
+ - call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" %compilersetupargs%
+
+test_script:
+ - echo %PLATFORM%
+ - echo %Darch%
+ - echo %DC%
+ - echo %PATH%
+ - '%DC% --version'
+ - make -f win32.mak rdmd dustmite ddemangle changed
