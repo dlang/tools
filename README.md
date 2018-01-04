@@ -1,9 +1,10 @@
 D tools
 =======
 
-[![GitHub tag](https://img.shields.io/github/tag/dlang/tools.svg?maxAge=86400)](#)
+[![GitHub tag](https://img.shields.io/github/tag/dlang/tools.svg?maxAge=86400)](https://github.com/dlang/tools/releases)
 [![Build Status](https://travis-ci.org/dlang/tools.svg?branch=master)](https://travis-ci.org/dlang/tools)
 [![Issue Stats](https://img.shields.io/issuestats/p/github/dlang/tools.svg?maxAge=2592000)](http://www.issuestats.com/github/dlang/tools)
+[![license](https://img.shields.io/github/license/dlang/tools.svg)](https://github.com/dlang/tools/blob/master/LICENSE.txt)
 
 This repository hosts various tools redistributed with DMD or used
 internally during various build tasks.
