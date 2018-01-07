@@ -1,9 +1,9 @@
-DMD_DIR = ../dmd
+DMD_DIR = dmd
 DMD = $(DMD_DIR)/generated/$(OS)/release/$(MODEL)/dmd
 CC = gcc
-INSTALL_DIR = ../install
-DRUNTIME_PATH = ../druntime
-PHOBOS_PATH = ../phobos
+INSTALL_DIR = install
+DRUNTIME_PATH = druntime
+PHOBOS_PATH = phobos
 DUB=dub
 
 WITH_DOC = no
