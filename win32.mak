@@ -41,7 +41,7 @@ TARGETS=	$(ROOT)\dman.exe \
 
 MAKEFILES=win32.mak posix.mak
 
-SRCS=dman.d rdmd.d ddemangle.d
+SRCS=dman.d rdmd.d rdmd_pre_dash_i.d ddemangle.d
 
 targets : $(TARGETS)
 
@@ -59,8 +59,8 @@ d-tags.json :
 $(ROOT)\dman.exe : dman.d d-tags.json
 	$(DMD) $(DFLAGS) -of$@ dman.d -J.
 
-$(ROOT)\rdmd.exe : rdmd.d
-	$(DMD) $(DFLAGS) -of$@ rdmd.d advapi32.lib
+$(ROOT)\rdmd.exe : rdmd.d rdmd_pre_dash_i.d
+	$(DMD) $(DFLAGS) -of$@ rdmd.d rdmd_pre_dash_i.d advapi32.lib
 
 $(ROOT)\ddemangle.exe : ddemangle.d
 	$(DMD) $(DFLAGS) -of$@ ddemangle.d
