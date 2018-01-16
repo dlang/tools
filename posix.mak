@@ -74,7 +74,7 @@ $(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
 	$(DMD) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
 
 $(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS) $(TEST_TOOLS): $(ROOT)/%: %.d
-	$(DMD) $(DFLAGS) -of$(@) $(<)
+	$(DMD) -i $(DFLAGS) -of$(@) $(<)
 
 d-tags.json:
 	@echo 'Build d-tags.json and copy it here, e.g. by running:'
@@ -109,7 +109,7 @@ test_tests_extractor: $(ROOT)/tests_extractor
 
 test_rdmd: $(ROOT)/rdmd_test $(ROOT)/rdmd
 	$< --compiler=$(abspath $(DMD)) -m$(MODEL)
-	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d
+	$(DMD) $(DFLAGS) -unittest -main rdmd_pre_dash_i.d -run rdmd.d
 
 test: test_tests_extractor test_rdmd
 

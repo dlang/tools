@@ -51,6 +51,7 @@ bool verbose = false;
 void main(string[] args)
 {
     string rdmd = "rdmd.d";
+    string rdmd_pre_dash_i = "rdmd_pre_dash_i.d";
     bool concurrencyTest;
     getopt(args,
         "compiler", &compiler,
@@ -61,6 +62,7 @@ void main(string[] args)
     );
 
     enforce(rdmd.exists, "Path to rdmd does not exist: %s".format(rdmd));
+    enforce(rdmd_pre_dash_i.exists, "Path to rdmd_pre_dash_i does not exist: %s".format(rdmd_pre_dash_i));
 
     rdmdApp = tempDir().buildPath("rdmd_app_") ~ binExt;
     if (rdmdApp.exists) std.file.remove(rdmdApp);
@@ -69,7 +71,7 @@ void main(string[] args)
     if (compiler.canFind!isDirSeparator)
         compiler = buildNormalizedPath(compiler.absolutePath());
 
-    auto res = execute([compiler, modelSwitch, "-of" ~ rdmdApp, rdmd]);
+    auto res = execute([compiler, modelSwitch, "-of" ~ rdmdApp, rdmd, rdmd_pre_dash_i]);
 
     enforce(res.status == 0, res.output);
     enforce(rdmdApp.exists);
