@@ -130,12 +130,13 @@ int main(string[] args)
     string[] eval;     // set by --eval
     bool makeDepend;
     string makeDepFile;
+    string compilerOption;
     getopt(argsBeforeProgram,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
             "build-only", &buildOnly,
             "chatty", &chatty,
-            "compiler", &compiler,
+            "compiler", &compilerOption,
             "dry-run", &dryRun,
             "eval", &eval,
             "loop", &loop,
@@ -152,6 +153,20 @@ int main(string[] args)
             "o", &dashOh);
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
+    if (compilerOption)
+    {
+        if (0 != filenameCmp(compilerPath, compilerOption))
+        {
+            auto otherRdmd = buildPath(dirName(compilerOption), "rdmd" ~ binExt);
+            if (otherRdmd.exists && otherRdmd.isFile)
+            {
+                yap("forwarding call to '%s'", otherRdmd);
+                auto process = spawnProcess(otherRdmd ~ args[1..$]);
+                return process.wait();
+            }
+        }
+        compiler = compilerOption;
+    }
 
     /* Only -of is supported because Make is very susceptible to file names, and
      * it doesn't do a good job resolving them. One option would be to use
