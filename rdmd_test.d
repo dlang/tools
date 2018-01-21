@@ -45,7 +45,6 @@ else
 string rdmdApp; // path/to/rdmd.exe (once built)
 string compiler = "dmd";  // e.g. dmd/gdmd/ldmd
 string model = "64"; // build architecture for dmd
-string[] rdmdArgs; // path to rdmd + common arguments (compiler, model)
 bool verbose = false;
 
 void main(string[] args)
@@ -74,11 +73,9 @@ void main(string[] args)
     enforce(res.status == 0, res.output);
     enforce(rdmdApp.exists);
 
-    rdmdArgs = [rdmdApp, compilerSwitch(compiler), modelSwitch(model)];
-
-    runTests();
+    runTests(rdmdApp, compiler, model);
     if (concurrencyTest)
-        runConcurrencyTest();
+        runConcurrencyTest(rdmdApp, compiler, model);
 
     runFallbackTest(rdmdApp, compiler, model);
 }
@@ -100,8 +97,11 @@ auto rdmdArguments(string rdmdApp, string compiler, string model)
     return [rdmdApp, compilerSwitch(compiler), modelSwitch(model)];
 }
 
-void runTests()
+void runTests(string rdmdApp, string compiler, string model)
 {
+    // path to rdmd + common arguments (compiler, model)
+    auto rdmdArgs = rdmdArguments(rdmdApp, compiler, model);
+
     /* Test help string output when no arguments passed. */
     auto res = execute([rdmdApp]);
     assert(res.status == 1, res.output);
@@ -522,8 +522,11 @@ void runTests()
     }
 }
 
-void runConcurrencyTest()
+void runConcurrencyTest(string rdmdApp, string compiler, string model)
 {
+    // path to rdmd + common arguments (compiler, model)
+    auto rdmdArgs = rdmdArguments(rdmdApp, compiler, model);
+
     string sleep100 = tempDir().buildPath("delay_.d");
     std.file.write(sleep100, "void main() { import core.thread; Thread.sleep(100.msecs); }");
     auto argsVariants =
