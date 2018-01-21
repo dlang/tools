@@ -46,14 +46,14 @@ bool verbose = false;
 
 void main(string[] args)
 {
-    string compiler = "dmd";  // e.g. dmd/gdmd/ldmd
+    string buildCompiler = "dmd";  // e.g. dmd/gdmd/ldmd
     string rdmd = "rdmd.d";
     bool concurrencyTest;
     string model = "64"; // build architecture for dmd
     string testCompilerList; // e.g. "ldmd2,gdmd" (comma-separated list of compiler names)
 
     getopt(args,
-        "compiler", &compiler,
+        "compiler", &buildCompiler,
         "rdmd", &rdmd,
         "concurrency", &concurrencyTest,
         "m|model", &model,
@@ -68,10 +68,10 @@ void main(string[] args)
     if (rdmdApp.exists) std.file.remove(rdmdApp);
 
     // compiler needs to be an absolute path because we change directories
-    if (compiler.canFind!isDirSeparator)
-        compiler = buildNormalizedPath(compiler.absolutePath());
+    if (buildCompiler.canFind!isDirSeparator)
+        buildCompiler = buildNormalizedPath(buildCompiler.absolutePath());
 
-    auto res = execute([compiler, modelSwitch(model), "-of" ~ rdmdApp, rdmd]);
+    auto res = execute([buildCompiler, modelSwitch(model), "-of" ~ rdmdApp, rdmd]);
 
     enforce(res.status == 0, res.output);
     enforce(rdmdApp.exists);
@@ -79,7 +79,7 @@ void main(string[] args)
     // if no explicit list of test compilers is set,
     // use the compiler used to build rdmd
     if (testCompilerList is null)
-        testCompilerList = compiler;
+        testCompilerList = buildCompiler;
 
     // run the test suite for each specified test compiler
     foreach (testCompiler; testCompilerList.split(','))
@@ -92,7 +92,7 @@ void main(string[] args)
     // run the fallback compiler test (this involves
     // searching for the build compiler, so cannot
     // be run with other test compilers)
-    runFallbackTest(rdmdApp, compiler, model);
+    runFallbackTest(rdmdApp, buildCompiler, model);
 }
 
 string compilerSwitch(string compiler) { return "--compiler=" ~ compiler; }
