@@ -50,12 +50,14 @@ void main(string[] args)
     string rdmd = "rdmd.d";
     bool concurrencyTest;
     string model = "64"; // build architecture for dmd
+    string testCompilerList; // e.g. "ldmd2,gdmd" (comma-separated list of compiler names)
 
     getopt(args,
         "compiler", &compiler,
         "rdmd", &rdmd,
         "concurrency", &concurrencyTest,
         "m|model", &model,
+        "test-compilers", &testCompilerList,
         "v|verbose", &verbose,
     );
 
@@ -74,10 +76,22 @@ void main(string[] args)
     enforce(res.status == 0, res.output);
     enforce(rdmdApp.exists);
 
-    runTests(rdmdApp, compiler, model);
-    if (concurrencyTest)
-        runConcurrencyTest(rdmdApp, compiler, model);
+    // if no explicit list of test compilers is set,
+    // use the compiler used to build rdmd
+    if (testCompilerList is null)
+        testCompilerList = compiler;
 
+    // run the test suite for each specified test compiler
+    foreach (testCompiler; testCompilerList.split(','))
+    {
+        runTests(rdmdApp, testCompiler, model);
+        if (concurrencyTest)
+            runConcurrencyTest(rdmdApp, testCompiler, model);
+    }
+
+    // run the fallback compiler test (this involves
+    // searching for the build compiler, so cannot
+    // be run with other test compilers)
     runFallbackTest(rdmdApp, compiler, model);
 }
 
