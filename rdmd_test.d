@@ -69,20 +69,21 @@ void main(string[] args)
     if (compiler.canFind!isDirSeparator)
         compiler = buildNormalizedPath(compiler.absolutePath());
 
-    auto res = execute([compiler, modelSwitch, "-of" ~ rdmdApp, rdmd]);
+    auto res = execute([compiler, modelSwitch(model), "-of" ~ rdmdApp, rdmd]);
 
     enforce(res.status == 0, res.output);
     enforce(rdmdApp.exists);
 
-    rdmdArgs = [rdmdApp, compilerSwitch, modelSwitch];
+    rdmdArgs = [rdmdApp, compilerSwitch(compiler), modelSwitch(model)];
 
     runTests();
     if (concurrencyTest)
         runConcurrencyTest();
 }
 
-@property string compilerSwitch() { return "--compiler=" ~ compiler; }
-@property string modelSwitch() { return "-m" ~ model; }
+string compilerSwitch(string compiler) { return "--compiler=" ~ compiler; }
+
+string modelSwitch(string model) { return "-m" ~ model; }
 
 auto execute(T...)(T args)
 {
@@ -183,7 +184,7 @@ void runTests()
     std.file.write(subModSrc, "module dsubpack.submod; void foo() { }");
 
     // build an object file out of the dependency
-    res = execute([compiler, modelSwitch, "-c", "-of" ~ subModObj, subModSrc]);
+    res = execute([compiler, modelSwitch(model), "-c", "-of" ~ subModObj, subModSrc]);
     assert(res.status == 0, res.output);
 
     string subModUser = tempDir().buildPath("subModUser_.d");
@@ -330,7 +331,7 @@ void runTests()
     std.file.write(localDMD, "empty shell");
     scope(exit) std.file.remove(localDMD);
 
-    res = execute(rdmdApp ~ [modelSwitch, "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
+    res = execute(rdmdApp ~ [modelSwitch(model), "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
     assert(res.status == 1, res.output);
     assert(res.output.canFind(`spawn ["` ~ localDMD ~ `",`));
 
