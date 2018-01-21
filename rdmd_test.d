@@ -95,6 +95,11 @@ auto execute(T...)(T args)
     return std.process.execute(args);
 }
 
+auto rdmdArguments(string rdmdApp, string compiler, string model)
+{
+    return [rdmdApp, compilerSwitch(compiler), modelSwitch(model)];
+}
+
 void runTests()
 {
     /* Test help string output when no arguments passed. */
