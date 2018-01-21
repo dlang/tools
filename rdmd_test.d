@@ -42,15 +42,15 @@ else
     static assert(0, "Unsupported operating system.");
 }
 
-string rdmdApp; // path/to/rdmd.exe (once built)
-string compiler = "dmd";  // e.g. dmd/gdmd/ldmd
-string model = "64"; // build architecture for dmd
 bool verbose = false;
 
 void main(string[] args)
 {
+    string compiler = "dmd";  // e.g. dmd/gdmd/ldmd
     string rdmd = "rdmd.d";
     bool concurrencyTest;
+    string model = "64"; // build architecture for dmd
+
     getopt(args,
         "compiler", &compiler,
         "rdmd", &rdmd,
@@ -61,7 +61,8 @@ void main(string[] args)
 
     enforce(rdmd.exists, "Path to rdmd does not exist: %s".format(rdmd));
 
-    rdmdApp = tempDir().buildPath("rdmd_app_") ~ binExt;
+    // path/to/rdmd.exe (once built)
+    string rdmdApp = tempDir().buildPath("rdmd_app_") ~ binExt;
     if (rdmdApp.exists) std.file.remove(rdmdApp);
 
     // compiler needs to be an absolute path because we change directories
