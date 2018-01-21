@@ -79,6 +79,8 @@ void main(string[] args)
     runTests();
     if (concurrencyTest)
         runConcurrencyTest();
+
+    runFallbackTest(rdmdApp, compiler, model);
 }
 
 string compilerSwitch(string compiler) { return "--compiler=" ~ compiler; }
@@ -325,16 +327,6 @@ void runTests()
         assert(res.status == -SIGSEGV, format("%s", res));
     }
 
-    /* https://issues.dlang.org/show_bug.cgi?id=11997- rdmd should search its
-    binary path for the compiler */
-    string localDMD = buildPath(tempDir(), baseName(compiler));
-    std.file.write(localDMD, "empty shell");
-    scope(exit) std.file.remove(localDMD);
-
-    res = execute(rdmdApp ~ [modelSwitch(model), "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
-    assert(res.status == 1, res.output);
-    assert(res.output.canFind(`spawn ["` ~ localDMD ~ `",`));
-
     /* -of doesn't append .exe on Windows: https://d.puremagic.com/issues/show_bug.cgi?id=12149 */
 
     version (Windows)
@@ -550,4 +542,19 @@ void runConcurrencyTest()
             break;
         }
     }
+}
+
+void runFallbackTest(string rdmdApp, string buildCompiler, string model)
+{
+    /* https://issues.dlang.org/show_bug.cgi?id=11997
+       if an explicit --compiler flag is not provided, rdmd should
+       search its own binary path first when looking for the default
+       compiler (determined by the compiler used to build it) */
+    string localDMD = buildPath(tempDir(), baseName(buildCompiler));
+    std.file.write(localDMD, "empty shell");
+    scope(exit) std.file.remove(localDMD);
+
+    auto res = execute(rdmdApp ~ [modelSwitch(model), "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
+    assert(res.status == 1, res.output);
+    assert(res.output.canFind(`spawn ["` ~ localDMD ~ `",`));
 }
