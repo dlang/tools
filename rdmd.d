@@ -897,9 +897,9 @@ string which(string path)
     if (path.canFind(dirSeparator) || altDirSeparator != "" && path.canFind(altDirSeparator)) return path;
     string[] extensions = [""];
     version(Windows) extensions ~= environment["PATHEXT"].split(pathSeparator);
-    foreach (extension; extensions)
+    foreach (envPath; environment["PATH"].splitter(pathSeparator))
     {
-        foreach (envPath; environment["PATH"].splitter(pathSeparator))
+        foreach (extension; extensions)
         {
             string absPath = buildPath(envPath, path ~ extension);
             yap("stat ", absPath);
