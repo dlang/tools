@@ -6,6 +6,8 @@ DRUNTIME_PATH = ../druntime
 PHOBOS_PATH = ../phobos
 DUB=dub
 
+RDMD_TEST_COMPILERS = $(abspath $(DMD))
+
 WITH_DOC = no
 DOC = ../dlang.org
 
@@ -110,7 +112,8 @@ test_tests_extractor: $(ROOT)/tests_extractor
 	$< -i ./test/tests_extractor/iteration.d | diff - ./test/tests_extractor/iteration.d.ext
 
 test_rdmd: $(ROOT)/rdmd_test $(ROOT)/rdmd
-	$< --compiler=$(abspath $(DMD)) -m$(MODEL)
+	$< --compiler=$(abspath $(DMD)) -m$(MODEL) \
+	   --test-compilers=$(RDMD_TEST_COMPILERS)
 	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d
 
 test: test_tests_extractor test_rdmd
