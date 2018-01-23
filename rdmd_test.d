@@ -42,47 +42,62 @@ else
     static assert(0, "Unsupported operating system.");
 }
 
-string rdmdApp; // path/to/rdmd.exe (once built)
-string compiler = "dmd";  // e.g. dmd/gdmd/ldmd
-string model = "64"; // build architecture for dmd
-string[] rdmdArgs; // path to rdmd + common arguments (compiler, model)
 bool verbose = false;
 
 void main(string[] args)
 {
+    string buildCompiler = "dmd";  // e.g. dmd/gdmd/ldmd
     string rdmd = "rdmd.d";
     bool concurrencyTest;
+    string model = "64"; // build architecture for dmd
+    string testCompilerList; // e.g. "ldmd2,gdmd" (comma-separated list of compiler names)
+
     getopt(args,
-        "compiler", &compiler,
+        "compiler", &buildCompiler,
         "rdmd", &rdmd,
         "concurrency", &concurrencyTest,
         "m|model", &model,
+        "test-compilers", &testCompilerList,
         "v|verbose", &verbose,
     );
 
     enforce(rdmd.exists, "Path to rdmd does not exist: %s".format(rdmd));
 
-    rdmdApp = tempDir().buildPath("rdmd_app_") ~ binExt;
+    // path/to/rdmd.exe (once built)
+    string rdmdApp = tempDir().buildPath("rdmd_app_") ~ binExt;
     if (rdmdApp.exists) std.file.remove(rdmdApp);
 
     // compiler needs to be an absolute path because we change directories
-    if (compiler.canFind!isDirSeparator)
-        compiler = buildNormalizedPath(compiler.absolutePath());
+    if (buildCompiler.canFind!isDirSeparator)
+        buildCompiler = buildNormalizedPath(buildCompiler.absolutePath());
 
-    auto res = execute([compiler, modelSwitch, "-of" ~ rdmdApp, rdmd]);
+    auto res = execute([buildCompiler, modelSwitch(model), "-of" ~ rdmdApp, rdmd]);
 
     enforce(res.status == 0, res.output);
     enforce(rdmdApp.exists);
 
-    rdmdArgs = [rdmdApp, compilerSwitch, modelSwitch];
+    // if no explicit list of test compilers is set,
+    // use the compiler used to build rdmd
+    if (testCompilerList is null)
+        testCompilerList = buildCompiler;
 
-    runTests();
-    if (concurrencyTest)
-        runConcurrencyTest();
+    // run the test suite for each specified test compiler
+    foreach (testCompiler; testCompilerList.split(','))
+    {
+        runTests(rdmdApp, testCompiler, model);
+        if (concurrencyTest)
+            runConcurrencyTest(rdmdApp, testCompiler, model);
+    }
+
+    // run the fallback compiler test (this involves
+    // searching for the build compiler, so cannot
+    // be run with other test compilers)
+    runFallbackTest(rdmdApp, buildCompiler, model);
 }
 
-@property string compilerSwitch() { return "--compiler=" ~ compiler; }
-@property string modelSwitch() { return "-m" ~ model; }
+string compilerSwitch(string compiler) { return "--compiler=" ~ compiler; }
+
+string modelSwitch(string model) { return "-m" ~ model; }
 
 auto execute(T...)(T args)
 {
@@ -92,8 +107,16 @@ auto execute(T...)(T args)
     return std.process.execute(args);
 }
 
-void runTests()
+auto rdmdArguments(string rdmdApp, string compiler, string model)
 {
+    return [rdmdApp, compilerSwitch(compiler), modelSwitch(model)];
+}
+
+void runTests(string rdmdApp, string compiler, string model)
+{
+    // path to rdmd + common arguments (compiler, model)
+    auto rdmdArgs = rdmdArguments(rdmdApp, compiler, model);
+
     /* Test help string output when no arguments passed. */
     auto res = execute([rdmdApp]);
     assert(res.status == 1, res.output);
@@ -183,7 +206,7 @@ void runTests()
     std.file.write(subModSrc, "module dsubpack.submod; void foo() { }");
 
     // build an object file out of the dependency
-    res = execute([compiler, modelSwitch, "-c", "-of" ~ subModObj, subModSrc]);
+    res = execute([compiler, modelSwitch(model), "-c", "-of" ~ subModObj, subModSrc]);
     assert(res.status == 0, res.output);
 
     string subModUser = tempDir().buildPath("subModUser_.d");
@@ -323,16 +346,6 @@ void runTests()
         res = execute(rdmdArgs ~ [crashSrc]);
         assert(res.status == -SIGSEGV, format("%s", res));
     }
-
-    /* https://issues.dlang.org/show_bug.cgi?id=11997- rdmd should search its
-    binary path for the compiler */
-    string localDMD = buildPath(tempDir(), baseName(compiler));
-    std.file.write(localDMD, "empty shell");
-    scope(exit) std.file.remove(localDMD);
-
-    res = execute(rdmdApp ~ [modelSwitch, "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
-    assert(res.status == 1, res.output);
-    assert(res.output.canFind(`spawn ["` ~ localDMD ~ `",`));
 
     /* -of doesn't append .exe on Windows: https://d.puremagic.com/issues/show_bug.cgi?id=12149 */
 
@@ -524,8 +537,11 @@ void runTests()
     }
 }
 
-void runConcurrencyTest()
+void runConcurrencyTest(string rdmdApp, string compiler, string model)
 {
+    // path to rdmd + common arguments (compiler, model)
+    auto rdmdArgs = rdmdArguments(rdmdApp, compiler, model);
+
     string sleep100 = tempDir().buildPath("delay_.d");
     std.file.write(sleep100, "void main() { import core.thread; Thread.sleep(100.msecs); }");
     auto argsVariants =
@@ -549,4 +565,19 @@ void runConcurrencyTest()
             break;
         }
     }
+}
+
+void runFallbackTest(string rdmdApp, string buildCompiler, string model)
+{
+    /* https://issues.dlang.org/show_bug.cgi?id=11997
+       if an explicit --compiler flag is not provided, rdmd should
+       search its own binary path first when looking for the default
+       compiler (determined by the compiler used to build it) */
+    string localDMD = buildPath(tempDir(), baseName(buildCompiler));
+    std.file.write(localDMD, "empty shell");
+    scope(exit) std.file.remove(localDMD);
+
+    auto res = execute(rdmdApp ~ [modelSwitch(model), "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
+    assert(res.status == 1, res.output);
+    assert(res.output.canFind(`spawn ["` ~ localDMD ~ `",`));
 }
