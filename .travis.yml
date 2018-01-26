@@ -1,12 +1,14 @@
 language: d
-d:
-  - dmd
 sudo: false
 
 matrix:
   include:
-    - env: MODEL=64
-    - env: MODEL=32
+    - d: dmd
+      env: MODEL=64
+    - d: dmd-nightly
+      env: MODEL=64
+    - d: dmd
+      env: MODEL=32
       addons:
         apt:
           packages:
