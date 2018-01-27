@@ -31,10 +31,12 @@ ifeq (,$(findstring win,$(OS)))
 	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.so
 endif
 
+# default to warnings and deprecations as errors, override via e.g. make -f posix.mak WARNINGS=-wi
+WARNINGS = -w -de
 # default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
 DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
-		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG)
-DFLAGS += -w -de -fPIC
+		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG) -fPIC
+DFLAGS += $(WARNINGS)
 
 # Default DUB flags (DUB uses a different architecture format)
 DUBFLAGS = --arch=$(subst 32,x86,$(subst 64,x86_64,$(MODEL)))
@@ -84,7 +86,7 @@ d-tags.json:
 	@exit 1
 
 $(ROOT)/dman: d-tags.json
-$(ROOT)/dman: DFLAGS += -J.
+$(ROOT)/dman: override DFLAGS += -J.
 
 install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 	mkdir -p $(INSTALL_DIR)/bin
