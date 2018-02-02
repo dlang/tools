@@ -180,18 +180,14 @@ int main(string[] args)
     {
         enforce(programPos == args.length, "Cannot have both --loop and a " ~
                 "program file ('" ~ args[programPos] ~ "').");
-        root = makeEvalFile(importWorld ~ "void main(char[][] args) { "
-                ~ "foreach (line; std.stdio.stdin.byLine()) {\n"
-                ~ std.string.join(loop, "\n")
-                ~ ";\n} }");
+        root = makeEvalFile(makeEvalCode(loop, Yes.loop));
         argsBeforeProgram ~= "-d";
     }
     else if (eval.ptr)
     {
         enforce(programPos == args.length, "Cannot have both --eval and a " ~
                 "program file ('" ~ args[programPos] ~ "').");
-        root = makeEvalFile(importWorld ~ "void main(char[][] args) {\n"
-                ~ std.string.join(eval, "\n") ~ ";\n}");
+        root = makeEvalFile(makeEvalCode(eval, No.loop));
         argsBeforeProgram ~= "-d";
     }
     else if (programPos < args.length)
