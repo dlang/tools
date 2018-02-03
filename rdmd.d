@@ -62,7 +62,7 @@ int main(string[] args)
     // Look for the D compiler rdmd invokes automatically in the same directory as rdmd
     // and fall back to using the one in your path otherwise.
     string compilerPath = buildPath(dirName(thisExePath()), defaultCompiler);
-    if (compilerPath.exists && compilerPath.isFile)
+    if (Yap.existsAsFile(compilerPath))
         compiler = compilerPath;
 
     if (args.length > 1 && args[1].startsWith("--shebang ", "--shebang="))
@@ -233,9 +233,7 @@ int main(string[] args)
     immutable workDir = getWorkPath(root, compilerFlags);
     lockWorkPath(workDir); // will be released by the OS on process exit
     string objDir = buildPath(workDir, "objs");
-    yap("mkdirRecurse ", objDir);
-    if (!dryRun)
-        mkdirRecurse(objDir);
+    Yap.mkdirRecurseIfLive(objDir);
 
     if (lib)
     {
@@ -292,16 +290,14 @@ int main(string[] args)
             // Both exe and buildWitness exist, and exe is older than
             // buildWitness. This is the only situation in which we
             // may NOT need to recompile.
-            yap("stat ", buildWitness);
-            lastBuildTime = buildWitness.timeLastModified(SysTime.min);
+            lastBuildTime = Yap.timeLastModified(buildWitness, SysTime.min);
         }
     }
     else
     {
         exe = buildPath(workDir, exeBasename) ~ outExt;
         buildWitness = exe;
-        yap("stat ", buildWitness);
-        lastBuildTime = buildWitness.timeLastModified(SysTime.min);
+        lastBuildTime = Yap.timeLastModified(buildWitness, SysTime.min);
     }
 
     // Have at it
@@ -395,9 +391,7 @@ private @property string myOwnTmpDir()
     else
         tmpRoot = tmpRoot.replace("/", dirSeparator).buildPath(".rdmd");
 
-    yap("mkdirRecurse ", tmpRoot);
-    if (!dryRun)
-        mkdirRecurse(tmpRoot);
+    Yap.mkdirRecurseIfLive(tmpRoot);
     return tmpRoot;
 }
 
@@ -427,9 +421,7 @@ private string getWorkPath(in string root, in string[] compilerFlags)
     workPath = buildPath(tmpRoot,
             "rdmd-" ~ baseName(root) ~ '-' ~ hash);
 
-    yap("mkdirRecurse ", workPath);
-    if (!dryRun)
-        mkdirRecurse(workPath);
+    Yap.mkdirRecurseIfLive(workPath);
 
     return workPath;
 }
@@ -466,10 +458,10 @@ private int rebuild(string root, string fullExe,
         fullExe = fullExe.defaultExtension(".exe");
 
     // Delete the old executable before we start building.
-    yap("stat ", fullExe);
-    if (exists(fullExe))
+    auto fullExeAttributes = Yap.getFileAttributes(fullExe);
+    if (fullExeAttributes.exists)
     {
-        enforce(!isDir(fullExe), fullExe ~ " is a directory");
+        enforce(fullExeAttributes.isFile, fullExe ~ " is not a regular file");
         yap("rm ", fullExe);
         if (!dryRun)
         {
@@ -481,8 +473,7 @@ private int rebuild(string root, string fullExe,
                 // Although we can't delete the file, we can still rename it.
                 auto oldExe = "%s.%s-%s.old".format(fullExe,
                     Clock.currTime.stdTime, thisProcessID);
-                yap("mv ", fullExe, " ", oldExe);
-                rename(fullExe, oldExe);
+                Yap.rename(fullExe, oldExe);
             }
         }
     }
@@ -530,25 +521,23 @@ private int rebuild(string root, string fullExe,
     if (result)
     {
         // build failed
-        if (exists(fullExeTemp))
-            remove(fullExeTemp);
+        if (Yap.exists(fullExeTemp))
+            Yap.remove(fullExeTemp);
+
         return result;
     }
     // clean up the dir containing the object file, just not in dry
     // run mode because we haven't created any!
     if (!dryRun)
     {
-        yap("stat ", objDir);
-        if (objDir.exists && objDir.startsWith(workDir))
+        if (Yap.exists(objDir) && objDir.startsWith(workDir))
         {
-            yap("rmdirRecurse ", objDir);
             // We swallow the exception because of a potential race: two
             // concurrently-running scripts may attempt to remove this
             // directory. One will fail.
-            collectException(rmdirRecurse(objDir));
+            collectException(Yap.rmdirRecurse(objDir));
         }
-        yap("mv ", fullExeTemp, " ", fullExe);
-        rename(fullExeTemp, fullExe);
+        Yap.rename(fullExeTemp, fullExe);
     }
     return 0;
 }
@@ -624,7 +613,7 @@ private string[string] getDependencies(string rootModule, string workDir,
                 foreach (name; names)
                 {
                     auto path = buildPath(dir, name);
-                    if (path.exists)
+                    if (Yap.exists(path))
                         return absolutePath(path);
                 }
             return null;
@@ -662,8 +651,7 @@ private string[string] getDependencies(string rootModule, string workDir,
                 auto confFile = captures[2].strip;
                 // The config file is special: if missing, that's fine too. So
                 // add it as a dependency only if it actually exists.
-                yap("stat ", confFile);
-                if (confFile.exists)
+                if (Yap.exists(confFile))
                 {
                     result[confFile] = null;
                 }
@@ -691,8 +679,7 @@ private string[string] getDependencies(string rootModule, string workDir,
     // Check if the old dependency file is fine
     if (!force)
     {
-        yap("stat ", depsFilename);
-        auto depsT = depsFilename.timeLastModified(SysTime.min);
+        auto depsT = Yap.timeLastModified(depsFilename, SysTime.min);
         if (depsT > SysTime.min)
         {
             // See if the deps file is still in good shape
@@ -740,8 +727,7 @@ private string[string] getDependencies(string rootModule, string workDir,
 // Is any file newer than the given file?
 bool anyNewerThan(T)(T files, in string file)
 {
-    yap("stat ", file);
-    return files.anyNewerThan(file.timeLastModified);
+    return files.anyNewerThan(Yap.timeLastModified(file));
 }
 
 // Is any file newer than the given file?
@@ -767,8 +753,7 @@ than target's. Otherwise, returns true.
 private bool newerThan(string source, string target)
 {
     if (force) return true;
-    yap("stat ", target);
-    return source.newerThan(target.timeLastModified(SysTime.min));
+    return source.newerThan(Yap.timeLastModified(target, SysTime.min));
 }
 
 private bool newerThan(string source, SysTime target)
@@ -776,8 +761,7 @@ private bool newerThan(string source, SysTime target)
     if (force) return true;
     try
     {
-        yap("stat ", source);
-        return DirEntry(source).timeLastModified > target;
+        return Yap.timeLastModified(DirEntry(source)) > target;
     }
     catch (Exception)
     {
@@ -845,7 +829,7 @@ string makeEvalFile(string todo)
     auto srcfile = buildPath(pathname,
             "eval." ~ todo.md5Of.toHexString ~ ".d");
 
-    if (force || !exists(srcfile))
+    if (force || !Yap.exists(srcfile))
     {
         std.file.write(srcfile, todo);
     }
@@ -856,8 +840,7 @@ string makeEvalFile(string todo)
     yap("dirEntries ", pathname);
     foreach (DirEntry d; dirEntries(pathname, SpanMode.shallow))
     {
-        yap("stat ", d.name);
-        if (d.timeLastModified < cutoff)
+        if (Yap.timeLastModified(d) < cutoff)
         {
             collectException(std.file.remove(d.name));
             //break; // only one per call so we don't waste time
@@ -902,8 +885,7 @@ string which(string path)
         foreach (extension; extensions)
         {
             string absPath = buildPath(envPath, path ~ extension);
-            yap("stat ", absPath);
-            if (exists(absPath) && isFile(absPath))
+            if (Yap.existsAsFile(absPath))
                 return absPath;
         }
     }
@@ -915,4 +897,79 @@ void yap(size_t line = __LINE__, T...)(auto ref T stuff)
     if (!chatty) return;
     debug stderr.writeln(line, ": ", stuff);
     else stderr.writeln(stuff);
+}
+
+struct FileAttributes
+{
+    uint attributes;
+    bool exists() const { return attributes != 0xFFFFFFFF; }
+    bool isFile() const
+        in { assert(exists); } do
+    {
+        import std.file : attrIsFile;
+        return attrIsFile(attributes);
+    }
+}
+
+struct Yap
+{
+    static FileAttributes getFileAttributes(const(char)[] name)
+    {
+        yap("stat ", name);
+        import std.internal.cstring : tempCString;
+        version(Windows)
+        {
+            import core.sys.windows.windows : GetFileAttributesW;
+            auto attributes = GetFileAttributesW(name.tempCString!wchar());
+            return FileAttributes(attributes);
+        }
+        else version(Posix)
+        {
+            import core.sys.posix.sys.stat : stat_t, stat;
+            stat_t statbuf = void;
+            return FileAttributes(
+                (0 == stat(name.tempCString(), &statbuf)) ? statbuf.st_mode : 0xFFFFFFFF);
+        }
+        else static assert(0);
+    }
+    static bool exists(const(char)[] name)
+    {
+        return Yap.getFileAttributes(name).exists();
+    }
+    static bool existsAsFile(const(char)[] name)
+    {
+        auto attributes = Yap.getFileAttributes(name);
+        return attributes.exists() && attributes.isFile();
+    }
+    static auto timeLastModified(R)(R name)
+    {
+        yap("stat ", name);
+        return std.file.timeLastModified(name);
+    }
+    static auto timeLastModified(R)(R name, SysTime returnIfMissing)
+    {
+        yap("stat ", name);
+        return std.file.timeLastModified(name, returnIfMissing);
+    }
+    static void rename(R,S)(R from, S to)
+    {
+        yap("mv ", from, " ", to);
+        std.file.rename(from, to);
+    }
+    static void remove(R)(R name)
+    {
+        yap("rm ", name);
+        std.file.remove(name);
+    }
+    static void mkdirRecurseIfLive(const(char)[] name)
+    {
+        yap("mkdirRecurse ", name);
+        if (!dryRun)
+            std.file.mkdirRecurse(name);
+    }
+    static void rmdirRecurse(const(char)[] name)
+    {
+        yap("rmdirRecurse ", name);
+        std.file.rmdirRecurse(name);
+    }
 }
