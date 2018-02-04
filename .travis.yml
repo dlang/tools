@@ -14,6 +14,13 @@ matrix:
           packages:
             - g++-multilib
             - libcurl4-openssl-dev:i386
+    - d: dmd-nightly
+      env: MODEL=32
+      addons:
+        apt:
+          packages:
+            - g++-multilib
+            - libcurl4-openssl-dev:i386
 
 script:
   - ./travis.sh
