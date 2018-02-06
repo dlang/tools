@@ -152,6 +152,7 @@ auto getBugzillaChanges(string revRange)
             case "installer": comp = "Installer"; break;
             case "phobos": comp = "Phobos"; break;
             case "tools": comp = "Tools"; break;
+            case "dub": comp = "Dub"; break;
             case "visuald": comp = "VisualD"; break;
             default: assert(0, comp);
         }
@@ -405,7 +406,8 @@ Please supply a bugzilla version
                           Repo("phobos", "Library changes"),
                           Repo("dlang.org", "Language changes"),
                           Repo("installer", "Installer changes"),
-                          Repo("tools", "Tools changes")];
+                          Repo("tools", "Tools changes"),
+                          Repo("dub", "Dub changes")];
 
             auto changedRepos = repos
                  .map!(repo => Repo(buildPath("..", repo.path, repo.path == "dlang.org" ? "language-changelog" : "changelog"), repo.headline))
