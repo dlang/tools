@@ -465,7 +465,7 @@ private int rebuild(string root, string fullExe,
     yap("stat ", fullExe);
     if (exists(fullExe))
     {
-        enforce(!isDir(fullExe), fullExe ~ " is a directory");
+        enforce(isFile(fullExe), fullExe ~ " is not a regular file");
         yap("rm ", fullExe);
         if (!dryRun)
         {
