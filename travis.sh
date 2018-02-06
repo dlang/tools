@@ -8,7 +8,7 @@ set -uexo pipefail
 
 LDMD2=$(find ~/dlang -type f -name "ldmd2")
 
-make -f posix.mak all DMD=$(which dmd)
-make -f posix.mak test DMD=$(which dmd) \
-    RDMD_TEST_COMPILERS=dmd,$LDMD2 \
+make -f posix.mak all DMD="$(which dmd)"
+make -f posix.mak test DMD="$(which dmd)" \
+    RDMD_TEST_COMPILERS=dmd,"$LDMD2" \
     VERBOSE_RDMD_TEST=1
