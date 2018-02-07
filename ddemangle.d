@@ -25,13 +25,16 @@ Demangles all occurrences of mangled D symbols in the input and writes to
 standard output.
 If <inputfile> is omitted, standard input is read.
 Options:
-    --help, -h    Show this help
+    --help, -h                  Show this help
+    --underscore_missing, -u    handling missing underscore (eg with lldb on OSX)
 ENDHELP", args[0]);
 
     exit(1);
 }
 
-auto reDemangle = regex(r"\b_?_D[0-9a-zA-Z_]+\b");
+enum suffix = r"D[0-9a-zA-Z_]+\b";
+auto reDemangle = regex(r"\b_?_"~suffix);
+auto reDemangle_underscore_missing = regex(r"\b"~suffix);
 
 const(char)[] demangleMatch(T)(Captures!(T) m)
     if (is(T : const(char)[]))
@@ -58,10 +61,33 @@ const(char)[] demangleMatch(T)(Captures!(T) m)
     }
 }
 
-auto ddemangle(T)(T line)
+const(char)[] demangleMatchUnderscoreMissing(T)(Captures!(T) m)
+    if (is(T : const(char)[]))
+{   
+    static Appender!string ret;
+    ret.ret;
+    ret~="_";
+    ret~=m.hit;
+    auto line2=ret.data;
+    auto result = demangle(line2);
+    if (result == line2)
+    {
+        // Demangling failed, return original match
+        return m.hit;
+    }
+    else
+    {
+        return result;
+    }
+}
+
+auto ddemangle(T)(T line, bool underscore_missing)
     if (is(T : const(char)[]))
 {
-    return replaceAll!(demangleMatch)(line, reDemangle);
+    if(underscore_missing)
+        return replaceAll!demangleMatch(line, reDemangle_underscore_missing);
+    else
+        return replaceAll!demangleMatch(line, reDemangle);
 }
 
 unittest
@@ -90,11 +116,13 @@ unittest
 
 void main(string[] args)
 {
+    bool underscore_missing=false;
     // Parse command-line arguments
     try
     {
         getopt(args,
             "help|h", { showhelp(args); },
+            "underscore_missing|u", { underscore_missing = true; },
         );
         if (args.length > 2) showhelp(args);
     }
@@ -111,7 +139,7 @@ void main(string[] args)
         auto f = (args.length==2) ? File(args[1], "r") : stdin;
         foreach (line; f.byLine())
         {
-            writeln(ddemangle(line));
+            writeln(ddemangle(line, underscore_missing));
             stdout.flush;
         }
     }
