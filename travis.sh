@@ -12,3 +12,25 @@ make -f posix.mak all DMD="$(which dmd)"
 make -f posix.mak test DMD="$(which dmd)" \
     RDMD_TEST_COMPILERS=dmd,"$LDMD2" \
     VERBOSE_RDMD_TEST=1
+
+# Test setup.sh
+shellcheck setup.sh
+
+dmd=dmd/generated/linux/release/64/dmd
+dir=generated/setup.sh-test
+cwd="$(pwd)"
+
+# check initial checkout
+rm -rf "$dir" && mkdir "$dir" && pushd "$dir"
+echo "y" | "$cwd"/setup.sh
+echo 'void main(){ import std.stdio; "Hello World".writeln;}' | "./${dmd}" -run - | grep -q "Hello World"
+
+# test updates
+echo "y" | "$cwd"/setup.sh
+echo 'void main(){ import std.stdio; "Hello World".writeln;}' | "./${dmd}" -run - | grep -q "Hello World"
+popd && rm -rf "$dir" && mkdir "$dir" && pushd "$dir"
+
+# test checking out tags
+echo "y" | "$cwd"/setup.sh --tag=2.078.1
+echo 'void main(){ import std.stdio; __VERSION__.writeln;}' | "./2.078.1/${dmd}" -run - | grep -q "2078"
+popd
