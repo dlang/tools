@@ -33,11 +33,10 @@ ENDHELP", args[0]);
 }
 
 enum suffix = r"D[0-9a-zA-Z_]+\b";
-auto reDemangle = regex(r"\b_?_"~suffix);
-auto reDemangle_underscore_missing = regex(r"\b"~suffix);
+auto reDemangle = regex(r"\b_?_" ~ suffix);
+auto reDemangle_underscore_missing = regex(r"\b" ~ suffix);
 
-const(char)[] demangleMatch(T)(Captures!(T) m)
-    if (is(T : const(char)[]))
+const(char)[] demangleMatch(T)(Captures!(T) m) if (is(T : const(char)[]))
 {
     /+ If the second character is an underscore, it may be a D symbol with double leading underscore;
      + in that case, try to demangle it with only one leading underscore.
@@ -48,8 +47,8 @@ const(char)[] demangleMatch(T)(Captures!(T) m)
     }
     else
     {
-        auto result = demangle(m.hit[1..$]);
-        if (result == m.hit[1..$])
+        auto result = demangle(m.hit[1 .. $]);
+        if (result == m.hit[1 .. $])
         {
             // Demangling failed, return original match with (!) double underscore
             return m.hit;
@@ -62,13 +61,13 @@ const(char)[] demangleMatch(T)(Captures!(T) m)
 }
 
 const(char)[] demangleMatchUnderscoreMissing(T)(Captures!(T) m)
-    if (is(T : const(char)[]))
-{   
+        if (is(T : const(char)[]))
+{
     static Appender!string ret;
     ret.ret;
-    ret~="_";
-    ret~=m.hit;
-    auto line2=ret.data;
+    ret ~= "_";
+    ret ~= m.hit;
+    auto line2 = ret.data;
     auto result = demangle(line2);
     if (result == line2)
     {
@@ -81,10 +80,9 @@ const(char)[] demangleMatchUnderscoreMissing(T)(Captures!(T) m)
     }
 }
 
-auto ddemangle(T)(T line, bool underscore_missing)
-    if (is(T : const(char)[]))
+auto ddemangle(T)(T line, bool underscore_missing) if (is(T : const(char)[]))
 {
-    if(underscore_missing)
+    if (underscore_missing)
         return replaceAll!demangleMatch(line, reDemangle_underscore_missing);
     else
         return replaceAll!demangleMatch(line, reDemangle);
@@ -116,17 +114,17 @@ unittest
 
 void main(string[] args)
 {
-    bool underscore_missing=false;
+    bool underscore_missing = false;
     // Parse command-line arguments
     try
     {
-        getopt(args,
-            "help|h", { showhelp(args); },
-            "underscore_missing|u", { underscore_missing = true; },
-        );
-        if (args.length > 2) showhelp(args);
+        getopt(args, "help|h", { showhelp(args); }, "underscore_missing|u", {
+            underscore_missing = true;
+        },);
+        if (args.length > 2)
+            showhelp(args);
     }
-    catch(Exception e)
+    catch (Exception e)
     {
         stderr.writeln(e.msg);
         stderr.writeln();
@@ -136,14 +134,14 @@ void main(string[] args)
     // Process input
     try
     {
-        auto f = (args.length==2) ? File(args[1], "r") : stdin;
+        auto f = (args.length == 2) ? File(args[1], "r") : stdin;
         foreach (line; f.byLine())
         {
             writeln(ddemangle(line, underscore_missing));
             stdout.flush;
         }
     }
-    catch(Exception e)
+    catch (Exception e)
     {
         stderr.writeln(e.msg);
         exit(1);
