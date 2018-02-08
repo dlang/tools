@@ -131,7 +131,6 @@ unittest
     assert(equal(testData2.map!(a=>a.ddemangle(true)), expected2));
 }
 
-version(none)
 void main(string[] args)
 {
     bool underscore_missing = false;
