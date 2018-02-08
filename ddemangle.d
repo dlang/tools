@@ -16,6 +16,9 @@ import std.getopt;
 import std.regex;
 import std.stdio;
 import core.stdc.stdlib;
+import std.typecons : Flag, Yes, No;
+
+alias UnderscoreMissing = Flag!"underscoreMissing";
 
 void showhelp(string[] args)
 {
@@ -25,8 +28,8 @@ Demangles all occurrences of mangled D symbols in the input and writes to
 standard output.
 If <inputfile> is omitted, standard input is read.
 Options:
-    --help, -h                  Show this help
-    --underscore_missing, -u    handling missing underscore (eg with lldb on OSX)
+    --help, -h                Show this help
+    --underscoreMissing, -u   handling missing underscore (eg with lldb on OSX)
 ENDHELP", args[0]);
 
     exit(1);
@@ -34,7 +37,7 @@ ENDHELP", args[0]);
 
 enum suffix = r"D[0-9a-zA-Z_]+\b";
 auto reDemangle = regex(r"\b_?_" ~ suffix);
-auto reDemangle_underscore_missing = regex(r"\b" ~ suffix);
+auto reDemangleUnderscoreMissing = regex(r"\b" ~ suffix);
 
 const(char)[] demangleMatch(T)(Captures!(T) m) if (is(T : const(char)[]))
 {
@@ -80,10 +83,10 @@ const(char)[] demangleMatchUnderscoreMissing(T)(Captures!(T) m)
     }
 }
 
-auto ddemangle(T)(T line, bool underscore_missing) if (is(T : const(char)[]))
+auto ddemangle(T)(T line, UnderscoreMissing underscoreMissing) if (is(T : const(char)[]))
 {
-    if (underscore_missing)
-        return replaceAll!demangleMatch(line, reDemangle_underscore_missing);
+    if (underscoreMissing)
+        return replaceAll!demangleMatch(line, reDemangleUnderscoreMissing);
     else
         return replaceAll!demangleMatch(line, reDemangle);
 }
@@ -109,7 +112,7 @@ unittest
         "fail demangling __D6object9Throwable8toStringMFZAy"
     ];
 
-    assert(equal(testData.map!(a => a.ddemangle(false)), expected));
+    assert(equal(testData.map!(a => a.ddemangle(No.underscoreMissing)), expected));
 
     string[] testData2 = [
         "D2rt4util7console8__assertFiZv",
@@ -128,17 +131,17 @@ unittest
         "fail demangling D6object9Throwable8toStringMFZAy"
     ];
 
-    assert(equal(testData2.map!(a => a.ddemangle(true)), expected2));
+    assert(equal(testData2.map!(a => a.ddemangle(Yes.underscoreMissing)), expected2));
 }
 
 void main(string[] args)
 {
-    bool underscore_missing = false;
+    UnderscoreMissing underscoreMissing = No.underscoreMissing;
     // Parse command-line arguments
     try
     {
-        getopt(args, "help|h", { showhelp(args); }, "underscore_missing|u", {
-            underscore_missing = true;
+        getopt(args, "help|h", { showhelp(args); }, "underscoreMissing|u", {
+            underscoreMissing = Yes.underscoreMissing;
         },);
         if (args.length > 2)
             showhelp(args);
@@ -156,7 +159,7 @@ void main(string[] args)
         auto f = (args.length == 2) ? File(args[1], "r") : stdin;
         foreach (line; f.byLine())
         {
-            writeln(ddemangle(line, underscore_missing));
+            writeln(ddemangle(line, underscoreMissing));
             stdout.flush;
         }
     }
@@ -166,5 +169,3 @@ void main(string[] args)
         exit(1);
     }
 }
-
-// vim:set sw=4 ts=4 expandtab:
