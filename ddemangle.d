@@ -83,7 +83,8 @@ const(char)[] demangleMatchUnderscoreMissing(T)(Captures!(T) m)
     }
 }
 
-auto ddemangle(T)(T line, UnderscoreMissing underscoreMissing) if (is(T : const(char)[]))
+auto ddemangle(T)(T line, UnderscoreMissing underscoreMissing)
+        if (is(T : const(char)[]))
 {
     if (underscoreMissing)
         return replaceAll!demangleMatch(line, reDemangleUnderscoreMissing);
@@ -140,9 +141,12 @@ void main(string[] args)
     // Parse command-line arguments
     try
     {
-        getopt(args, "help|h", { showhelp(args); }, "underscoreMissing|u", {
-            underscoreMissing = Yes.underscoreMissing;
-        },);
+        // dfmt off
+        getopt(args,
+            "help|h", { showhelp(args); },
+            "underscoreMissing|u", { underscoreMissing = Yes.underscoreMissing; },
+        );
+        // dfmt on
         if (args.length > 2)
             showhelp(args);
     }
