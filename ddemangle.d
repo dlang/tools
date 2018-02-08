@@ -109,9 +109,29 @@ unittest
         "fail demangling __D6object9Throwable8toStringMFZAy"
     ];
 
-    assert(equal(testData.map!ddemangle(), expected));
+    assert(equal(testData.map!(a=>a.ddemangle(false)), expected));
+
+    string[] testData2 = [
+        "D2rt4util7console8__assertFiZv",
+        "random initial junk D2rt4util7console8__assertFiZv random trailer",
+        "multiple D2rt4util7console8__assertFiZv occurrences D2rt4util7console8__assertFiZv",
+        "D6object9Throwable8toStringMFZAya",
+        "don't match 1 leading underscores _D6object9Throwable8toStringMFZAya",
+        "fail demangling D6object9Throwable8toStringMFZAy"
+    ];
+    string[] expected2 = [
+        "void rt.util.console.__assert(int)",
+        "random initial junk void rt.util.console.__assert(int) random trailer",
+        "multiple void rt.util.console.__assert(int) occurrences void rt.util.console.__assert(int)",
+        "immutable(char)[] object.Throwable.toString()",
+        "don't match 1 leading underscores _D6object9Throwable8toStringMFZAya",
+        "fail demangling D6object9Throwable8toStringMFZAy"
+    ];
+
+    assert(equal(testData2.map!(a=>a.ddemangle(true)), expected2));
 }
 
+version(none)
 void main(string[] args)
 {
     bool underscore_missing = false;
