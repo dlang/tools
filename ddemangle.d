@@ -39,7 +39,8 @@ enum suffix = r"D[0-9a-zA-Z_]+\b";
 auto reDemangle = regex(r"\b_?_" ~ suffix);
 auto reDemangleUnderscoreMissing = regex(r"\b" ~ suffix);
 
-const(char)[] demangleMatch(T)(Captures!(T) m) if (is(T : const(char)[]))
+const(char)[] demangleMatch(T)(Captures!(T) m)
+if (is(T : const(char)[]))
 {
     /+ If the second character is an underscore, it may be a D symbol with double leading underscore;
      + in that case, try to demangle it with only one leading underscore.
@@ -64,7 +65,7 @@ const(char)[] demangleMatch(T)(Captures!(T) m) if (is(T : const(char)[]))
 }
 
 const(char)[] demangleMatchUnderscoreMissing(T)(Captures!(T) m)
-        if (is(T : const(char)[]))
+if (is(T : const(char)[]))
 {
     static Appender!string ret;
     ret.ret;
@@ -84,7 +85,7 @@ const(char)[] demangleMatchUnderscoreMissing(T)(Captures!(T) m)
 }
 
 auto ddemangle(T)(T line, UnderscoreMissing underscoreMissing)
-        if (is(T : const(char)[]))
+if (is(T : const(char)[]))
 {
     if (underscoreMissing)
         return replaceAll!demangleMatch(line, reDemangleUnderscoreMissing);
