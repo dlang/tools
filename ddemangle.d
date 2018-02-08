@@ -109,7 +109,7 @@ unittest
         "fail demangling __D6object9Throwable8toStringMFZAy"
     ];
 
-    assert(equal(testData.map!(a=>a.ddemangle(false)), expected));
+    assert(equal(testData.map!(a => a.ddemangle(false)), expected));
 
     string[] testData2 = [
         "D2rt4util7console8__assertFiZv",
@@ -128,7 +128,7 @@ unittest
         "fail demangling D6object9Throwable8toStringMFZAy"
     ];
 
-    assert(equal(testData2.map!(a=>a.ddemangle(true)), expected2));
+    assert(equal(testData2.map!(a => a.ddemangle(true)), expected2));
 }
 
 void main(string[] args)
