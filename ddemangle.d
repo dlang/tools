@@ -40,8 +40,7 @@ enum suffix = r"[0-9a-zA-Z_]+\b";
 auto reDemangle = regex(r"\b(_?_D|_Z)" ~ suffix);
 auto reDemangleUnderscoreMissing = regex(r"\b(D|_Z)" ~ suffix);
 
-const(char)[] demangleMatch(T)(Captures!(T) m)
-if (is(T : const(char)[]))
+const(char)[] demangleMatch(T)(Captures!(T) m) if (is(T : const(char)[]))
 {
     /+ If the second character is an underscore, it may be a D symbol with double leading underscore;
      + in that case, try to demangle it with only one leading underscore.
