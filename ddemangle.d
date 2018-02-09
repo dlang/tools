@@ -35,9 +35,10 @@ ENDHELP", args[0]);
     exit(1);
 }
 
-enum suffix = r"D[0-9a-zA-Z_]+\b";
-auto reDemangle = regex(r"\b_?_" ~ suffix);
-auto reDemangleUnderscoreMissing = regex(r"\b" ~ suffix);
+// TODO: make core.demangle provide these
+enum suffix = r"[0-9a-zA-Z_]+\b";
+auto reDemangle = regex(r"\b(_?_D|_Z)" ~ suffix);
+auto reDemangleUnderscoreMissing = regex(r"\b(D|_Z)" ~ suffix);
 
 const(char)[] demangleMatch(T)(Captures!(T) m)
 if (is(T : const(char)[]))
@@ -47,10 +48,12 @@ if (is(T : const(char)[]))
      +/
     if (m.hit[1] != '_')
     {
+        // _D|_Z
         return demangle(m.hit);
     }
     else
     {
+        // __D
         auto result = demangle(m.hit[1 .. $]);
         if (result == m.hit[1 .. $])
         {
@@ -67,28 +70,15 @@ if (is(T : const(char)[]))
 const(char)[] demangleMatchUnderscoreMissing(T)(Captures!(T) m)
 if (is(T : const(char)[]))
 {
-    static Appender!string ret;
-    ret.ret;
-    ret ~= "_";
-    ret ~= m.hit;
-    auto line2 = ret.data;
-    auto result = demangle(line2);
-    if (result == line2)
-    {
-        // Demangling failed, return original match
-        return m.hit;
-    }
-    else
-    {
-        return result;
-    }
+    // interestingly, demangle seems to accept symbols with 0 leading underscore, eg D2rt4util7console8__assertFiZv
+    return demangle(m.hit);
 }
 
 auto ddemangle(T)(T line, UnderscoreMissing underscoreMissing)
 if (is(T : const(char)[]))
 {
     if (underscoreMissing)
-        return replaceAll!demangleMatch(line, reDemangleUnderscoreMissing);
+        return replaceAll!demangleMatchUnderscoreMissing(line, reDemangleUnderscoreMissing);
     else
         return replaceAll!demangleMatch(line, reDemangle);
 }
