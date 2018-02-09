@@ -280,7 +280,7 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
         bool inPara, inCode;
         foreach (line; change.description.splitLines)
         {
-            if (line.startsWith("---"))
+            if (line.stripLeft.startsWith("---"))
             {
                 if (inPara)
                 {
