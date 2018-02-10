@@ -23,10 +23,13 @@ int main(string[] args)
         {
             ptrdiff_t pos;
             auto str = a.readText();
-            if ((pos = str.indexOf("\r\n")) >= 0)
+            version(Windows) { } else
             {
-                writefln("Error - file '%s' contains windows line endings at line %d", a, str[0..pos].count('\n') + 1);
-                error = true;
+                if ((pos = str.indexOf("\r\n")) >= 0)
+                {
+                    writefln("Error - file '%s' contains windows line endings at line %d", a, str[0..pos].count('\n') + 1);
+                    error = true;
+                }
             }
             if (a.extension() != ".mak" && (pos = str.indexOf('\t')) >= 0)
             {
