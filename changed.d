@@ -353,16 +353,12 @@ int main(string[] args)
     bool hideTextChanges = false;
     string revRange;
 
-    // TODO: no-op - remove me as soon as dlang.org is upgraded
-    bool useNightlyTemplate;
-
     auto helpInformation = getopt(
         args,
         std.getopt.config.passThrough,
         "output|o", &outputFile,
         "date", &nextVersionDate,
         "version", &nextVersionString,
-        "nightly", &useNightlyTemplate,
         "prev-version", &previousVersion, // this can automatically be detected
         "no-text", &hideTextChanges);
 
