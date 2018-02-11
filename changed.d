@@ -57,6 +57,8 @@ struct ChangelogEntry
     string title; // the first line (can't contain links)
     string description; // a detailed description (separated by a new line)
     string basename; // basename without extension (used for the anchor link to the description)
+    string repo; // origin repository that contains the changelog entry
+    string filePath; // path to the changelog entry (relative from the repository root)
 }
 
 auto templateRequest =
@@ -188,10 +190,11 @@ the description
 
 Params:
     filename = changelog file to be parsed
+    repoName = origin repository that contains the changelog entry
 
 Returns: The parsed `ChangelogEntry`
 */
-ChangelogEntry readChangelog(string filename)
+ChangelogEntry readChangelog(string filename, string repoName)
 {
     import std.algorithm.searching : countUntil;
     import std.file : read;
@@ -217,7 +220,9 @@ ChangelogEntry readChangelog(string filename)
     ChangelogEntry entry = {
         title: lines[0].strip,
         description: lines[2..$].join("\n").strip,
-        basename: filename.baseName.stripExtension
+        basename: filename.baseName.stripExtension,
+        repo: repoName,
+        filePath: filename.findSplitAfter(repoName)[1].findSplitAfter("/")[1],
     };
     return entry;
 }
@@ -227,10 +232,11 @@ Looks for changelog files (ending with `.dd`) in a directory and parses them.
 
 Params:
     changelogDir = directory to search for changelog files
+    repoName = origin repository that contains the changelog entry
 
 Returns: An InputRange of `ChangelogEntry`s
 */
-auto readTextChanges(string changelogDir)
+auto readTextChanges(string changelogDir, string repoName)
 {
     import std.algorithm.iteration : filter, map;
     import std.file : dirEntries, SpanMode;
@@ -239,7 +245,7 @@ auto readTextChanges(string changelogDir)
     return dirEntries(changelogDir, SpanMode.shallow)
             .filter!(a => a.name().endsWith(".dd"))
             .array.sort()
-            .map!readChangelog
+            .map!(a => readChangelog(a, repoName))
             .filter!(a => a.title.length > 0);
 }
 
@@ -276,6 +282,7 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
     foreach(change; changes)
     {
         w.formattedWrite("$(LI $(LNAME2 %s,%s)\n", change.basename, change.title);
+        w.formattedWrite("$(CHANGELOG_SOURCE_FILE %s, %s)\n", change.repo, change.filePath);
         scope(exit) w.put(")\n\n");
 
         bool inPara, inCode;
@@ -396,19 +403,19 @@ Please supply a bugzilla version
         if (!hideTextChanges)
         {
             // search for raw change files
-            alias Repo = Tuple!(string, "path", string, "headline");
-            auto repos = [Repo("dmd", "Compiler changes"),
-                          Repo("druntime", "Runtime changes"),
-                          Repo("phobos", "Library changes"),
-                          Repo("dlang.org", "Language changes"),
-                          Repo("installer", "Installer changes"),
-                          Repo("tools", "Tools changes"),
-                          Repo("dub", "Dub changes")];
+            alias Repo = Tuple!(string, "name", string, "headline", string, "path");
+            auto repos = [Repo("dmd", "Compiler changes", null),
+                          Repo("druntime", "Runtime changes", null),
+                          Repo("phobos", "Library changes", null),
+                          Repo("dlang.org", "Language changes", null),
+                          Repo("installer", "Installer changes", null),
+                          Repo("tools", "Tools changes", null),
+                          Repo("dub", "Dub changes", null)];
 
             auto changedRepos = repos
-                 .map!(repo => Repo(buildPath("..", repo.path, repo.path == "dlang.org" ? "language-changelog" : "changelog"), repo.headline))
+                 .map!(repo => Repo(repo.name, repo.headline, buildPath("..", repo.name, repo.name == "dlang.org" ? "language-changelog" : "changelog")))
                  .filter!(r => r.path.exists)
-                 .map!(r => tuple!("headline", "changes")(r.headline, r.path.readTextChanges.array))
+                 .map!(r => tuple!("headline", "changes")(r.headline, r.path.readTextChanges(r.name).array))
                  .filter!(r => !r.changes.empty);
 
             // print the overview headers
