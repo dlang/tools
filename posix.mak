@@ -1,5 +1,6 @@
 DMD_DIR = ../dmd
-DMD = $(DMD_DIR)/generated/$(OS)/release/$(MODEL)/dmd
+BUILD = release
+DMD = $(DMD_DIR)/generated/$(OS)/$(BUILD)/$(MODEL)/dmd
 CC = gcc
 INSTALL_DIR = ../install
 DRUNTIME_PATH = ../druntime
@@ -35,15 +36,15 @@ endif
 
 # Set PHOBOS name and full path
 ifeq (,$(findstring win,$(OS)))
-	PHOBOS = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.a
-	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.so
+	PHOBOS = $(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL)/libphobos2.a
+	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL)/libphobos2.so
 endif
 
 # default to warnings and deprecations as errors, override via e.g. make -f posix.mak WARNINGS=-wi
 WARNINGS = -w -de
 # default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
 DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
-		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG) -fPIC
+		 -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL) $(MODEL_FLAG) -fPIC
 DFLAGS += $(WARNINGS)
 
 # Default DUB flags (DUB uses a different architecture format)
