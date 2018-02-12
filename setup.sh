@@ -30,6 +30,7 @@ makecmd="make"
 parallel=8
 model=64
 build="release"
+githubUri="https://github.com/"
 # List of projects to install vs. update. Their disjoint union is
 # $projects.
 declare -a toInstall toUpdate
@@ -134,9 +135,9 @@ function installAnew() {
     projects=("$@")
     for project in "${projects[@]}" ; do
         (
-        git clone "git://github.com/$githubUser/$project.git" "$wd/$project"
+        git clone "${githubUri}${githubUser}/$project.git" "$wd/$project"
         if [ "$githubUser" != "dlang" ] ; then
-            git -C "$wd/$project" remote add upstream "git://github.com/dlang/$project.git"
+            git -C "$wd/$project" remote add upstream "${githubUri}dlang/$project.git"
         fi
         touch "$tempdir/$project"
         ) &
@@ -165,7 +166,7 @@ function update() {
 
     function update_project() {
         local project=$1
-        local gitproject="git://github.com/dlang/$project.git"
+        local gitproject="${githubUri}dlang/$project.git"
         local git=("git" "-C" "$wd/$project")
         if ! ( \
             "${git[@]}" checkout master && \
