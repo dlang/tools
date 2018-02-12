@@ -54,7 +54,7 @@ Additional usage
 Options
 
   --user=USER   set a custom GitHub user name (requires the repos to be forked)
-  --tag=TAG     select a specific tag to clone"
+  --tag=TAG     select a specific tag to clone" >&2
 }
 
 #
@@ -74,7 +74,7 @@ function handleCmdLine() {
             ;;
             *)
             echo "Error: $arg not recognized." >&2
-            echo
+            echo >&2
             help
             exit 1
             ;;
@@ -136,7 +136,7 @@ function installAnew() {
         (
         git clone "git://github.com/$githubUser/$project.git" "$wd/$project"
         if [ "$githubUser" != "dlang" ] ; then
-            git remote add upstream "git://github.com/dlang/$project.git"
+            git -C "$wd/$project" remote add upstream "git://github.com/dlang/$project.git"
         fi
         touch "$tempdir/$project"
         ) &
@@ -166,10 +166,10 @@ function update() {
     function update_project() {
         local project=$1
         local gitproject="git://github.com/dlang/$project.git"
-        local git="git -C $wd/$project"
+        local git=("git" "-C" "$wd/$project")
         if ! ( \
-            $git checkout master && \
-            $git pull --ff-only --tags "$gitproject" master ) 2> "$tempdir/$project.log"
+            "${git[@]}" checkout master && \
+            "${git[@]}" pull --ff-only --tags "$gitproject" master ) 2> "$tempdir/$project.log"
         then
             echo "Failure updating $wd/$project." >> "$tempdir/errors"
             exit 1
