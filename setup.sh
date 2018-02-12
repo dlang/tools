@@ -30,12 +30,47 @@ local wd=$(pwd)
 local makecmd=make
 local parallel=8
 local model=64
+local build=release
 # List of projects to install vs. update. Their disjoint union is
 # $projects.
 local toInstall toUpdate
 typeset -a toInstall toUpdate
 # Mess to go here
 local tempdir=$(mktemp -d /tmp/dmd-update.XXX)
+
+local os
+case "$(uname -s)" in
+  Darwin)
+    os="osx"
+    ;;
+  Linux)
+    os="linux"
+    ;;
+  FreeBSD)
+    os="freebsd"
+    ;;
+  OpenBSD)
+    os="openbsd"
+    ;;
+  NetBSD)
+    os="netbsd"
+    ;;
+  DragonFly)
+    os="dragonflybsd"
+    ;;
+  Solaris)
+    os="solaris"
+    ;;
+  SunOS)
+    os="solaris"
+    ;;
+  *)
+    echo "Error: Unrecognized or unsupported OS for uname: $(uname_S)"
+    exit 1
+    ;;
+esac
+
+local g="generated/$os/$build/$model"
 
 #
 # Take care of the command line arguments
@@ -170,37 +205,37 @@ function makeWorld() {
     (
         which dmd >/dev/null || BT="AUTO_BOOTSTRAP=1"
         cd "$wd/dmd/src" &&
-        $makecmd -f posix.mak clean MODEL=$model $BT &&
-        $makecmd -f posix.mak -j $parallel MODEL=$model $BT
+        $makecmd -f posix.mak clean OS=$os BUILD=$build MODEL=$model $BT &&
+        $makecmd -f posix.mak -j $parallel OS=$os BUILD=$build MODEL=$model $BT
     )
 
 # Update the running dmd version
     if [[ ! -z $install ]]; then
         local old=$(which dmd)
         if [ -f "$old" ]; then
-            echo "Copying "$wd/dmd/src/dmd" over $old"
+            echo "Copying "$wd/dmd/$g/dmd" over $old"
             [ ! -w "$old" ] && local sudo="sudo"
-            $sudo cp "$wd/dmd/src/dmd" "$old"
+            $sudo cp "$wd/dmd/$g/dmd" "$old"
         fi
     fi
 
 # Then make druntime
     (
         cd "$wd/druntime" &&
-        $makecmd -f posix.mak -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
+        $makecmd -f posix.mak -j $parallel DMD="$wd/dmd/$g/dmd" OS=$os BUILD=$build MODEL=$model
     )
 
 # Then make phobos
     (
         cd "$wd/phobos" &&
-        $makecmd -f posix.mak -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
+        $makecmd -f posix.mak -j $parallel DMD="$wd/dmd/$g/dmd" OS=$os BUILD=$build MODEL=$model
     )
 
 # Then make website
     (
         cd "$wd/dlang.org" &&
-        $makecmd -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=$model &&
-        $makecmd -f posix.mak html -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
+        $makecmd -f posix.mak clean DMD="$wd/dmd/$g/dmd" OS=$os BUILD=$build MODEL=$model &&
+        $makecmd -f posix.mak html -j $parallel DMD="$wd/dmd/$g/dmd" OS=$os BUILD=$build MODEL=$model
     )
 }
 
