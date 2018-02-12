@@ -487,8 +487,11 @@ void runTests(string rdmdApp, string compiler, string model)
     }
 
     /* [REG2.072.0] pragma(lib) is broken with rdmd: https://issues.dlang.org/show_bug.cgi?id=16978 */
+    /* GDC does not support `pragma(lib)`, so disable when test compiler is gdmd: https://issues.dlang.org/show_bug.cgi?id=18421
+       (this constraint can be removed once GDC support for `pragma(lib)` is implemented) */
 
     version (linux)
+    if (compiler.baseName != "gdmd")
     {{
         TmpDir srcDir = "rdmdTest";
         string libSrcName = srcDir.buildPath("libfun.d");
