@@ -828,11 +828,20 @@ Returns:
 */
 string innerEvalCode(string[] eval)
 {
+    import std.conv : text;
     import std.string : join, stripRight;
     // assumeSafeAppend just to avoid unnecessary reallocation
     string code = eval.join("\n").stripRight.assumeSafeAppend;
     if (code.length > 0 && code[$ - 1] != ';')
-        code ~= ';';
+    {
+        auto lastSemicolon = max(code.lastIndexOf(";"), code.lastIndexOf("}"));
+        if (code[lastSemicolon + 1 .. $].canFind("write"))
+            code ~= ';';
+        else if (lastSemicolon == -1)
+            code = text("writeln(", code, ");");
+        else
+            code = text(code[0 .. lastSemicolon + 1], "writeln(", code[lastSemicolon + 1 .. $], ");");
+    }
     return code;
 }
 
@@ -850,6 +859,16 @@ unittest
            == "writeln(\"Hello!\");  \nwriteln(\"You!\");");
     assert(innerEvalCode([`writeln("Hello!");  `, `writeln("You!"); `])
            == "writeln(\"Hello!\");  \nwriteln(\"You!\");");
+}
+
+unittest
+{
+    assert(innerEvalCode(["2"]) == "writeln(2);");
+    assert(innerEvalCode(["2 + 2"]) == "writeln(2 + 2);");
+    assert(innerEvalCode(["2 + 2;"]) == "2 + 2;");
+    assert(innerEvalCode(["2 + 2;2 + 2"]) == "2 + 2;writeln(2 + 2);");
+    assert(innerEvalCode(["2.pow(4)"]) == "writeln(2.pow(4));");
+    assert(innerEvalCode(["if(0) {} 2 + 2"]) == "if(0) {}writeln( 2 + 2);");
 }
 
 /**
