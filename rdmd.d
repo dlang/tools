@@ -831,23 +831,26 @@ string innerEvalCode(string[] eval)
     import std.string : join, stripRight;
     // assumeSafeAppend just to avoid unnecessary reallocation
     string code = eval.join("\n").stripRight.assumeSafeAppend;
-    if (code.length > 0 && code[$ - 1] != ';')
-        code ~= ';';
+    // Revert https://github.com/dlang/tools/pull/303 until
+    // https://github.com/dlang/tools/pull/317 has been resolved
+    //if (code.length > 0 && code[$ - 1] != ';')
+        //code ~= ';';
     return code;
 }
 
+// partially reverted until https://github.com/dlang/tools/pull/317 is resolved
 unittest
 {
-    assert(innerEvalCode([`writeln("Hello!")`]) == `writeln("Hello!");`);
+    //assert(innerEvalCode([`writeln("Hello!")`]) == `writeln("Hello!");`);
     assert(innerEvalCode([`writeln("Hello!");`]) == `writeln("Hello!");`);
 
     // test with trailing whitespace
-    assert(innerEvalCode([`writeln("Hello!")  `]) == `writeln("Hello!");`);
+    //assert(innerEvalCode([`writeln("Hello!")  `]) == `writeln("Hello!");`);
     assert(innerEvalCode([`writeln("Hello!");  `]) == `writeln("Hello!");`);
 
     // test with multiple entries
-    assert(innerEvalCode([`writeln("Hello!");  `, `writeln("You!")  `])
-           == "writeln(\"Hello!\");  \nwriteln(\"You!\");");
+    //assert(innerEvalCode([`writeln("Hello!");  `, `writeln("You!")  `])
+           //== "writeln(\"Hello!\");  \nwriteln(\"You!\");");
     assert(innerEvalCode([`writeln("Hello!");  `, `writeln("You!"); `])
            == "writeln(\"Hello!\");  \nwriteln(\"You!\");");
 }
@@ -891,10 +894,11 @@ unittest
     // innerEvalCode already tests the cases for different
     // contents in `eval` array, so let's focus on testing
     // the difference based on the `loop` flag
-    assert(makeEvalCode([`writeln("Hello!") `], No.loop) ==
-           importWorld
-           ~ "void main(char[][] args) {\n"
-           ~ "writeln(\"Hello!\");\n}");
+    // partially reverted until https://github.com/dlang/tools/pull/317 is resolved
+    //assert(makeEvalCode([`writeln("Hello!") `], No.loop) ==
+           //importWorld
+           //~ "void main(char[][] args) {\n"
+           //~ "writeln(\"Hello!\");\n}");
 
     assert(makeEvalCode([`writeln("What!"); `], No.loop) ==
            importWorld
