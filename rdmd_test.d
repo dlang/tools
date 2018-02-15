@@ -186,9 +186,9 @@ void runTests(string rdmdApp, string compiler, string model)
     // Test automatic .writeln for --eval
     import std.conv : text;
     import std.typecons : tuple;
-    foreach (t; [tuple(`"eval_works"`, "eval_works"),
-                 tuple("2 + 2", "4"),
-                 tuple("2.write; 2 + 2", "24")])
+    foreach (t; [tuple(`@"eval_works"`, "eval_works"),
+                 tuple("@2 + 2", "4"),
+                 tuple("2.write; @2 + 2", "24")])
     {
         res = execute(rdmdArgs ~ ["--force", "-de", text("--eval=", t[0])]);
         assert(res.status == 0, res.output);
@@ -270,7 +270,7 @@ void runTests(string rdmdApp, string compiler, string model)
     auto testLines = "foo\nbar\ndoo".split("\n");
 
     // Test --loop with automatic writeln
-    foreach (loopArg; ["--loop=writeln(line);", "--loop=line"])
+    foreach (loopArg; ["--loop=writeln(line);", "--loop=@line"])
     {
         auto pipes = pipeProcess(rdmdArgs ~ ["--force", loopArg], Redirect.stdin | Redirect.stdout);
         foreach (input; testLines)

@@ -832,43 +832,42 @@ string innerEvalCode(string[] eval)
     import std.string : join, stripRight;
     // assumeSafeAppend just to avoid unnecessary reallocation
     string code = eval.join("\n").stripRight.assumeSafeAppend;
-    if (code.length > 0 && code[$ - 1] != ';')
-    {
-        auto lastSemicolon = max(code.lastIndexOf(";"), code.lastIndexOf("}"));
-        if (code[lastSemicolon + 1 .. $].canFind("write"))
-            code ~= ';';
-        else if (lastSemicolon == -1)
-            code = text("writeln(", code, ");");
-        else
-            code = text(code[0 .. lastSemicolon + 1], "writeln(", code[lastSemicolon + 1 .. $], ");");
-    }
+    size_t lastSemicolon;
+    if (code.empty || code[$ - 1] == ';')
+        goto Lret;
+    // TODO: phobos should have findSplit!(reverse.Flag = reverse.No);
+    lastSemicolon = code.lastIndexOf("@");
+    if(lastSemicolon==-1)
+        goto Lret;  // probably a user error
+    code = text(code[0..lastSemicolon], "writeln(", code[lastSemicolon+1..$], ");");
+    Lret:
     return code;
 }
 
 unittest
 {
-    assert(innerEvalCode([`writeln("Hello!")`]) == `writeln("Hello!");`);
+    assert(innerEvalCode([`writeln("Hello!")`]) == `writeln("Hello!")`);
     assert(innerEvalCode([`writeln("Hello!");`]) == `writeln("Hello!");`);
 
     // test with trailing whitespace
-    assert(innerEvalCode([`writeln("Hello!")  `]) == `writeln("Hello!");`);
+    assert(innerEvalCode([`writeln("Hello!")  `]) == `writeln("Hello!")`);
     assert(innerEvalCode([`writeln("Hello!");  `]) == `writeln("Hello!");`);
 
     // test with multiple entries
     assert(innerEvalCode([`writeln("Hello!");  `, `writeln("You!")  `])
-           == "writeln(\"Hello!\");  \nwriteln(\"You!\");");
+           == "writeln(\"Hello!\");  \nwriteln(\"You!\")");
     assert(innerEvalCode([`writeln("Hello!");  `, `writeln("You!"); `])
            == "writeln(\"Hello!\");  \nwriteln(\"You!\");");
 }
 
 unittest
 {
-    assert(innerEvalCode(["2"]) == "writeln(2);");
-    assert(innerEvalCode(["2 + 2"]) == "writeln(2 + 2);");
-    assert(innerEvalCode(["2 + 2;"]) == "2 + 2;");
-    assert(innerEvalCode(["2 + 2;2 + 2"]) == "2 + 2;writeln(2 + 2);");
-    assert(innerEvalCode(["2.pow(4)"]) == "writeln(2.pow(4));");
-    assert(innerEvalCode(["if(0) {} 2 + 2"]) == "if(0) {}writeln( 2 + 2);");
+    assert(innerEvalCode(["@2"]) == "writeln(2);");
+    assert(innerEvalCode(["@2 + 2"]) == "writeln(2 + 2);");
+    assert(innerEvalCode(["@2 + 2; "]) == "@2 + 2;");
+    assert(innerEvalCode(["2 + 2; @2 + 2"]) == "2 + 2; writeln(2 + 2);");
+    assert(innerEvalCode(["@2.pow(4)"]) == "writeln(2.pow(4));");
+    assert(innerEvalCode(["if(0) {} @2 + 2"]) == "if(0) {} writeln(2 + 2);");
 }
 
 /**
@@ -910,7 +909,7 @@ unittest
     // innerEvalCode already tests the cases for different
     // contents in `eval` array, so let's focus on testing
     // the difference based on the `loop` flag
-    assert(makeEvalCode([`writeln("Hello!") `], No.loop) ==
+    assert(makeEvalCode([`writeln("Hello!"); `], No.loop) ==
            importWorld
            ~ "void main(char[][] args) {\n"
            ~ "writeln(\"Hello!\");\n}");

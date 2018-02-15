@@ -1,17 +1,13 @@
-In rdmd `--eval` and `--loop` the last statement without effect will be printed
+In rdmd `--eval` and `--loop` the last statement without effect will be printed if prefixed with `@`
 
 `--eval` and `--loop` are two convenience features of `rdmd` that allow quick experimentation with D code.
-However, until
 
 $(CONSOLE
 rdmd --eval='"hello"'
-/tmp/.rdmd-1000/eval.CFD785092747553A81673B51A318D6AE.d(18): $(RED Error): "hello" has no effect
-)
-
-The new behavior will default to writeln if the last statement would have no effect:
-
-$(CONSOLE
-rdmd --eval="hello"
+$(RED Error): Error: found } when expecting ; following statement
+rdmd --eval='"hello";'
+$(RED Error): "hello" has no effect
+rdmd --eval='@"hello"'
 hello
 )
 
@@ -20,28 +16,31 @@ A few more examples of `rdmd` in action:
 $(H4 Use `rdmd` as your calculator)
 
 $(CONSOLE
-rdmd --eval="2 + 2"
+rdmd --eval="@2 + 2"
 4
 )
 
 $(CONSOLE
-rdmd --eval="2.pow(4)"
+rdmd --eval="@2.pow(4)"
 16
+)
+
+$(CONSOLE
+rdmd --eval="auto a = 10; auto b = [a, a + 1]; @b"
+[10, 11]
 )
 
 $(H4 Select the first column in a CSV file)
 
 $(CONSOLE
-rdmd --loop='line.splitter(",").take(1)'
+rdmd --loop='@line.splitter(",").take(1)'
 16
 )
 
 $(H4 Use `rdmd` as drop-in for Unix tools)
 
 $(CONSOLE
-seq 5 | rdmd --loop='stdin.byLine.drop(2).joiner(newline)'
-2
-3
+seq 5 | rdmd --loop='@stdin.byLine.drop(2).joiner(newline)'
 4
 5
 )
