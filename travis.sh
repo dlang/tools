@@ -2,34 +2,37 @@
 
 set -uexo pipefail
 
-DIGGER_DIR="../digger"
-DIGGER="../digger/digger"
+~/dlang/install.sh install gdc
+~/dlang/install.sh install ldc
 
-# set to 64-bit by default
-if [ -z ${MODEL:-} ] ; then
-    MODEL=64
-fi
+~/dlang/install.sh list
 
-build_digger() {
-    git clone --recursive https://github.com/CyberShadow/Digger "$DIGGER_DIR"
-    git -C "$DIGGER_DIR" checkout v3.0.0-alpha-5
-    (cd "$DIGGER_DIR" && rdmd --build-only -debug digger)
-}
+GDMD=$(find ~/dlang -type f -name "gdmd")
+LDMD2=$(find ~/dlang -type f -name "ldmd2")
 
-install_digger() {
-    $DIGGER build --model=$MODEL "master"
-    export PATH=$PWD/work/result/bin:$PATH
-}
+make -f posix.mak all DMD="$(which dmd)"
+make -f posix.mak test DMD="$(which dmd)" \
+    RDMD_TEST_COMPILERS=dmd,"$GDMD","$LDMD2" \
+    VERBOSE_RDMD_TEST=1
 
-if ! [ -d "$DIGGER_DIR" ] ; then
-    build_digger
-fi
+# Test setup.sh
+shellcheck setup.sh
 
-install_digger
+dmd=dmd/generated/linux/release/64/dmd
+dir=generated/setup.sh-test
+cwd="$(pwd)"
 
-dmd --version
-rdmd --help | head -n 1
-dub --version
+# check initial checkout
+rm -rf "$dir" && mkdir "$dir" && pushd "$dir"
+echo "y" | "$cwd"/setup.sh
+echo 'void main(){ import std.stdio; "Hello World".writeln;}' | "./${dmd}" -run - | grep -q "Hello World"
 
-make -f posix.mak all DMD=$(which dmd)
-make -f posix.mak test DMD=$(which dmd)
+# test updates
+echo "y" | "$cwd"/setup.sh
+echo 'void main(){ import std.stdio; "Hello World".writeln;}' | "./${dmd}" -run - | grep -q "Hello World"
+popd && rm -rf "$dir" && mkdir "$dir" && pushd "$dir"
+
+# test checking out tags
+echo "y" | "$cwd"/setup.sh --tag=2.078.1
+echo 'void main(){ import std.stdio; __VERSION__.writeln;}' | "./2.078.1/${dmd}" -run - | grep -q "2078"
+popd

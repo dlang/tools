@@ -44,7 +44,7 @@ struct FindConfig
 {
     bool refreshTags; /// will query github.com for new tags
     bool noMerges; // will ignore merge commits
-    bool showAllContributrs; // will ignore the revRange and show all contributors
+    bool showAllContributors; // will ignore the revRange and show all contributors
     string cwd; // working directory (should be tools)
     string mailmapFile; // location to the .mailmap file
 }
@@ -57,9 +57,19 @@ auto findAuthors(string revRange, FindConfig config)
 {
     Appender!(GitAuthor[]) authors;
     int commits;
-    foreach (repo; ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"]
-             .map!(r => buildPath(config.cwd, "..", r)))
+    auto repos = ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"];
+    if (config.showAllContributors)
+        repos ~= ["dub", "dub-registry", "dconf.org"];
+
+    foreach (repo; repos.map!(r => buildPath(config.cwd, "..", r)))
     {
+        if (!repo.exists)
+        {
+            stderr.writefln("Warning: %s doesn't exist. " ~
+                            "Consider running: git clone https://github.com/dlang/%s ../%2$s",
+                            repo, repo.baseName);
+            continue;
+        }
         if (config.refreshTags)
         {
             auto cmd = ["git", "-C", repo, "fetch", "--tags", "https://github.com/dlang/" ~ repo.baseName,
@@ -69,7 +79,7 @@ auto findAuthors(string revRange, FindConfig config)
         }
 
         auto cmd = ["git", "-c", "mailmap.file=%s".format(config.mailmapFile), "-C", repo, "log", "--use-mailmap", "--pretty=format:%aN|%aE"];
-        if (!config.showAllContributrs)
+        if (!config.showAllContributors)
             cmd ~= revRange;
         if (config.noMerges)
             cmd ~= "--no-merges";
@@ -86,7 +96,7 @@ auto findAuthors(string revRange, FindConfig config)
             })
             .filter!(a => a.name != "The Dlang Bot");
     }
-    if (!config.showAllContributrs)
+    if (!config.showAllContributors)
         stderr.writefln("Looked at %d commits in %s", commits, revRange);
     else
         stderr.writefln("Looked at %d commits", commits);
@@ -119,12 +129,12 @@ int main(string[] args)
         args,
         std.getopt.config.passThrough,
         "f|format", "Result format (name, markdown, ddoc, csv, git)", &printMode,
-        "a|all", "Show all contributors", &config.showAllContributrs,
+        "a|all", "Show all contributors", &config.showAllContributors,
         "refresh-tags", "Refresh tags", &config.refreshTags,
         "no-merges", "Ignore merge commits", &config.noMerges,
     );
 
-    if (helpInformation.helpWanted || (args.length < 2 && !config.showAllContributrs))
+    if (helpInformation.helpWanted || (args.length < 2 && !config.showAllContributors))
     {
 `D contributors extractor.
 ./contributors.d "v2.075.0..v2.076.0"`.defaultGetoptPrinter(helpInformation.options);

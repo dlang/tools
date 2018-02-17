@@ -1,4 +1,7 @@
 # See https://github.com/git/git/blob/master/Documentation/mailmap.txt
+# This file is sorted with:
+# (head -n3 .mailmap && tail -n+4 .mailmap | sort -i) > .mailmap.tmp && mv .mailmap.tmp .mailmap
+Adam D. Ruppe <destructionator@gmail.com>
 adil <adil@stockopedia.co.uk>
 adil <adil@stockopedia.co.uk> <adil@adil-ThinkCentre-A85>
 aG0aep6G <aG0aep6G@users.noreply.github.com>
@@ -13,6 +16,7 @@ Andrew Edwards <edwards.ac@gmail.com>
 Andrey Zherikov <andrey.zherikov@gmail.com>
 Brad Anderson <root>
 Brian Schott <briancschott@gmail.com>
+Brian Schott <briancschott@gmail.com> <Hackerpilot>
 Christian Juelg <c.juelg@gmail.com>
 Clement Courbet <legrosbuffle@somebod.com> <clem@somebod.com>
 D8174 <michaelpm394@gmail.com>
@@ -28,6 +32,7 @@ Ed McCardell <edmccard@hotmail.com>
 emstoudenmire <miles.stoudenmire@gmail.com>
 Hara Kenji <k.hara.pg+dev@gmail.com> <k.hara.pg@gmail.com>
 humdedum <humdedum@icloud.com>
+Iain Buclaw <ibuclaw@gdcproject.org>
 Iain Buclaw <ibuclaw@gdcproject.org> <ibuclaw@HP-G62.(none)>
 Iain Buclaw <ibuclaw@gdcproject.org> ibuclaw <ibuclaw@ubuntu.com>
 Ilya Yaroshenko <ilya@ilya-Aspire-7745G.(none)>
@@ -36,8 +41,8 @@ Jacob Carlborg <doob@me.com> <jacob.carlborg@gmail.com>
 Jakob Øvrum <jakobovrum@gmail.com>
 Jakob Øvrum <jakobovrum@gmail.com> <JakobOvrum@users.noreply.github.com>
 Jan Jurzitza <gh@webfreak.org> <janju007@web.de>
-JinShil <slavo5150@yahoo.com>
-JinShil <slavo5150@yahoo.com> <JinShil@users.noreply.github.com>
+Mike Franklin <slavo5150@yahoo.com>
+Mike Franklin <slavo5150@yahoo.com> <JinShil@users.noreply.github.com>
 Joakim Noah <gh@joakim.fea.st>
 Joakim Noah <gh@joakim.fea.st> <git@joakim.fea.st>
 Joakim Noah <gh@joakim.fea.st> <joakim@airpost.net>
@@ -53,20 +58,29 @@ Lucia Mcojocaru <lucia.mcojocaru@gmail.com>
 Luís Marques <luis@luismarques.eu>
 Mark Barbone <30397247+mb64@users.noreply.github.com>
 Mark Barbone <30397247+mb64@users.noreply.github.com> Mark Barbone <>
-Martin Nowak <code@dawg.eu> <dawg@dawgfoto.de>
 Martin Nowak <code@dawg.eu> <dawg@dawgfoto>
+Martin Nowak <code@dawg.eu> <dawg@dawgfoto.de>
 Mathias Lang <mathias.lang@sociomantic.com> <geod24@gmail.com>
 Mathias Lang <mathias.lang@sociomantic.com> <mathias.lang@epitech.eu>
 Mathias Lang <mathias.lang@sociomantic.com> <pro.mathias.lang@gmail.com>
 Miles <miles.stoudenmire@gmail.com>
 Miles Stoudenmire <miles.stoudenmire@gmail.com>
 monarchdodra <monarchdodra@gmail.com> <monarchdodra@gmail.com>
+Nathan Sashihara <21227491+n8sh@users.noreply.github.com>
+Nathan Sashihara <21227491+n8sh@users.noreply.github.com> <nathan@n8mbp17.home>
+Nick Sabalausky <bus_github@semitwist.com>
+Nick Sabalausky <bus_github@semitwist.com> <Abscissa@users.noreply.github.com>
 Petar Kirov <petar.p.kirov@gmail.com> <petar.p.kirov@gmail.com>
 ponce <aliloko@gmail.com> <aliloko@gmail.com>
+Михаил Страшун <public@dicebot.lv>
+Михаил Страшун <public@dicebot.lv> <m.strashun@gmail.com>
+Михаил Страшун <public@dicebot.lv> <mihails.strasuns.contractor@sociomantic.com>
+Михаил Страшун <public@dicebot.lv> <registrations@dicebot.lv>
 Rainer Schuetze <r.sagitario@gmx.de> <r.sagitario@gmx.de>
 Razvan Nitu <razvan.nitu1305@gmail.com> <razvan.nitu1305@gmail.com>
 Robert burner Schadek <robert.schadek@informatik.uni-oldenburg.de> <rburners@gmail.com>
 Robert burner Schadek <robert.schadek@informatik.uni-oldenburg.de> <robert.schadek@informatik.uni-oldenburg.de>
+Ryan Roden-Corrent <ryan@rcorre.net>
 Safety0ff <safety0ff.dev@gmail.com>
 Safety0ff <safety0ff.dev@gmail.com> <safety0ff@users.sourceforge.net>
 shoo <zan77137@nifty.com> <zan77137@nifty.com>
@@ -74,7 +88,9 @@ Simen Kjærås <simen.kjaras@gmail.com>
 Simen Kjærås <simen.kjaras@gmail.com> <biotronic@biotronic.(none)>
 skkestrel <sudo@pt-get.com>
 Stefan Koch <Uplink.Coder@googlemail.com>
+Stefan Koch <uplink.coder@googlemail.com> <UplinkCoder@users.noreply.github.com>
 Stefan Rohe <think@hotmail.de>
+Timothee Cour <timothee.cour@gmail.com>
 Timothee Cour <timothee.cour@gmail.com> <timothee.cour2@gmail.com>
 Tobias Stengel <tobias.stengel@student.kit.edu>
 Torarin <torarin@gmail.com>
@@ -85,5 +101,3 @@ Wyatt <wyatt.epp@gmail.com>
 Yao Gómez <yao.gomez@gmail.com> <yaoltzin@gmail.com>
 yashikno <nobody@nowhere>
 Yazan Dabain <yazan.dabain@arabiaweather.com> <yazan.dabain@gmail.com>
-Михаил Страшун <public@dicebot.lv>
-Михаил Страшун <public@dicebot.lv> <m.strashun@gmail.com>

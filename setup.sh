@@ -1,9 +1,7 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 
 # Run this script to install or update your dmd toolchain from
 # github.
-#
-# Make sure zsh is installed. You may need to change the shebang.
 #
 # First run, create a working directory, e.g. /path/to/d/. Then run
 # this script from that directory (the location of the script itself
@@ -19,45 +17,72 @@
 # update.
 #
 
-setopt err_exit
+set -ueo pipefail
 
-local projects
-typeset -a projects
-projects=(dmd druntime phobos dlang.org tools installer)
+declare -a projects
+projects=(dmd druntime phobos dlang.org tools installer dub)
 # Working directory
-local wd=$(pwd)
+wd=$(pwd)
+# github username
+githubUser="dlang"
 # Configuration
-local makecmd=make
-local parallel=8
-local model=64
+makecmd="make"
+parallel=8
+model=64
+build="release"
+githubUri="https://github.com/"
 # List of projects to install vs. update. Their disjoint union is
 # $projects.
-local toInstall toUpdate
-typeset -a toInstall toUpdate
+declare -a toInstall toUpdate
+toInstall=()
+toUpdate=()
 # Mess to go here
-local tempdir=$(mktemp -d /tmp/dmd-update.XXX)
+tempdir=$(mktemp -d /tmp/dmd-update.XXX)
+
+function cleanup() {
+    rm -rf "$tempdir";
+}
+trap cleanup EXIT
+
+function help() {
+    echo "./setup.sh
+Clones and builds dmd, druntime, phobos, dlang.org, tools, installer and dub.
+
+Additional usage
+
+  install       replace current dmd binary with the freshly dmd
+
+Options
+
+  --user=USER   set a custom GitHub user name (requires the repos to be forked)
+  --tag=TAG     select a specific tag to clone" >&2
+}
 
 #
 # Take care of the command line arguments
 #
 function handleCmdLine() {
-    local arg
-    for arg in $*; do
-        case $arg in
-    	    (--tag=*)
-            tag="`echo $arg | sed 's/[-a-zA-Z0-9]*=//'`"
+    for arg in "$@"; do
+        case "$arg" in
+    	    --tag=*)
+    	    tag="${arg//[-a-zA-Z0-9]*=//}"
             ;;
-            (install)
+    	    --user=*)
+    	    githubUser="${arg//[-a-zA-Z0-9]*=//}"
+            ;;
+            install)
             install="yes"
             ;;
-            (*)
+            *)
             echo "Error: $arg not recognized." >&2
+            echo >&2
+            help
             exit 1
             ;;
         esac
     done
 
-    if [[ ! -z $tag ]]; then
+    if [ ! -z "${tag+x}" ] ; then
         wd+="/$tag"
         mkdir -p "$wd"
     fi
@@ -68,33 +93,32 @@ function handleCmdLine() {
 #
 function confirmChoices() {
     function joinWithWorkingDir() {
-        for i in $*; do
+        for i in "$@"; do
             echo "$wd/$i"
         done
     }
 
-    for project in $projects; do
-        if [ -e "$wd/$project" ]; then
-            toUpdate=($toUpdate "$project")
+    for project in "${projects[@]}" ; do
+        if [ -d "$wd/$project" ] ; then
+            toUpdate+=("$project")
         else
-            toInstall=($toInstall "$project")
+            toInstall+=("$project")
         fi
     done
-    if [[ ! -z $toInstall ]]; then
+    if [[ ${#toInstall[@]} -gt 0 ]]; then
         echo "*** The following projects will be INSTALLED:"
-        joinWithWorkingDir ${toInstall}
-        echo "*** Note: this script assumes you have a github account set up."
+        joinWithWorkingDir "${toInstall[@]}"
     fi
-    if [[ ! -z $toUpdate ]]; then
+    if [[ ${#toUpdate[@]} -gt 0 ]]; then
         echo "*** The following projects will be UPDATED:"
-        joinWithWorkingDir ${toUpdate}
+        joinWithWorkingDir "${toUpdate[@]}"
     fi
 
-    echo "Is this what you want?"
+    echo "Is this what you want? [y|n]"
     local yn
     while true; do
-        read yn
-        case $yn in
+        read -r yn
+        case "$yn" in
             [Yy]* ) break;;
             [Nn]* ) exit;;
             * ) echo "Please answer y or n.";;
@@ -108,26 +132,27 @@ function confirmChoices() {
 
 function installAnew() {
     local projects
-    projects=($*)
-    for project in $projects; do
+    projects=("$@")
+    for project in "${projects[@]}" ; do
         (
-            cd $wd &&
-            git clone --quiet git://github.com/dlang/$project.git &&
-            touch $tempdir/$project
+        git clone "${githubUri}${githubUser}/$project.git" "$wd/$project"
+        if [ "$githubUser" != "dlang" ] ; then
+            git -C "$wd/$project" remote add upstream "${githubUri}dlang/$project.git"
+        fi
+        touch "$tempdir/$project"
         ) &
     done
     wait
 
-    for project in $projects; do
-        if [ ! -f $tempdir/$project ]; then
+    for project in "${projects[@]}" ; do
+        if [ ! -f "$tempdir/$project" ]; then
             echo "Getting $project failed." >&2
-            rm -rf $tempdir
             exit 1
         fi
-        if [[ ! -z $tag &&
-                    ($project = dmd || $project = druntime || $project = phobos ||
-                        $project = dlang.org) ]]; then
-	        ( cd $wd/$project && git checkout v$tag )
+        if [ ! -z "${tag+x}" ] ; then
+            if [ "$project" == "dmd" ] -o [ "$project" == "druntime" ] -o [ "$project" == "phobos" ] -o [ "$project" == "dlang.org" ] ; then
+	            git -C "$wd/$project" checkout "v$tag"
+            fi
         fi
     done
 }
@@ -141,72 +166,60 @@ function update() {
 
     function update_project() {
         local project=$1
-        local gitproject="git://github.com/dlang/$project.git"
-        if ! ( cd "$wd/$project" && \
-            git checkout master && \
-            git pull --ff-only $gitproject master && \
-            git pull $gitproject master --tags && \
-            git fetch $gitproject && \
-            git fetch --tags $gitproject) 2>$tempdir/$project.log
+        local gitproject="${githubUri}dlang/$project.git"
+        local git=("git" "-C" "$wd/$project")
+        if ! ( \
+            "${git[@]}" checkout master && \
+            "${git[@]}" pull --ff-only --tags "$gitproject" master ) 2> "$tempdir/$project.log"
         then
-            echo "Failure updating $wd/$project." >>$tempdir/errors
+            echo "Failure updating $wd/$project." >> "$tempdir/errors"
             exit 1
         fi
     }
 
-    for project in $toUpdate; do
-        update_project $project &
+    for project in "${toUpdate[@]}" ; do
+        update_project "$project" &
     done
     wait
 
-    if [ -f $tempdir/errors ]; then
-        cat $tempdir/*.log >&2
+    if [ -f "$tempdir/errors" ]; then
+        cat "$tempdir"/*.log >&2
         exit 1
     fi
 }
 
 function makeWorld() {
-# First make dmd
-    (
-        which dmd >/dev/null || BT="AUTO_BOOTSTRAP=1"
-        cd "$wd/dmd/src" &&
-        $makecmd -f posix.mak clean MODEL=$model $BT &&
-        $makecmd -f posix.mak -j $parallel MODEL=$model $BT
-    )
+    local BOOTSTRAP=""
+    which dmd >/dev/null || BOOTSTRAP="AUTO_BOOTSTRAP=1"
+    for repo in dmd druntime phobos ; do
+        "$makecmd" -C "$wd/$repo" -f posix.mak clean
+        "$makecmd" -C "$wd/$repo" -f posix.mak "-j${parallel}" MODEL="$model" BUILD="$build" $BOOTSTRAP
+    done
 
-# Update the running dmd version
-    if [[ ! -z $install ]]; then
-        local old=$(which dmd)
+    # Update the running dmd version (only required once)
+    if [[ ! -z "${install+x}" ]]; then
+        local old dmdBinary
+        old=$(which dmd)
+        dmdBinary=$(ls -1 $wd/dmd/generated/*/$build/$model/dmd)
         if [ -f "$old" ]; then
-            echo "Copying "$wd/dmd/src/dmd" over $old"
-            [ ! -w "$old" ] && local sudo="sudo"
-            $sudo cp "$wd/dmd/src/dmd" "$old"
+            echo "Linking '$dmdBinary' to $old"
+            local sudo=""
+            if [ ! -w "$old" ] ; then
+                sudo="sudo"
+            fi
+            ln -s "$tempdir/dmd.symlink" "$old"
+            "$sudo" mv "$tempdir/dmd.symlink" "$old"
         fi
     fi
-
-# Then make druntime
-    (
-        cd "$wd/druntime" &&
-        $makecmd -f posix.mak -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
-    )
-
-# Then make phobos
-    (
-        cd "$wd/phobos" &&
-        $makecmd -f posix.mak -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
-    )
-
-# Then make website
-    (
-        cd "$wd/dlang.org" &&
-        $makecmd -f posix.mak clean DMD="$wd/dmd/src/dmd" MODEL=$model &&
-        $makecmd -f posix.mak html -j $parallel DMD="$wd/dmd/src/dmd" MODEL=$model
-    )
 }
 
 # main
-handleCmdLine $*
+handleCmdLine "$@"
 confirmChoices
-installAnew $toInstall
-update $toUpdate
+if [ ${#toInstall[@]} -gt 0 ] ; then
+    installAnew "${toInstall[@]}"
+fi
+if [ ${#toUpdate[@]} -gt 0 ] ; then
+    update "${toUpdate[@]}"
+fi
 makeWorld

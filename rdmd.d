@@ -15,9 +15,12 @@
 // Written in the D programming language.
 
 import std.algorithm, std.array, core.stdc.stdlib, std.datetime,
-    std.digest.md, std.exception, std.file, std.getopt,
+    std.digest.md, std.exception, std.getopt,
     std.parallelism, std.path, std.process, std.range, std.regex,
-    std.stdio, std.string, std.typetuple;
+    std.stdio, std.string, std.typecons, std.typetuple;
+
+// Globally import types and functions that don't need to be logged
+import std.file : FileException, DirEntry, SpanMode, thisExePath, tempDir;
 
 version (Posix)
 {
@@ -62,7 +65,7 @@ int main(string[] args)
     // Look for the D compiler rdmd invokes automatically in the same directory as rdmd
     // and fall back to using the one in your path otherwise.
     string compilerPath = buildPath(dirName(thisExePath()), defaultCompiler);
-    if (compilerPath.exists && compilerPath.isFile)
+    if (Filesystem.existsAsFile(compilerPath))
         compiler = compilerPath;
 
     if (args.length > 1 && args[1].startsWith("--shebang ", "--shebang="))
@@ -180,18 +183,14 @@ int main(string[] args)
     {
         enforce(programPos == args.length, "Cannot have both --loop and a " ~
                 "program file ('" ~ args[programPos] ~ "').");
-        root = makeEvalFile(importWorld ~ "void main(char[][] args) { "
-                ~ "foreach (line; std.stdio.stdin.byLine()) {\n"
-                ~ std.string.join(loop, "\n")
-                ~ ";\n} }");
+        root = makeEvalFile(makeEvalCode(loop, Yes.loop));
         argsBeforeProgram ~= "-d";
     }
     else if (eval.ptr)
     {
         enforce(programPos == args.length, "Cannot have both --eval and a " ~
                 "program file ('" ~ args[programPos] ~ "').");
-        root = makeEvalFile(importWorld ~ "void main(char[][] args) {\n"
-                ~ std.string.join(eval, "\n") ~ ";\n}");
+        root = makeEvalFile(makeEvalCode(eval, No.loop));
         argsBeforeProgram ~= "-d";
     }
     else if (programPos < args.length)
@@ -233,9 +232,7 @@ int main(string[] args)
     immutable workDir = getWorkPath(root, compilerFlags);
     lockWorkPath(workDir); // will be released by the OS on process exit
     string objDir = buildPath(workDir, "objs");
-    yap("mkdirRecurse ", objDir);
-    if (!dryRun)
-        mkdirRecurse(objDir);
+    Filesystem.mkdirRecurseIfLive(objDir);
 
     if (lib)
     {
@@ -292,16 +289,14 @@ int main(string[] args)
             // Both exe and buildWitness exist, and exe is older than
             // buildWitness. This is the only situation in which we
             // may NOT need to recompile.
-            yap("stat ", buildWitness);
-            lastBuildTime = buildWitness.timeLastModified(SysTime.min);
+            lastBuildTime = Filesystem.timeLastModified(buildWitness, SysTime.min);
         }
     }
     else
     {
         exe = buildPath(workDir, exeBasename) ~ outExt;
         buildWitness = exe;
-        yap("stat ", buildWitness);
-        lastBuildTime = buildWitness.timeLastModified(SysTime.min);
+        lastBuildTime = Filesystem.timeLastModified(buildWitness, SysTime.min);
     }
 
     // Have at it
@@ -314,11 +309,7 @@ int main(string[] args)
 
         // Touch the build witness to track the build time
         if (buildWitness != exe)
-        {
-            yap("touch ", buildWitness);
-            if (!dryRun)
-                std.file.write(buildWitness, "");
-        }
+            Filesystem.touchEmptyFileIfLive(buildWitness);
     }
 
     if (buildOnly)
@@ -395,9 +386,7 @@ private @property string myOwnTmpDir()
     else
         tmpRoot = tmpRoot.replace("/", dirSeparator).buildPath(".rdmd");
 
-    yap("mkdirRecurse ", tmpRoot);
-    if (!dryRun)
-        mkdirRecurse(tmpRoot);
+    Filesystem.mkdirRecurseIfLive(tmpRoot);
     return tmpRoot;
 }
 
@@ -427,9 +416,7 @@ private string getWorkPath(in string root, in string[] compilerFlags)
     workPath = buildPath(tmpRoot,
             "rdmd-" ~ baseName(root) ~ '-' ~ hash);
 
-    yap("mkdirRecurse ", workPath);
-    if (!dryRun)
-        mkdirRecurse(workPath);
+    Filesystem.mkdirRecurseIfLive(workPath);
 
     return workPath;
 }
@@ -466,24 +453,18 @@ private int rebuild(string root, string fullExe,
         fullExe = fullExe.defaultExtension(".exe");
 
     // Delete the old executable before we start building.
-    yap("stat ", fullExe);
-    if (exists(fullExe))
+    if (Filesystem.exists(fullExe))
     {
-        enforce(!isDir(fullExe), fullExe ~ " is a directory");
-        yap("rm ", fullExe);
-        if (!dryRun)
+        enforce(Filesystem.isFile(fullExe), fullExe ~ " is not a regular file");
+        try
+            Filesystem.removeIfLive(fullExe);
+        catch (FileException)
         {
-            try
-                   remove(fullExe);
-            catch (FileException e)
-            {
-                // This can occur on Windows if the executable is locked.
-                // Although we can't delete the file, we can still rename it.
-                auto oldExe = "%s.%s-%s.old".format(fullExe,
-                    Clock.currTime.stdTime, thisProcessID);
-                yap("mv ", fullExe, " ", oldExe);
-                rename(fullExe, oldExe);
-            }
+            // This can occur on Windows if the executable is locked.
+            // Although we can't delete the file, we can still rename it.
+            auto oldExe = "%s.%s-%s.old".format(fullExe,
+                Clock.currTime.stdTime, thisProcessID);
+            Filesystem.rename(fullExe, oldExe);
         }
     }
 
@@ -504,7 +485,7 @@ private int rebuild(string root, string fullExe,
         if (addStubMain)
         {
             auto stubMain = buildPath(myOwnTmpDir, "stubmain.d");
-            std.file.write(stubMain, "void main(){}");
+            Filesystem.write(stubMain, "void main(){}");
             todo ~= [ stubMain ];
         }
         return todo;
@@ -521,7 +502,7 @@ private int rebuild(string root, string fullExe,
 
         // DMD uses Windows-style command-line parsing in response files
         // regardless of the operating system it's running on.
-        std.file.write(rspName, array(map!escapeWindowsArgument(todo)).join(" "));
+        Filesystem.write(rspName, array(map!escapeWindowsArgument(todo)).join(" "));
 
         todo = [ "@" ~ rspName ];
     }
@@ -530,25 +511,23 @@ private int rebuild(string root, string fullExe,
     if (result)
     {
         // build failed
-        if (exists(fullExeTemp))
-            remove(fullExeTemp);
+        if (Filesystem.exists(fullExeTemp))
+            Filesystem.remove(fullExeTemp);
+
         return result;
     }
     // clean up the dir containing the object file, just not in dry
     // run mode because we haven't created any!
     if (!dryRun)
     {
-        yap("stat ", objDir);
-        if (objDir.exists && objDir.startsWith(workDir))
+        if (Filesystem.exists(objDir) && objDir.startsWith(workDir))
         {
-            yap("rmdirRecurse ", objDir);
             // We swallow the exception because of a potential race: two
             // concurrently-running scripts may attempt to remove this
             // directory. One will fail.
-            collectException(rmdirRecurse(objDir));
+            collectException(Filesystem.rmdirRecurse(objDir));
         }
-        yap("mv ", fullExeTemp, " ", fullExe);
-        rename(fullExeTemp, fullExe);
+        Filesystem.rename(fullExeTemp, fullExe);
     }
     return 0;
 }
@@ -624,7 +603,7 @@ private string[string] getDependencies(string rootModule, string workDir,
                 foreach (name; names)
                 {
                     auto path = buildPath(dir, name);
-                    if (path.exists)
+                    if (Filesystem.exists(path))
                         return absolutePath(path);
                 }
             return null;
@@ -662,8 +641,7 @@ private string[string] getDependencies(string rootModule, string workDir,
                 auto confFile = captures[2].strip;
                 // The config file is special: if missing, that's fine too. So
                 // add it as a dependency only if it actually exists.
-                yap("stat ", confFile);
-                if (confFile.exists)
+                if (Filesystem.exists(confFile))
                 {
                     result[confFile] = null;
                 }
@@ -691,8 +669,7 @@ private string[string] getDependencies(string rootModule, string workDir,
     // Check if the old dependency file is fine
     if (!force)
     {
-        yap("stat ", depsFilename);
-        auto depsT = depsFilename.timeLastModified(SysTime.min);
+        auto depsT = Filesystem.timeLastModified(depsFilename, SysTime.min);
         if (depsT > SysTime.min)
         {
             // See if the deps file is still in good shape
@@ -723,14 +700,14 @@ private string[string] getDependencies(string rootModule, string workDir,
     {
         // Delete the deps file on failure, we don't want to be fooled
         // by it next time we try
-        collectException(std.file.remove(depsFilename));
+        collectException(Filesystem.remove(depsFilename));
     }
 
     immutable depsExitCode = run(depsGetter, depsFilename);
     if (depsExitCode)
     {
         stderr.writefln("Failed: %s", depsGetter);
-        collectException(std.file.remove(depsFilename));
+        collectException(Filesystem.remove(depsFilename));
         exit(depsExitCode);
     }
 
@@ -740,8 +717,7 @@ private string[string] getDependencies(string rootModule, string workDir,
 // Is any file newer than the given file?
 bool anyNewerThan(T)(T files, in string file)
 {
-    yap("stat ", file);
-    return files.anyNewerThan(file.timeLastModified);
+    return files.anyNewerThan(Filesystem.timeLastModified(file));
 }
 
 // Is any file newer than the given file?
@@ -767,8 +743,7 @@ than target's. Otherwise, returns true.
 private bool newerThan(string source, string target)
 {
     if (force) return true;
-    yap("stat ", target);
-    return source.newerThan(target.timeLastModified(SysTime.min));
+    return source.newerThan(Filesystem.timeLastModified(target, SysTime.min));
 }
 
 private bool newerThan(string source, SysTime target)
@@ -776,8 +751,7 @@ private bool newerThan(string source, SysTime target)
     if (force) return true;
     try
     {
-        yap("stat ", source);
-        return DirEntry(source).timeLastModified > target;
+        return Filesystem.timeLastModified(DirEntry(source)) > target;
     }
     catch (Exception)
     {
@@ -839,27 +813,120 @@ import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
     std.zlib;
 ";
 
+/**
+Joins together the code provided via an `--eval` or `--loop`
+flag, ensuring a trailing `;` is added if not already provided
+by the user
+
+Params:
+    eval = array of strings generated by the `--eval`
+           or `--loop` rdmd flags
+
+Returns:
+    string of code to be evaluated, corresponding to the
+    inner code of either the program or the loop
+*/
+string innerEvalCode(string[] eval)
+{
+    import std.string : join, stripRight;
+    // assumeSafeAppend just to avoid unnecessary reallocation
+    string code = eval.join("\n").stripRight.assumeSafeAppend;
+    if (code.length > 0 && code[$ - 1] != ';')
+        code ~= ';';
+    return code;
+}
+
+unittest
+{
+    assert(innerEvalCode([`writeln("Hello!")`]) == `writeln("Hello!");`);
+    assert(innerEvalCode([`writeln("Hello!");`]) == `writeln("Hello!");`);
+
+    // test with trailing whitespace
+    assert(innerEvalCode([`writeln("Hello!")  `]) == `writeln("Hello!");`);
+    assert(innerEvalCode([`writeln("Hello!");  `]) == `writeln("Hello!");`);
+
+    // test with multiple entries
+    assert(innerEvalCode([`writeln("Hello!");  `, `writeln("You!")  `])
+           == "writeln(\"Hello!\");  \nwriteln(\"You!\");");
+    assert(innerEvalCode([`writeln("Hello!");  `, `writeln("You!"); `])
+           == "writeln(\"Hello!\");  \nwriteln(\"You!\");");
+}
+
+/**
+Formats the code provided via `--eval` or `--loop` flags into a
+string of complete program code that can be written to a file
+and then compiled
+
+Params:
+    eval = array of strings generated by the `--eval` or
+           `--loop` rdmd flags
+    loop = set to `Yes.loop` if this code comes from a
+           `--loop` flag, `No.loop` if it comes from an
+           `--eval` flag
+
+Returns:
+    string of code to be evaluated, corresponding to the
+    inner code of either the program or the loop
+*/
+string makeEvalCode(string[] eval, Flag!"loop" loop)
+{
+    import std.format : format;
+    immutable codeFormat = importWorld
+        ~ "void main(char[][] args) {%s%s\n%s}";
+
+    immutable innerCodeOpening =
+        loop ? " foreach (line; std.stdio.stdin.byLine()) {\n"
+             : "\n";
+
+    immutable innerCodeClosing = loop ? "} " : "";
+
+    return format(codeFormat,
+                  innerCodeOpening,
+                  innerEvalCode(eval),
+                  innerCodeClosing);
+}
+
+unittest
+{
+    // innerEvalCode already tests the cases for different
+    // contents in `eval` array, so let's focus on testing
+    // the difference based on the `loop` flag
+    assert(makeEvalCode([`writeln("Hello!") `], No.loop) ==
+           importWorld
+           ~ "void main(char[][] args) {\n"
+           ~ "writeln(\"Hello!\");\n}");
+
+    assert(makeEvalCode([`writeln("What!"); `], No.loop) ==
+           importWorld
+           ~ "void main(char[][] args) {\n"
+           ~ "writeln(\"What!\");\n}");
+
+    assert(makeEvalCode([`writeln("Loop!") ; `], Yes.loop) ==
+           importWorld
+           ~ "void main(char[][] args) { "
+           ~ "foreach (line; std.stdio.stdin.byLine()) {\n"
+           ~ "writeln(\"Loop!\") ;\n} }");
+}
+
 string makeEvalFile(string todo)
 {
     auto pathname = myOwnTmpDir;
     auto srcfile = buildPath(pathname,
             "eval." ~ todo.md5Of.toHexString ~ ".d");
 
-    if (force || !exists(srcfile))
+    if (force || !Filesystem.exists(srcfile))
     {
-        std.file.write(srcfile, todo);
+        Filesystem.write(srcfile, todo);
     }
 
     // Clean pathname
     enum lifetimeInHours = 24;
     auto cutoff = Clock.currTime() - dur!"hours"(lifetimeInHours);
-    yap("dirEntries ", pathname);
-    foreach (DirEntry d; dirEntries(pathname, SpanMode.shallow))
+    foreach (DirEntry d; Filesystem.dirEntries(pathname, SpanMode.shallow))
     {
-        yap("stat ", d.name);
-        if (d.timeLastModified < cutoff)
+        if (Filesystem.timeLastModified(d) < cutoff)
         {
-            collectException(std.file.remove(d.name));
+            collectException(Filesystem.remove(d.name));
             //break; // only one per call so we don't waste time
         }
     }
@@ -897,13 +964,12 @@ string which(string path)
     if (path.canFind(dirSeparator) || altDirSeparator != "" && path.canFind(altDirSeparator)) return path;
     string[] extensions = [""];
     version(Windows) extensions ~= environment["PATHEXT"].split(pathSeparator);
-    foreach (extension; extensions)
+    foreach (envPath; environment["PATH"].splitter(pathSeparator))
     {
-        foreach (envPath; environment["PATH"].splitter(pathSeparator))
+        foreach (extension; extensions)
         {
             string absPath = buildPath(envPath, path ~ extension);
-            yap("stat ", absPath);
-            if (exists(absPath) && isFile(absPath))
+            if (Filesystem.existsAsFile(absPath))
                 return absPath;
         }
     }
@@ -915,4 +981,72 @@ void yap(size_t line = __LINE__, T...)(auto ref T stuff)
     if (!chatty) return;
     debug stderr.writeln(line, ": ", stuff);
     else stderr.writeln(stuff);
+}
+
+/**
+Used to wrap filesystem operations that should also be logged with the
+yap function or affected by dryRun. Append the string "IfLive" to the end
+of the function for it to be skipped during a dry run.
+
+These functions allow the filename to be given once so the log statement
+always matches the operation. Using it also guarantees you won't forget to
+include a `yap` alongside any file operation you want to be logged.
+*/
+struct Filesystem
+{
+static:
+    static auto opDispatch(string func, T...)(T args)
+    {
+        static if (func.endsWith("IfLive"))
+        {
+            enum fileFunc = func[0 .. $ - "IfLive".length];
+            enum skipOnDryRun = true;
+        }
+        else
+        {
+            enum fileFunc = func;
+            enum skipOnDryRun = false;
+        }
+
+        static if (fileFunc.among("exists", "timeLastModified", "isFile", "isDir", "existsAsFile"))
+            yap("stat ", args[0]);
+        else static if (fileFunc == "rename")
+            yap("mv ", args[0], " ", args[1]);
+        else static if (fileFunc.among("remove", "mkdirRecurse", "rmdirRecurse", "dirEntries", "write", "touchEmptyFile"))
+            yap(fileFunc, " ", args[0]);
+        else static assert(0, "Filesystem.opDispatch has not implemented " ~ fileFunc);
+
+        static if (skipOnDryRun)
+        {
+            if (dryRun)
+                return;
+        }
+        mixin("return DirectFilesystem." ~ fileFunc ~ "(args);");
+    }
+
+    /**
+    Operates on the file system without logging its operations or being
+    affected by dryRun.
+    */
+    static struct DirectFilesystem
+    {
+    static:
+        import file = std.file;
+        alias file this;
+
+        /**
+        Update an empty file's timestamp.
+        */
+        static void touchEmptyFile(string name)
+        {
+            file.write(name, "");
+        }
+        /**
+        Returns true if name exists and is a file.
+        */
+        static bool existsAsFile(string name)
+        {
+            return file.exists(name) && file.isFile(name);
+        }
+    }
 }

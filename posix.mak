@@ -6,6 +6,14 @@ DRUNTIME_PATH = ../druntime
 PHOBOS_PATH = ../phobos
 DUB=dub
 
+RDMD_TEST_COMPILERS = $(abspath $(DMD))
+
+VERBOSE_RDMD_TEST=0
+
+ifeq ($(VERBOSE_RDMD_TEST), 1)
+	override VERBOSE_RDMD_TEST_FLAGS:=-v
+endif
+
 WITH_DOC = no
 DOC = ../dlang.org
 
@@ -31,10 +39,12 @@ ifeq (,$(findstring win,$(OS)))
 	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.so
 endif
 
+# default to warnings and deprecations as errors, override via e.g. make -f posix.mak WARNINGS=-wi
+WARNINGS = -w -de
 # default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
 DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
-		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG)
-DFLAGS += -w -de -fPIC
+		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG) -fPIC
+DFLAGS += $(WARNINGS)
 
 # Default DUB flags (DUB uses a different architecture format)
 DUBFLAGS = --arch=$(subst 32,x86,$(subst 64,x86_64,$(MODEL)))
@@ -84,7 +94,7 @@ d-tags.json:
 	@exit 1
 
 $(ROOT)/dman: d-tags.json
-$(ROOT)/dman: DFLAGS += -J.
+$(ROOT)/dman: override DFLAGS += -J.
 
 install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 	mkdir -p $(INSTALL_DIR)/bin
@@ -108,7 +118,9 @@ test_tests_extractor: $(ROOT)/tests_extractor
 	$< -i ./test/tests_extractor/iteration.d | diff - ./test/tests_extractor/iteration.d.ext
 
 test_rdmd: $(ROOT)/rdmd_test $(ROOT)/rdmd
-	$< --compiler=$(abspath $(DMD)) -m$(MODEL)
+	$< --compiler=$(abspath $(DMD)) -m$(MODEL) \
+	   --test-compilers=$(RDMD_TEST_COMPILERS) \
+	   $(VERBOSE_RDMD_TEST_FLAGS)
 	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d
 
 test: test_tests_extractor test_rdmd
