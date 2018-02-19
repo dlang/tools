@@ -31,6 +31,7 @@ parallel=8
 model=64
 build="release"
 githubUri="https://github.com/"
+tag=""
 # List of projects to install vs. update. Their disjoint union is
 # $projects.
 declare -a toInstall toUpdate
@@ -65,10 +66,10 @@ function handleCmdLine() {
     for arg in "$@"; do
         case "$arg" in
     	    --tag=*)
-    	    tag="${arg//[-a-zA-Z0-9]*=//}"
+    	    tag="${arg//[-a-zA-Z0-9]*=/}"
             ;;
     	    --user=*)
-    	    githubUser="${arg//[-a-zA-Z0-9]*=//}"
+    	    githubUser="${arg//[-a-zA-Z0-9]*=/}"
             ;;
             install)
             install="yes"
@@ -149,8 +150,10 @@ function installAnew() {
             echo "Getting $project failed." >&2
             exit 1
         fi
-        if [ ! -z "${tag+x}" ] ; then
-            if [ "$project" == "dmd" ] -o [ "$project" == "druntime" ] -o [ "$project" == "phobos" ] -o [ "$project" == "dlang.org" ] ; then
+        if [ -n "${tag}" ] ; then
+            if [ "$project" == "dmd" ] || [ "$project" == "druntime" ] || \
+                [ "$project" == "phobos" ] || [ "$project" == "dlang.org" ] || \
+                [ "$project" == "tools" ] ; then
 	            git -C "$wd/$project" checkout "v$tag"
             fi
         fi
