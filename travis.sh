@@ -33,6 +33,8 @@ echo 'void main(){ import std.stdio; "Hello World".writeln;}' | "./${dmd}" -run 
 popd && rm -rf "$dir" && mkdir "$dir" && pushd "$dir"
 
 # test checking out tags
+# requires an older host compiler too, see also: https://github.com/dlang/tools/pull/324
+. $(~/dlang/install.sh install dmd-2.078.1 -a)
 echo "y" | "$cwd"/setup.sh --tag=2.078.1
 echo 'void main(){ import std.stdio; __VERSION__.writeln;}' | "./2.078.1/${dmd}" -run - | grep -q "2078"
 popd
