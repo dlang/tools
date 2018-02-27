@@ -59,8 +59,10 @@ struct ChangelogEntry
     string basename; // basename without extension (used for the anchor link to the description)
 }
 
+// Also retrieve new (but not reopened) bugs, as bugs are only auto-closed when
+// merged into master, but the changelog gets generated on stable.
 auto templateRequest =
-    `https://issues.dlang.org/buglist.cgi?bug_id={buglist}&bug_status=RESOLVED&resolution=FIXED&`~
+    `https://issues.dlang.org/buglist.cgi?bug_id={buglist}&bug_status=NEW&bug_status=RESOLVED&`~
         `ctype=csv&columnlist=component,bug_severity,short_desc`;
 
 auto generateRequest(Range)(string templ, Range issues)
