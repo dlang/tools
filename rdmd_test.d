@@ -65,7 +65,7 @@ void main(string[] args)
 
     // path/to/rdmd.exe (once built)
     string rdmdApp = tempDir().buildPath("rdmd_app_") ~ binExt;
-    if (rdmdApp.exists) std.file.remove(rdmdApp);
+    scope (exit) std.file.remove(rdmdApp);
 
     // compiler needs to be an absolute path because we change directories
     if (buildCompiler.canFind!isDirSeparator)
