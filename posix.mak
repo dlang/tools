@@ -7,14 +7,6 @@ DRUNTIME_PATH = ../druntime
 PHOBOS_PATH = ../phobos
 DUB=dub
 
-RDMD_TEST_COMPILERS = $(abspath $(DMD))
-
-VERBOSE_RDMD_TEST=0
-
-ifeq ($(VERBOSE_RDMD_TEST), 1)
-	override VERBOSE_RDMD_TEST_FLAGS:=-v
-endif
-
 WITH_DOC = no
 DOC = ../dlang.org
 
@@ -117,6 +109,13 @@ $(ROOT)/tests_extractor: tests_extractor.d
 test_tests_extractor: $(ROOT)/tests_extractor
 	$< -i ./test/tests_extractor/ascii.d | diff - ./test/tests_extractor/ascii.d.ext
 	$< -i ./test/tests_extractor/iteration.d | diff - ./test/tests_extractor/iteration.d.ext
+
+RDMD_TEST_COMPILERS = $(abspath $(DMD))
+
+VERBOSE_RDMD_TEST=0
+ifeq ($(VERBOSE_RDMD_TEST), 1)
+	override VERBOSE_RDMD_TEST_FLAGS:=-v
+endif
 
 test_rdmd: $(ROOT)/rdmd_test $(ROOT)/rdmd
 	$< --compiler=$(abspath $(DMD)) -m$(MODEL) \
