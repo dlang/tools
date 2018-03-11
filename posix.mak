@@ -111,14 +111,17 @@ test_tests_extractor: $(ROOT)/tests_extractor
 	$< -i ./test/tests_extractor/iteration.d | diff - ./test/tests_extractor/iteration.d.ext
 
 RDMD_TEST_COMPILERS = $(abspath $(DMD))
+RDMD_TEST_EXECUTABLE = $(ROOT)/rdmd
+RDMD_TEST_DEFAULT_COMPILER = $(basename $(DMD))
 
 VERBOSE_RDMD_TEST=0
 ifeq ($(VERBOSE_RDMD_TEST), 1)
 	override VERBOSE_RDMD_TEST_FLAGS:=-v
 endif
 
-test_rdmd: $(ROOT)/rdmd_test $(ROOT)/rdmd
-	$< --compiler=$(abspath $(DMD)) -m$(MODEL) \
+test_rdmd: $(ROOT)/rdmd_test $(RDMD_TEST_EXECUTABLE)
+	$< --rdmd=$(RDMD_TEST_EXECUTABLE) -m$(MODEL) \
+	   --rdmd-default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
 	   --test-compilers=$(RDMD_TEST_COMPILERS) \
 	   $(VERBOSE_RDMD_TEST_FLAGS)
 	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d
