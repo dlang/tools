@@ -86,3 +86,21 @@ zip: detab tolf $(MAKEFILES)
 
 scp: detab tolf $(MAKEFILES)
 	$(SCP) $(SRCS) $(MAKEFILES) $(SCPDIR)
+
+
+################################################################################
+# Build and run tests
+################################################################################
+
+RDMD_TEST_COMPILERS = $(DMD)
+RDMD_TEST_EXECUTABLE = $(ROOT)\rdmd.exe
+RDMD_TEST_DEFAULT_COMPILER = $(DMD)
+
+$(ROOT)\rdmd_test.exe : rdmd_test.d
+	$(DMD) $(DFLAGS) -of$@ rdmd_test.d
+
+test_rdmd : $(ROOT)\rdmd_test.exe $(RDMD_TEST_EXECUTABLE)
+        $(ROOT)\rdmd_test.exe \
+           --rdmd=$(RDMD_TEST_EXECUTABLE) -m32 -v \
+           --rdmd-default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
+           --test-compilers=$(RDMD_TEST_COMPILERS)
