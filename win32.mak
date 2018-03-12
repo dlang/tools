@@ -104,3 +104,5 @@ test_rdmd : $(ROOT)\rdmd_test.exe $(RDMD_TEST_EXECUTABLE)
            --rdmd=$(RDMD_TEST_EXECUTABLE) -m32 -v \
            --rdmd-default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
            --test-compilers=$(RDMD_TEST_COMPILERS)
+
+test : test_rdmd
