@@ -4,9 +4,11 @@ environment:
   - DC: dmd
     DVersion: nightly
     arch: x64
+    MODEL: 64
   - DC: dmd
     DVersion: nightly
     arch: x86
+    MODEL: 32
 skip_tags: false
 build_script:
  - ps: >
@@ -64,3 +66,4 @@ test_script:
  - echo %PATH%
  - '%DC% --version'
  - make -f win32.mak rdmd dustmite ddemangle changed
+ - make -f win32.mak test
