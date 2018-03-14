@@ -395,7 +395,7 @@ Please supply a bugzilla version
     auto f = File(outputFile, "w");
     auto w = f.lockingTextWriter();
     w.put("Ddoc\n\n");
-    w.formattedWrite("$(CHANGELOG_NAV_LAST %s)\n\n", previousVersion);
+    w.put("$(CHANGELOG_NAV_INJECT)\n\n");
 
     {
         w.formattedWrite("$(VERSION %s, =================================================,\n\n", nextVersionDate);
@@ -460,7 +460,7 @@ Please supply a bugzilla version
         w.put("$(D_CONTRIBUTORS_FOOTER)\n");
     }
 
-    w.formattedWrite("$(CHANGELOG_NAV_LAST %s)\n", previousVersion);
+    w.put("$(CHANGELOG_NAV_INJECT)\n\n");
 
     // write own macros
     w.formattedWrite(`Macros:
