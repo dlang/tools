@@ -392,6 +392,37 @@ Please supply a bugzilla version
         writeln("Skipped querying Bugzilla for changes. Please define a revision range e.g ./changed v2.072.2..upstream/stable");
     }
 
+    // location of the changelog files
+    alias Repo = Tuple!(string, "name", string, "headline", string, "path");
+    auto repos = [Repo("dmd", "Compiler changes", null),
+                  Repo("druntime", "Runtime changes", null),
+                  Repo("phobos", "Library changes", null),
+                  Repo("dlang.org", "Language changes", null),
+                  Repo("installer", "Installer changes", null),
+                  Repo("tools", "Tools changes", null),
+                  Repo("dub", "Dub changes", null)];
+
+    auto changedRepos = repos
+         .map!(repo => Repo(repo.name, repo.headline, buildPath(__FILE_FULL_PATH__.dirName, "..", repo.name, repo.name == "dlang.org" ? "language-changelog" : "changelog")))
+         .filter!(r => r.path.exists);
+
+    // ensure that all files either end on .dd or .md
+    bool errors;
+    foreach (repo; changedRepos)
+    {
+        auto invalidFiles = repo.path
+            .dirEntries(SpanMode.shallow)
+            .filter!(a => !a.name.endsWith(".dd", ".md"));
+        if (!invalidFiles.empty)
+        {
+            invalidFiles.each!(f => stderr.writefln("ERROR: %s needs to have .dd or .md as extension", f.buildNormalizedPath));
+            errors = 1;
+        }
+    }
+    import core.stdc.stdlib : exit;
+    if (errors)
+        1.exit;
+
     auto f = File(outputFile, "w");
     auto w = f.lockingTextWriter();
     w.put("Ddoc\n\n");
@@ -405,23 +436,12 @@ Please supply a bugzilla version
         if (!hideTextChanges)
         {
             // search for raw change files
-            alias Repo = Tuple!(string, "name", string, "headline", string, "path");
-            auto repos = [Repo("dmd", "Compiler changes", null),
-                          Repo("druntime", "Runtime changes", null),
-                          Repo("phobos", "Library changes", null),
-                          Repo("dlang.org", "Language changes", null),
-                          Repo("installer", "Installer changes", null),
-                          Repo("tools", "Tools changes", null),
-                          Repo("dub", "Dub changes", null)];
-
-            auto changedRepos = repos
-                 .map!(repo => Repo(repo.name, repo.headline, buildPath("..", repo.name, repo.name == "dlang.org" ? "language-changelog" : "changelog")))
-                 .filter!(r => r.path.exists)
+            auto changelogDirs = changedRepos
                  .map!(r => tuple!("headline", "changes")(r.headline, r.path.readTextChanges(r.name).array))
                  .filter!(r => !r.changes.empty);
 
             // print the overview headers
-            changedRepos.each!(r => r.changes.writeTextChangesHeader(w, r.headline));
+            changelogDirs.each!(r => r.changes.writeTextChangesHeader(w, r.headline));
 
             if (!revRange.empty)
                 w.put("$(CHANGELOG_SEP_HEADER_TEXT_NONEMPTY)\n\n");
@@ -429,7 +449,7 @@ Please supply a bugzilla version
             w.put("$(CHANGELOG_SEP_HEADER_TEXT)\n\n");
 
             // print the detailed descriptions
-            changedRepos.each!(x => x.changes.writeTextChangesBody(w, x.headline));
+            changelogDirs.each!(x => x.changes.writeTextChangesBody(w, x.headline));
 
             if (revRange.length)
                 w.put("$(CHANGELOG_SEP_TEXT_BUGZILLA)\n\n");
