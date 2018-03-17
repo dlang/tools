@@ -15,9 +15,7 @@ module rdmd_test;
     While `rdmd_test` can be run directly, it is recommended to run
     it via the tools build scripts using the `make test_rdmd` target.
 
-    When running directly, use the --rdmd flag to specify the path
-    to the rdmd executable, to test, and --rdmd-default-compiler to
-    specify the name of the default compiler expected by rdmd.
+    When running directly, pass the rdmd binary as the first argument.
 */
 
 import std.algorithm;
@@ -28,6 +26,8 @@ import std.path;
 import std.process;
 import std.range;
 import std.string;
+import std.ascii : isWhite;
+import std.stdio : writefln;
 
 version (Posix)
 {
@@ -48,42 +48,38 @@ else
 
 bool verbose = false;
 
-void main(string[] args)
+int main(string[] args)
 {
-    string rdmd; // path to rdmd executable
-    string defaultCompiler; // name of default compiler expected by rdmd
+    string compilers = "dmd"; // e.g. "ldmd2,gdmd" (comma-separated list of compiler names)
     bool concurrencyTest;
     string model = "64"; // build architecture for dmd
-    string testCompilerList; // e.g. "ldmd2,gdmd" (comma-separated list of compiler names)
 
     auto helpInfo = getopt(args,
-        "rdmd", "[REQUIRED] path to rdmd executable to test", &rdmd,
-        "rdmd-default-compiler", "[REQUIRED] default D compiler used by rdmd executable", &defaultCompiler,
+        "compilers", "comma-separated list of D compilers to test rdmd with (defaults to 'dmd')", &compilers,
         "concurrency", "whether to perform the concurrency test cases", &concurrencyTest,
         "m|model", "architecture to run the tests for [32 or 64]", &model,
-        "test-compilers", "comma-separated list of D compilers to test with rdmd", &testCompilerList,
         "v|verbose", "verbose output", &verbose,
     );
 
     void reportHelp(string errorMsg = null, string file = __FILE__, size_t line = __LINE__)
     {
         defaultGetoptPrinter("rdmd_test: a test suite for rdmd\n\n" ~
-                             "USAGE:\trdmd_test [OPTIONS]\n",
+                             "USAGE:\trdmd_test [OPTIONS] <rdmd-binary>\n",
                              helpInfo.options);
         enforce(errorMsg is null, errorMsg, file, line);
     }
 
-    if (helpInfo.helpWanted)
+    if (args.length == 1 || helpInfo.helpWanted)
     {
         reportHelp();
-        return;
+        return 1;
     }
-
-    if (rdmd.length == 0)
-        reportHelp("ERROR: missing required --rdmd flag");
-
-    if (defaultCompiler.length == 0)
-        reportHelp("ERROR: missing required --rdmd-default-compiler flag");
+    if (args.length > 2)
+    {
+        writefln("Error: too many non-option arguments, expected 1 but got %s", args.length - 1);
+        return 1;
+    }
+    string rdmd = args[1]; // path to rdmd executable
 
     enforce(rdmd.exists,
             format("rdmd executable path '%s' does not exist", rdmd));
@@ -95,23 +91,22 @@ void main(string[] args)
     scope (exit) std.file.remove(rdmdApp);
     copy(rdmd, rdmdApp, Yes.preserveAttributes);
 
-    // if no explicit list of test compilers is set,
-    // use the default compiler expected by rdmd
-    if (testCompilerList is null)
-        testCompilerList = defaultCompiler;
+    runCompilerAgnosticTests(rdmdApp, model);
 
     // run the test suite for each specified test compiler
-    foreach (testCompiler; testCompilerList.split(','))
+    foreach (compiler; compilers.split(','))
     {
-        runTests(rdmdApp, testCompiler, model);
+        // if compiler is a relative filename it must be converted
+        // to absolute because this test changes directories
+        if (compiler.canFind!isDirSeparator || compiler.exists)
+            compiler = buildNormalizedPath(compiler.absolutePath);
+
+        runTests(rdmdApp, compiler, model);
         if (concurrencyTest)
-            runConcurrencyTest(rdmdApp, testCompiler, model);
+            runConcurrencyTest(rdmdApp, compiler, model);
     }
 
-    // run the fallback compiler test (this involves
-    // searching for the default compiler, so cannot
-    // be run with other test compilers)
-    runFallbackTest(rdmdApp, defaultCompiler, model);
+    return 0;
 }
 
 string compilerSwitch(string compiler) { return "--compiler=" ~ compiler; }
@@ -120,7 +115,6 @@ string modelSwitch(string model) { return "-m" ~ model; }
 
 auto execute(T...)(T args)
 {
-    import std.stdio : writefln;
     if (verbose)
         writefln("[execute] %s", args[0]);
     return std.process.execute(args);
@@ -131,11 +125,8 @@ auto rdmdArguments(string rdmdApp, string compiler, string model)
     return [rdmdApp, compilerSwitch(compiler), modelSwitch(model)];
 }
 
-void runTests(string rdmdApp, string compiler, string model)
+void runCompilerAgnosticTests(string rdmdApp, string model)
 {
-    // path to rdmd + common arguments (compiler, model)
-    auto rdmdArgs = rdmdArguments(rdmdApp, compiler, model);
-
     /* Test help string output when no arguments passed. */
     auto res = execute([rdmdApp]);
     assert(res.status == 1, res.output);
@@ -146,11 +137,22 @@ void runTests(string rdmdApp, string compiler, string model)
     assert(res.status == 0, res.output);
     assert(res.output.canFind("Usage: rdmd [RDMD AND DMD OPTIONS]... program [PROGRAM OPTIONS]..."));
 
+    // run the fallback compiler test (this involves
+    // searching for the default compiler, so cannot
+    // be run with other test compilers)
+    runFallbackTest(rdmdApp, model, res.output);
+}
+
+void runTests(string rdmdApp, string compiler, string model)
+{
+    // path to rdmd + common arguments (compiler, model)
+    auto rdmdArgs = rdmdArguments(rdmdApp, compiler, model);
+
     /* Test --force. */
     string forceSrc = tempDir().buildPath("force_src_.d");
     std.file.write(forceSrc, `void main() { pragma(msg, "compile_force_src"); }`);
 
-    res = execute(rdmdArgs ~ [forceSrc]);
+    auto res = execute(rdmdArgs ~ [forceSrc]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("compile_force_src"));
 
@@ -589,17 +591,26 @@ void runConcurrencyTest(string rdmdApp, string compiler, string model)
     }
 }
 
-void runFallbackTest(string rdmdApp, string buildCompiler, string model)
+/* https://issues.dlang.org/show_bug.cgi?id=11997
+   if an explicit --compiler flag is not provided, rdmd should
+   search its own binary path first when looking for the default
+   compiler (determined by the compiler used to build it) */
+void runFallbackTest(string rdmdApp, string model, string helpText)
 {
-    /* https://issues.dlang.org/show_bug.cgi?id=11997
-       if an explicit --compiler flag is not provided, rdmd should
-       search its own binary path first when looking for the default
-       compiler (determined by the compiler used to build it) */
-    string localDMD = buildPath(tempDir(), baseName(buildCompiler));
-    std.file.write(localDMD, "empty shell");
-    scope(exit) std.file.remove(localDMD);
+    enum compilerHelpLine = "  --compiler=comp    use the specified compiler (e.g. gdmd) instead of ";
+    auto compilerHelpIndex = helpText.indexOf(compilerHelpLine);
+    assert(compilerHelpIndex >= 0);
+    auto defaultCompiler = helpText[compilerHelpIndex + compilerHelpLine.length .. $];
+    defaultCompiler = defaultCompiler[0 .. defaultCompiler.countUntil!isWhite];
+    if (verbose)
+       writefln("defaultCompiler is '%s'", defaultCompiler);
+    assert(defaultCompiler == "dmd" || defaultCompiler == "ldmd2" || defaultCompiler == "gdmd");
+
+    string compilerFilename = buildPath(tempDir(), defaultCompiler);
+    std.file.write(compilerFilename, "empty shell");
+    scope(exit) std.file.remove(compilerFilename);
 
     auto res = execute(rdmdApp ~ [modelSwitch(model), "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
     assert(res.status == 1, res.output);
-    assert(res.output.canFind(`spawn ["` ~ localDMD ~ `",`));
+    assert(res.output.canFind(`spawn ["` ~ compilerFilename ~ `",`));
 }
