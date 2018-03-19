@@ -15,9 +15,7 @@ module rdmd_test;
     While `rdmd_test` can be run directly, it is recommended to run
     it via the tools build scripts using the `make test_rdmd` target.
 
-    When running directly, use the --rdmd flag to specify the path
-    to the rdmd executable, to test, and --rdmd-default-compiler to
-    specify the name of the default compiler expected by rdmd.
+    When running directly, pass the rdmd binary as the first argument.
 */
 
 import std.algorithm;
@@ -28,6 +26,7 @@ import std.path;
 import std.process;
 import std.range;
 import std.string;
+import std.stdio;
 
 version (Posix)
 {
@@ -48,16 +47,14 @@ else
 
 bool verbose = false;
 
-void main(string[] args)
+int main(string[] args)
 {
-    string rdmd; // path to rdmd executable
     string defaultCompiler; // name of default compiler expected by rdmd
     bool concurrencyTest;
     string model = "64"; // build architecture for dmd
     string testCompilerList; // e.g. "ldmd2,gdmd" (comma-separated list of compiler names)
 
     auto helpInfo = getopt(args,
-        "rdmd", "[REQUIRED] path to rdmd executable to test", &rdmd,
         "rdmd-default-compiler", "[REQUIRED] default D compiler used by rdmd executable", &defaultCompiler,
         "concurrency", "whether to perform the concurrency test cases", &concurrencyTest,
         "m|model", "architecture to run the tests for [32 or 64]", &model,
@@ -68,16 +65,23 @@ void main(string[] args)
     void reportHelp(string errorMsg = null, string file = __FILE__, size_t line = __LINE__)
     {
         defaultGetoptPrinter("rdmd_test: a test suite for rdmd\n\n" ~
-                             "USAGE:\trdmd_test [OPTIONS]\n",
+                             "USAGE:\trdmd_test [OPTIONS] <rdmd_binary>\n",
                              helpInfo.options);
         enforce(errorMsg is null, errorMsg, file, line);
     }
 
-    if (helpInfo.helpWanted)
+    if (helpInfo.helpWanted || args.length == 1)
     {
         reportHelp();
-        return;
+        return 1;
     }
+
+    if (args.length > 2)
+    {
+        writefln("Error: too many non-option arguments, expected 1 but got %s", args.length - 1);
+        return 1; // fail
+    }
+    string rdmd = args[1]; // path to rdmd executable
 
     if (rdmd.length == 0)
         reportHelp("ERROR: missing required --rdmd flag");
@@ -114,6 +118,8 @@ void main(string[] args)
         if (concurrencyTest)
             runConcurrencyTest(rdmdApp, testCompiler, model);
     }
+
+    return 0;
 }
 
 string compilerSwitch(string compiler) { return "--compiler=" ~ compiler; }
@@ -468,7 +474,7 @@ void runTests(string rdmdApp, string compiler, string model)
         TmpDir srcDir = "rdmdTest";
         string srcName = srcDir.buildPath("test.d");
         std.file.write(srcName, `void fun() {}`);
-        if (exists("test" ~ libExt)) remove("test" ~ libExt);
+        if (exists("test" ~ libExt)) std.file.remove("test" ~ libExt);
 
         res = execute(rdmdArgs ~ ["--build-only", "--force", "-lib", srcName]);
         assert(res.status == 0, res.output);
