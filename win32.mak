@@ -30,8 +30,8 @@ SCP=$(CP)
 
 DFLAGS=-O -release
 
-ROOT_OF_THEM_ALL = generated
-ROOT = $(ROOT_OF_THEM_ALL)\windows\32
+GENERATED = generated
+ROOT = $(GENERATED)\windows\32
 
 TARGETS=	$(ROOT)\dman.exe \
 	$(ROOT)\rdmd.exe \
@@ -72,7 +72,7 @@ $(ROOT)\changed.exe : changed.d
 	$(DMD) $(DFLAGS) -of$@ changed.d
 
 clean :
-	del $(TARGETS) $(TAGS)
+	rmdir /s /q $(GENERATED)
 
 detab:
 	$(DETAB) $(SRCS)

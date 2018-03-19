@@ -15,8 +15,8 @@ $(shell [ ! -d $(DMD_DIR) ] && git clone --depth=1 https://github.com/dlang/dmd 
 include $(DMD_DIR)/src/osmodel.mak
 
 # Build folder for all binaries
-ROOT_OF_THEM_ALL = generated
-ROOT = $(ROOT_OF_THEM_ALL)/$(OS)/$(MODEL)
+GENERATED = generated
+ROOT = $(GENERATED)/$(OS)/$(MODEL)
 
 # Set DRUNTIME name and full path
 ifeq (,$(findstring win,$(OS)))
@@ -94,7 +94,7 @@ install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 	cp $^ $(INSTALL_DIR)/bin
 
 clean:
-	rm -f $(ROOT)/dustmite $(TOOLS) $(CURL_TOOLS) $(DOC_TOOLS) $(TAGS) *.o $(ROOT)/*.o
+	rm -r $(GENERATED)
 
 $(ROOT)/tests_extractor: tests_extractor.d
 	mkdir -p $(ROOT)
