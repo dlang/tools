@@ -120,7 +120,7 @@ ifeq ($(VERBOSE_RDMD_TEST), 1)
 endif
 
 test_rdmd: $(ROOT)/rdmd_test $(RDMD_TEST_EXECUTABLE)
-	$< --rdmd=$(RDMD_TEST_EXECUTABLE) -m$(MODEL) \
+	$< $(RDMD_TEST_EXECUTABLE) -m$(MODEL) \
 	   --rdmd-default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
 	   --test-compilers=$(RDMD_TEST_COMPILERS) \
 	   $(VERBOSE_RDMD_TEST_FLAGS)
