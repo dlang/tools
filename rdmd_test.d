@@ -103,6 +103,11 @@ void main(string[] args)
     // run the test suite for each specified test compiler
     foreach (testCompiler; testCompilerList.split(','))
     {
+        // if compiler is a relative filename it must be converted
+        // to absolute because this test changes directories
+        if (testCompiler.canFind!isDirSeparator || testCompiler.exists)
+            testCompiler = buildNormalizedPath(testCompiler.absolutePath);
+
         runTests(rdmdApp, testCompiler, model);
         if (concurrencyTest)
             runConcurrencyTest(rdmdApp, testCompiler, model);
