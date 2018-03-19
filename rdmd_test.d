@@ -95,6 +95,8 @@ void main(string[] args)
     scope (exit) std.file.remove(rdmdApp);
     copy(rdmd, rdmdApp, Yes.preserveAttributes);
 
+    runCompilerAgnosticTests(rdmdApp, defaultCompiler, model);
+
     // if no explicit list of test compilers is set,
     // use the default compiler expected by rdmd
     if (testCompilerList is null)
@@ -107,11 +109,6 @@ void main(string[] args)
         if (concurrencyTest)
             runConcurrencyTest(rdmdApp, testCompiler, model);
     }
-
-    // run the fallback compiler test (this involves
-    // searching for the default compiler, so cannot
-    // be run with other test compilers)
-    runFallbackTest(rdmdApp, defaultCompiler, model);
 }
 
 string compilerSwitch(string compiler) { return "--compiler=" ~ compiler; }
@@ -126,16 +123,8 @@ auto execute(T...)(T args)
     return std.process.execute(args);
 }
 
-auto rdmdArguments(string rdmdApp, string compiler, string model)
+void runCompilerAgnosticTests(string rdmdApp, string defaultCompiler, string model)
 {
-    return [rdmdApp, compilerSwitch(compiler), modelSwitch(model)];
-}
-
-void runTests(string rdmdApp, string compiler, string model)
-{
-    // path to rdmd + common arguments (compiler, model)
-    auto rdmdArgs = rdmdArguments(rdmdApp, compiler, model);
-
     /* Test help string output when no arguments passed. */
     auto res = execute([rdmdApp]);
     assert(res.status == 1, res.output);
@@ -146,11 +135,27 @@ void runTests(string rdmdApp, string compiler, string model)
     assert(res.status == 0, res.output);
     assert(res.output.canFind("Usage: rdmd [RDMD AND DMD OPTIONS]... program [PROGRAM OPTIONS]..."));
 
+    // run the fallback compiler test (this involves
+    // searching for the default compiler, so cannot
+    // be run with other test compilers)
+    runFallbackTest(rdmdApp, defaultCompiler, model);
+}
+
+auto rdmdArguments(string rdmdApp, string compiler, string model)
+{
+    return [rdmdApp, compilerSwitch(compiler), modelSwitch(model)];
+}
+
+void runTests(string rdmdApp, string compiler, string model)
+{
+    // path to rdmd + common arguments (compiler, model)
+    auto rdmdArgs = rdmdArguments(rdmdApp, compiler, model);
+
     /* Test --force. */
     string forceSrc = tempDir().buildPath("force_src_.d");
     std.file.write(forceSrc, `void main() { pragma(msg, "compile_force_src"); }`);
 
-    res = execute(rdmdArgs ~ [forceSrc]);
+    auto res = execute(rdmdArgs ~ [forceSrc]);
     assert(res.status == 0, res.output);
     assert(res.output.canFind("compile_force_src"));
 
