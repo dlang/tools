@@ -99,7 +99,7 @@ clean:
 $(ROOT)/tests_extractor: tests_extractor.d
 	mkdir -p $(ROOT)
 	DFLAGS="$(DFLAGS)" $(DUB) build \
-		   --single $< --force --compiler=$(abspath $(DMD)) $(DUBFLAGS) \
+		   --single $< --force --compiler=$(DMD) $(DUBFLAGS) \
 		   && mv ./tests_extractor $@
 
 ################################################################################
@@ -110,7 +110,7 @@ test_tests_extractor: $(ROOT)/tests_extractor
 	$< -i ./test/tests_extractor/ascii.d | diff - ./test/tests_extractor/ascii.d.ext
 	$< -i ./test/tests_extractor/iteration.d | diff - ./test/tests_extractor/iteration.d.ext
 
-RDMD_TEST_COMPILERS = $(abspath $(DMD))
+RDMD_TEST_COMPILERS = $(DMD)
 RDMD_TEST_EXECUTABLE = $(ROOT)/rdmd
 RDMD_TEST_DEFAULT_COMPILER = $(basename $(DMD))
 
