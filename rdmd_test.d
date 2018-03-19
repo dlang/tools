@@ -614,6 +614,29 @@ void runTests(string rdmdApp, string compiler, string model)
         res = execute(rdmdArgs ~ [src1]);
         assert(res.status == 1, res.output);
     }
+
+    {
+        import std.format : format;
+
+        auto textOutput = tempDir().buildPath("rdmd_makefile_test.txt");
+        if (exists(textOutput))
+        {
+            remove(textOutput);
+        }
+        enum makefileFormatter = `.ONESHELL:
+SHELL = %s
+.SHELLFLAGS = %-(%s %) --eval
+%s:
+	import std.file;
+	write("$@","hello world\n");`;
+        string makefileString = format!makefileFormatter(rdmdArgs[0], rdmdArgs[1 .. $], textOutput);
+        auto makefilePath = tempDir().buildPath("rdmd_makefile_test.mak");
+        std.file.write(makefilePath, makefileString);
+        auto make = environment.get("MAKE") is null ? "make" : environment.get("MAKE");
+        res = execute([make, "-f", makefilePath]);
+        assert(res.status == 0, res.output);
+        assert(std.file.read(textOutput) == "hello world\n");
+    }
 }
 
 void runConcurrencyTest(string rdmdApp, string compiler, string model)
