@@ -19,6 +19,8 @@ import std.algorithm, std.array, core.stdc.stdlib, std.datetime,
     std.parallelism, std.path, std.process, std.range, std.regex,
     std.stdio, std.string, std.typecons, std.typetuple;
 
+import std.conv : text;
+
 // Globally import types and functions that don't need to be logged
 import std.file : FileException, DirEntry, SpanMode, thisExePath, tempDir;
 
@@ -44,7 +46,8 @@ else
 private bool chatty, buildOnly, dryRun, force, preserveOutputPaths;
 private string exe, userTempDir;
 immutable string[] defaultExclusions = ["std", "etc", "core"];
-private string[] exclusions = defaultExclusions; // packages that are to be excluded
+private string[] extraExclusions;
+private string[] includes;
 private string[] extraFiles = [];
 
 version (DigitalMars)
@@ -56,18 +59,10 @@ else version (LDC)
 else
     static assert(false, "Unknown compiler");
 
-private string compiler = defaultCompiler;
-
 version(unittest) {} else
 int main(string[] args)
 {
     //writeln("Invoked with: ", args);
-    // Look for the D compiler rdmd invokes automatically in the same directory as rdmd
-    // and fall back to using the one in your path otherwise.
-    string compilerPath = buildPath(dirName(thisExePath()), defaultCompiler);
-    if (Filesystem.existsAsFile(compilerPath))
-        compiler = compilerPath;
-
     if (args.length > 1 && args[1].startsWith("--shebang ", "--shebang="))
     {
         // multiple options wrapped in one
@@ -125,6 +120,7 @@ int main(string[] args)
     assert(programPos > 0);
     auto argsBeforeProgram = args[0 .. programPos];
 
+    string compiler;
     bool bailout;    // bailout set by functions called in getopt if
                      // program should exit
     string[] loop;       // set by --loop
@@ -141,8 +137,8 @@ int main(string[] args)
             "dry-run", &dryRun,
             "eval", &eval,
             "loop", &loop,
-            "exclude", &exclusions,
-            "include", (string opt, string p) { exclusions = exclusions.filter!(ex => ex != p).array(); },
+            "exclude", &extraExclusions,
+            "include", &includes,
             "extra-file", &extraFiles,
             "force", &force,
             "help", { writeln(helpString); bailout = true; },
@@ -154,6 +150,17 @@ int main(string[] args)
             "o", &dashOh);
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
+
+    if (!compiler)
+    {
+        // Look for the D compiler in the same directory as rdmd, if it doesn't exist then
+        // fallback to the one in your path.
+        string compilerWithPath = buildPath(dirName(thisExePath()), defaultCompiler);
+        if (Filesystem.existsAsFile(compilerWithPath))
+            compiler = compilerWithPath;
+        else
+            compiler = defaultCompiler;
+    }
 
     /* Only -of is supported because Make is very susceptible to file names, and
      * it doesn't do a good job resolving them. One option would be to use
@@ -211,8 +218,27 @@ int main(string[] args)
     assert(argsBeforeProgram.length >= 1);
     auto compilerFlags = argsBeforeProgram[1 .. $];
 
-    bool obj = compilerFlags.canFind("-c");
-    bool lib = compilerFlags.canFind("-lib");
+    bool obj, lib, userGenJson;
+    auto jsonSettings = JsonSettings();
+    foreach (compilerFlag; compilerFlags)
+    {
+        if (compilerFlag == "-c")
+            obj = true;
+        else if (compilerFlag == "-lib")
+            lib = true;
+        else if (compilerFlag.startsWith("-X"))
+        {
+            jsonSettings.enabled = true;
+            auto rest = compilerFlag[2..$];
+            if (rest.startsWith("f"))
+            {
+                rest = rest[1 .. $];
+                if (rest.startsWith("="))
+                    rest = rest[1 .. $];
+                jsonSettings.filename = rest;
+            }
+        }
+    }
     string outExt = lib ? libExt : obj ? objExt : binExt;
 
     // Assume --build-only for -c and -lib.
@@ -229,7 +255,7 @@ int main(string[] args)
     }
 
     // Compute the object directory and ensure it exists
-    immutable workDir = getWorkPath(root, compilerFlags);
+    immutable workDir = getWorkPath(root, compiler, compilerFlags);
     lockWorkPath(workDir); // will be released by the OS on process exit
     string objDir = buildPath(workDir, "objs");
     Filesystem.mkdirRecurseIfLive(objDir);
@@ -246,24 +272,71 @@ int main(string[] args)
         objDir = ".";
     }
 
-    // Fetch dependencies
-    const myDeps = getDependencies(root, workDir, objDir, compilerFlags);
+    auto depFilenames = DepFilenames(
+        buildPath(workDir, "rdmd.deps"),
+        buildPath(workDir, "lastBuild.json"));
 
-    // --makedepend mode. Just print dependencies and exit.
-    if (makeDepend)
+    // At this point we want to determine what to do based on the compiler
+    // version.  If there is a JSON file, we can grab the version from that.
+    // Otherwise, we check for a legacy `rdmd.deps` file which tells us the
+    // compiler is pre 2.079.  If neither file exists, then we run the compiler
+    // using "--version" to get the version.
+    CompilerInfo compilerInfo = void;
+    auto lastBuild = LastBuildInfo();
+    if (tryReadJsonFile(depFilenames.json, &compilerInfo, &lastBuild, objDir))
     {
-        writeDeps(exe, root, myDeps, stdout);
-        return 0;
+        // we were able to get compilerInfo and lastBuild from JSON file
+    }
+    else if (tryReadVerboseFile(depFilenames.verbose, &lastBuild, objDir, Yes.checkStale))
+    {
+        // this means the compiler is using the legacy interface, which implies that
+        // it doesn't support the -i argument
+        compilerInfo = CompilerInfo("?", No.supportsDashI, No.useJsonDeps);
+        if (lastBuild.deps is null)
+        {
+            getDepsUsingCompiler(&lastBuild, compiler, root, objDir, compilerFlags, depFilenames.verbose);
+        }
+    }
+    else
+    {
+        // get the compiler version from running the binary with --version
+        compilerInfo = getCompilerInfo(compiler);
+        if (!compilerInfo.supportsDashI)
+        {
+            getDepsUsingCompiler(&lastBuild, compiler, root, objDir, compilerFlags, depFilenames.verbose);
+        }
+    }
+    if (!compilerInfo.supportsDashI)
+    {
+        yap("compiler does not support -i");
     }
 
-    // --makedepfile mode. Print dependencies to a file and continue.
-    // This is similar to GCC's -MF option, very useful to update the
-    // dependencies file and compile in one go:
-    // -include .deps.mak
-    // prog:
-    //      rdmd --makedepfile=.deps.mak --build-only prog.d
-    if (makeDepFile !is null)
-        writeDeps(exe, root, myDeps, File(makeDepFile, "w"));
+    Flag!"exit" writeCurrentDeps()
+    {
+        if (lastBuild.deps is null)
+            return No.exit;
+
+        // --makedepend mode. Just print dependencies and exit.
+        if (makeDepend)
+        {
+            writeDeps(exe, root, lastBuild.deps, stdout);
+            return Yes.exit;
+        }
+
+        // --makedepfile mode. Print dependencies to a file and continue.
+        // This is similar to GCC's -MF option, very useful to update the
+        // dependencies file and compile in one go:
+        // -include .deps.mak
+        // prog:
+        //      rdmd --makedepfile=.deps.mak --build-only prog.d
+        if (makeDepFile !is null)
+            writeDeps(exe, root, lastBuild.deps, File(makeDepFile, "w"));
+
+        return No.exit;
+    }
+
+    if (writeCurrentDeps())
+        return 0;
 
     // Compute executable name, check for freshness, rebuild
     /*
@@ -284,7 +357,7 @@ int main(string[] args)
     {
         // user-specified exe name
         buildWitness = buildPath(workDir, ".built");
-        if (!exe.newerThan(buildWitness))
+        if (lastBuild.deps !is null && !exe.newerThan(buildWitness))
         {
             // Both exe and buildWitness exist, and exe is older than
             // buildWitness. This is the only situation in which we
@@ -296,16 +369,35 @@ int main(string[] args)
     {
         exe = buildPath(workDir, exeBasename) ~ outExt;
         buildWitness = exe;
-        lastBuildTime = Filesystem.timeLastModified(buildWitness, SysTime.min);
+        if (lastBuild.deps !is null)
+        {
+            lastBuildTime = Filesystem.timeLastModified(buildWitness, SysTime.min);
+        }
     }
 
-    // Have at it
-    if (chain(root.only, myDeps.byKey).anyNewerThan(lastBuildTime))
+    if(lastBuild.deps is null || chain(root.only, lastBuild.deps.byKey).anyNewerThan(lastBuildTime))
     {
-        immutable result = rebuild(root, exe, workDir, objDir,
-                                   myDeps, compilerFlags, addStubMain);
-        if (result)
-            return result;
+        auto exitCode = rebuild(compiler, compilerInfo, root, exe, workDir, objDir, lastBuild.deps,
+            compilerFlags, depFilenames.json, addStubMain,
+            makeDepend ? Yes.suppressOutput : No.suppressOutput, jsonSettings);
+        if(exitCode)
+            return exitCode;
+        if (makeDepend || makeDepFile.ptr)
+        {
+            lastBuild = lastBuild.init; // reset build info
+            if (compilerInfo.useJsonDeps)
+            {
+                enforce(tryReadJsonFile(depFilenames.json, &compilerInfo, &lastBuild, objDir),
+                    "failed to read JSON file after build: " ~ depFilenames.json);
+            }
+            else
+            {
+                enforce(tryReadVerboseFile(depFilenames.verbose, &lastBuild, objDir, No.checkStale),
+                    "failed to read verbose file after build: " ~ depFilenames.verbose);
+            }
+            if (writeCurrentDeps())
+                return 0;
+        }
 
         // Touch the build witness to track the build time
         if (buildWitness != exe)
@@ -322,12 +414,12 @@ int main(string[] args)
     unlockWorkPath();
 
     // run
-    return exec(exe ~ programArgs);
+    return dryRun ? 0 : exec(exe ~ programArgs);
 }
 
 size_t indexOfProgram(string[] args)
 {
-    foreach(i, arg; args[1 .. $])
+    foreach (i, arg; args[1 .. $])
     {
         if (!arg.startsWith('-', '@') &&
                 !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map", ".res"))
@@ -357,14 +449,13 @@ void writeDeps(string exe, string root, in string[string] myDeps, File fo)
     }
 }
 
-bool inALibrary(string source, string object)
+bool ignoreModuleAsDependency(string moduleName, string filename)
 {
-    if (object.endsWith(".di")
-            || source == "object" || source == "gcstats")
+    if (filename.endsWith(".di") || moduleName == "object" || moduleName == "gcstats")
         return true;
 
-    foreach(string exclusion; exclusions)
-        if (source.startsWith(exclusion ~ '.'))
+    foreach (string exclusion; chain(defaultExclusions, extraExclusions).filter!(ex => !includes.canFind(ex)))
+        if (moduleName.startsWith(exclusion ~ '.'))
             return true;
 
     return false;
@@ -390,7 +481,7 @@ private @property string myOwnTmpDir()
     return tmpRoot;
 }
 
-private string getWorkPath(in string root, in string[] compilerFlags)
+private string getWorkPath(in string root, string compiler, in string[] compilerFlags)
 {
     static string workPath;
     if (workPath.ptr)
@@ -444,10 +535,10 @@ private void unlockWorkPath()
 // Rebuild the executable fullExe starting from modules in myDeps
 // passing the compiler flags compilerFlags. Generates one large
 // object file.
-
-private int rebuild(string root, string fullExe,
-        string workDir, string objDir, in string[string] myDeps,
-        string[] compilerFlags, bool addStubMain)
+private int rebuild(string compiler, ref const CompilerInfo compilerInfo,
+        string root, string fullExe, string workDir, string objDir, in string[string] deps,
+        string[] compilerFlags, string jsonFilename, bool addStubMain,
+        Flag!"suppressOutput" suppressOutput, ref const(JsonSettings) jsonSettings)
 {
     version (Windows)
         fullExe = fullExe.defaultExtension(".exe");
@@ -476,10 +567,25 @@ private int rebuild(string root, string fullExe,
             ~ [ "-of" ~ fullExeTemp ]
             ~ [ "-od" ~ objDir ]
             ~ [ "-I" ~ dirName(root) ]
+            ~ (suppressOutput ? [ "-o-" ] : null)
             ~ [ root ];
-        foreach (k, objectFile; myDeps) {
-            if(objectFile !is null)
-                todo ~= [ k ];
+        if (compilerInfo.supportsDashI)
+        {
+            todo ~= [ "-i", "-Xf=" ~ jsonFilename ];
+            foreach (exclusion; extraExclusions)
+                todo ~= "-i=-" ~ exclusion;
+            foreach (include; includes)
+                todo ~= "-i=" ~ include;
+            foreach (extraFile; extraFiles)
+                todo ~= extraFile;
+        }
+        else
+        {
+            assert(deps !is null);
+            foreach (k, objectFile; deps) {
+                if (objectFile !is null)
+                    todo ~= [ k ];
+            }
         }
         // Need to add void main(){}?
         if (addStubMain)
@@ -507,29 +613,61 @@ private int rebuild(string root, string fullExe,
         todo = [ "@" ~ rspName ];
     }
 
-    immutable result = run([ compiler ] ~ todo);
-    if (result)
+    auto fullCommand = [ compiler ] ~ todo;
+    if (dryRun)
+        yap("spawn ", fullCommand);
+    else
     {
-        // build failed
-        if (Filesystem.exists(fullExeTemp))
-            Filesystem.remove(fullExeTemp);
-
-        return result;
-    }
-    // clean up the dir containing the object file, just not in dry
-    // run mode because we haven't created any!
-    if (!dryRun)
-    {
-        if (Filesystem.exists(objDir) && objDir.startsWith(workDir))
+        auto exitCode = runProcess(fullCommand);
+        if (exitCode)
         {
-            // We swallow the exception because of a potential race: two
-            // concurrently-running scripts may attempt to remove this
-            // directory. One will fail.
-            collectException(Filesystem.rmdirRecurse(objDir));
+            if (Filesystem.exists(fullExeTemp))
+               Filesystem.remove(fullExeTemp);
+
+            if (compilerInfo.supportsDashI)
+            {
+                if (Filesystem.exists(jsonFilename))
+                    Filesystem.remove(jsonFilename);
+            }
         }
-        Filesystem.rename(fullExeTemp, fullExe);
+        if (compilerInfo.supportsDashI)
+        {
+           if (jsonSettings.enabled)
+           {
+               string targetJsonFile;
+               if (jsonSettings.filename)
+                   targetJsonFile = jsonSettings.filename;
+               else
+                   targetJsonFile = root.baseName.chomp(".d") ~ ".json";
+
+               if (jsonFilename != targetJsonFile)
+                   Filesystem.copy(jsonFilename, targetJsonFile);
+           }
+       }
+       if (exitCode)
+           return exitCode;
+
+       // clean up the dir containing the object file
+       if (Filesystem.exists(objDir) && objDir.startsWith(workDir))
+       {
+           // We swallow the exception because of a potential race: two
+           // concurrently-running scripts may attempt to remove this
+           // directory. One will fail.
+           collectException(Filesystem.rmdirRecurse(objDir));
+       }
+       if (!suppressOutput)
+       {
+           Filesystem.rename(fullExeTemp, fullExe);
+       }
     }
-    return 0;
+    return 0; // success (exitCode is 0)
+}
+
+private int runProcess(T...)(string[] args, T rest)
+{
+    yap("spawn ", args.text);
+    auto pid = spawnProcess(args, rest);
+    return wait(pid);
 }
 
 // Run a program optionally writing the command line first
@@ -537,7 +675,6 @@ private int rebuild(string root, string fullExe,
 
 private int run(string[] args, string output = null, bool replace = false)
 {
-    import std.conv;
     yap(replace ? "exec " : "spawn ", args.text);
     if (dryRun) return 0;
 
@@ -567,124 +704,240 @@ private int exec(string[] args)
     return run(args, null, true);
 }
 
-// Given module rootModule, returns a mapping of all dependees .d
-// source filenames to their corresponding .o files sitting in
-// directory workDir. The mapping is obtained by running dmd -v against
-// rootModule.
-
-private string[string] getDependencies(string rootModule, string workDir,
-        string objDir, string[] compilerFlags)
+private string d2obj(string objDir, string dfile)
 {
-    immutable depsFilename = buildPath(workDir, "rdmd.deps");
-
-    string[string] readDepsFile()
+    return buildPath(objDir, dfile.baseName.chomp(".d") ~ objExt);
+}
+private void addExtraFilesToDeps(string objDir, string[string]* deps)
+{
+    // All dependencies specified through --extra-file
+    foreach (immutable extraFile; extraFiles)
+        (*deps)[extraFile] = d2obj(objDir, extraFile);
+}
+private string findLib(string libName)
+{
+    // This can't be 100% precise without knowing exactly where the linker
+    // will look for libraries (which requires, but is not limited to,
+    // parsing the linker's command line (as specified in dmd.conf/sc.ini).
+    // Go for best-effort instead.
+    string[] dirs = ["."];
+    foreach (envVar; ["LIB", "LIBRARY_PATH", "LD_LIBRARY_PATH"])
+        dirs ~= environment.get(envVar, "").split(pathSeparator);
+    version (Windows)
+        string[] names = [libName ~ ".lib"];
+    else
     {
-        string d2obj(string dfile)
+        string[] names = ["lib" ~ libName ~ ".a", "lib" ~ libName ~ ".so"];
+        dirs ~= ["/lib", "/usr/lib"];
+    }
+    foreach (dir; dirs)
+        foreach (name; names)
         {
-            return buildPath(objDir, dfile.baseName.chomp(".d") ~ objExt);
+            auto path = buildPath(dir, name);
+            if (Filesystem.exists(path))
+                return absolutePath(path);
         }
-        string findLib(string libName)
+    return null;
+}
+
+struct LastBuildInfo
+{
+    string compilerVersion;
+    string[string] deps;
+}
+
+// Assumption: filename exists
+Flag!"success" tryReadJsonFile(string jsonFilename, CompilerInfo* compilerInfo, LastBuildInfo* lastBuild, string objDir)
+{
+    auto jsonModifyTime = Filesystem.timeLastModified(jsonFilename, SysTime.min);
+    if (jsonModifyTime == SysTime.min)
+    {
+        return No.success;
+    }
+
+    import std.json : parseJSON, JSONValue;
+
+    // if we are using the JSON file, then it implies the compiler also supports -i
+    *compilerInfo = CompilerInfo("?", Yes.supportsDashI, Yes.useJsonDeps);
+
+    auto jsonText = Filesystem.readText(jsonFilename);
+    auto json = parseJSON(jsonText);
+    string[string] result;
+    bool foundCompilerInfo, foundBuildInfo, foundSemantics;
+    foreach (element; json.array())
+    {
+        if(element["kind"].str == "compilerInfo")
         {
-            // This can't be 100% precise without knowing exactly where the linker
-            // will look for libraries (which requires, but is not limited to,
-            // parsing the linker's command line (as specified in dmd.conf/sc.ini).
-            // Go for best-effort instead.
-            string[] dirs = ["."];
-            foreach (envVar; ["LIB", "LIBRARY_PATH", "LD_LIBRARY_PATH"])
-                dirs ~= environment.get(envVar, "").split(pathSeparator);
-            version (Windows)
-                string[] names = [libName ~ ".lib"];
-            else
+            assert(!foundCompilerInfo);
+            foundCompilerInfo = true;
+            compilerInfo.versionString = element["version"].str;
+            lastBuild.deps[element["binary"].str] = null;
+        }
+        else if(element["kind"].str == "buildInfo")
+        {
+            assert(!foundBuildInfo);
+            foundBuildInfo = true;
             {
-                string[] names = ["lib" ~ libName ~ ".a", "lib" ~ libName ~ ".so"];
-                dirs ~= ["/lib", "/usr/lib"];
+                auto configProperty = element.object.get("config", JSONValue.init);
+                if (!configProperty.isNull)
+                {
+                    result[configProperty.str] = null;
+                }
             }
-            foreach (dir; dirs)
-                foreach (name; names)
-                {
-                    auto path = buildPath(dir, name);
-                    if (Filesystem.exists(path))
-                        return absolutePath(path);
-                }
-            return null;
-        }
-        yap("read ", depsFilename);
-        auto depsReader = File(depsFilename);
-        scope(exit) collectException(depsReader.close()); // don't care for errors
-
-        // Fetch all dependencies and append them to myDeps
-        auto pattern = ctRegex!(r"^(import|file|binary|config|library)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
-        string[string] result;
-        foreach (string line; lines(depsReader))
-        {
-            auto regexMatch = match(line, pattern);
-            if (regexMatch.empty) continue;
-            auto captures = regexMatch.captures;
-            switch(captures[1])
             {
-            case "import":
-                immutable moduleName = captures[2].strip(), moduleSrc = captures[3].strip();
-                if (inALibrary(moduleName, moduleSrc)) continue;
-                immutable moduleObj = d2obj(moduleSrc);
-                result[moduleSrc] = moduleObj;
-                break;
-
-            case "file":
-                result[captures[3].strip()] = null;
-                break;
-
-            case "binary":
-                result[which(captures[2].strip())] = null;
-                break;
-
-            case "config":
-                auto confFile = captures[2].strip;
-                // The config file is special: if missing, that's fine too. So
-                // add it as a dependency only if it actually exists.
-                if (Filesystem.exists(confFile))
+                auto libraryProperty = element.object.get("library", JSONValue.init);
+                if (!libraryProperty.isNull)
                 {
-                    result[confFile] = null;
-                }
-                break;
-
-            case "library":
-                immutable libName = captures[2].strip();
-                immutable libPath = findLib(libName);
-                if (libPath.ptr)
-                {
-                    yap("library ", libName, " ", libPath);
+                    auto libPath = findLib(libraryProperty.str);
+                    yap("library ", libraryProperty, " ", libPath);
                     result[libPath] = null;
                 }
-                break;
-
-            default: assert(0);
             }
         }
-        // All dependencies specified through --extra-file
-        foreach (immutable moduleSrc; extraFiles)
-            result[moduleSrc] = d2obj(moduleSrc);
-        return result;
-    }
-
-    // Check if the old dependency file is fine
-    if (!force)
-    {
-        auto depsT = Filesystem.timeLastModified(depsFilename, SysTime.min);
-        if (depsT > SysTime.min)
+        else if(element["kind"].str == "semantics")
         {
-            // See if the deps file is still in good shape
-            auto deps = readDepsFile();
-            auto allDeps = chain(rootModule.only, deps.byKey);
-            bool mustRebuildDeps = allDeps.anyNewerThan(depsT);
-            if (!mustRebuildDeps)
+            assert(!foundSemantics);
+            foundSemantics = true;
+            foreach (module_; element["modules"].array)
             {
-                // Cool, we're in good shape
-                return deps;
+                {
+                    auto contentImports = module_.object.get("contentImports", JSONValue.init);
+                    if (!contentImports.isNull)
+                    {
+                        foreach (contentImport; contentImports.array)
+                        {
+                            result[contentImport.str] = null;
+                        }
+                    }
+                }
+                {
+                    auto filename = module_["file"].str;
+                    auto nameNode = module_.object.get("name", JSONValue.init);
+                    bool ignoreAsDependency = false;
+                    if (!nameNode.isNull)
+                    {
+                        ignoreAsDependency = ignoreModuleAsDependency(nameNode.str, filename);
+                    }
+                    if (!ignoreAsDependency)
+                        result[filename] = d2obj(objDir, filename);
+                }
             }
-            // Fall through to rebuilding the deps file
+        }
+        else
+        {
+            // ignore the rest of the JSON
         }
     }
+    assert(foundCompilerInfo && foundBuildInfo && foundSemantics);
+    addExtraFilesToDeps(objDir, &result);
 
+    // check if deps file is stale
+    if (lastBuild.deps.byKey.anyNewerThan(jsonModifyTime))
+    {
+        yap("JSON deps file is stale");
+        lastBuild.deps = null;
+    }
+    else
+    {
+        yap("JSON deps file is up-to-date");
+    }
+    return Yes.success;
+}
+
+// Assumption: verboseFilename exists
+Flag!"success" tryReadVerboseFile(string verboseFilename, LastBuildInfo* lastBuild, string objDir, Flag!"checkStale" checkStale)
+{
+    auto verboseModifyTime = Filesystem.timeLastModified(verboseFilename, SysTime.min);
+    if (verboseModifyTime == SysTime.min)
+    {
+        return No.success;
+    }
+
+    yap("read ", verboseFilename);
+    auto depsReader = File(verboseFilename);
+    scope(exit) collectException(depsReader.close()); // don't care for errors
+
+    // Fetch all dependencies and append them to myDeps
+    auto pattern = ctRegex!(r"^(import|file|binary|config|library)\s+([^\(]+)\(?([^\)]*)\)?\s*$");
+    foreach (string line; lines(depsReader))
+    {
+        auto regexMatch = match(line, pattern);
+        if (regexMatch.empty) continue;
+        auto captures = regexMatch.captures;
+        switch(captures[1])
+        {
+        case "import":
+            immutable moduleName = captures[2].strip(), moduleSrc = captures[3].strip();
+            if (ignoreModuleAsDependency(moduleName, moduleSrc)) continue;
+            immutable moduleObj = d2obj(objDir, moduleSrc);
+            lastBuild.deps[moduleSrc] = moduleObj;
+            break;
+
+        case "file":
+            lastBuild.deps[captures[3].strip()] = null;
+            break;
+
+        case "binary":
+            lastBuild.deps[which(captures[2].strip())] = null;
+            break;
+
+        case "config":
+            auto confFile = captures[2].strip;
+            // The config file is special: if missing, that's fine too. So
+            // add it as a dependency only if it actually exists.
+            if (Filesystem.exists(confFile))
+                lastBuild.deps[confFile] = null;
+
+            break;
+
+        case "library":
+            immutable libName = captures[2].strip();
+            immutable libPath = findLib(libName);
+            if (libPath.ptr)
+            {
+                yap("library ", libName, " ", libPath);
+                lastBuild.deps[libPath] = null;
+            }
+            break;
+
+        default: assert(0);
+        }
+    }
+    addExtraFilesToDeps(objDir, &lastBuild.deps);
+    if (checkStale)
+    {
+        // check if deps file is stale
+        if (lastBuild.deps.byKey.anyNewerThan(verboseModifyTime))
+        {
+            yap("verbose deps file is stale");
+            lastBuild.deps = null;
+        }
+        else
+        {
+            yap("verbose deps file is up-to-date");
+        }
+    }
+    return Yes.success;
+}
+
+struct DepFilenames
+{
+    string verbose;
+    string json;
+}
+struct JsonSettings
+{
+    bool enabled;
+    string filename;
+}
+
+// this method is only here to support legacy compiler's that don't
+// support the "-i" method, which enables both compiling and getting
+// dependencies in a single call to the compiler.
+private void getDepsUsingCompiler(LastBuildInfo* lastBuild,
+    string compiler, string rootModule,
+    string objDir, string[] compilerFlags, string depsFilename)
+{
     immutable rootDir = dirName(rootModule);
 
     // Filter out -lib. With -o-, it will create an empty library file.
@@ -703,15 +956,26 @@ private string[string] getDependencies(string rootModule, string workDir,
         collectException(Filesystem.remove(depsFilename));
     }
 
-    immutable depsExitCode = run(depsGetter, depsFilename);
-    if (depsExitCode)
+    File depsFile = File(depsFilename, "wb");
+    if (dryRun)
     {
-        stderr.writefln("Failed: %s", depsGetter);
-        collectException(Filesystem.remove(depsFilename));
-        exit(depsExitCode);
+        yap("spawn ", depsGetter);
+        lastBuild.deps[rootModule] = null;
+    }
+    else
+    {
+        auto exitCode = runProcess(depsGetter, stdin, depsFile);
+        if (exitCode)
+        {
+            stderr.writefln("Failed: %s", depsGetter);
+            collectException(Filesystem.remove(depsFilename));
+            exit(exitCode);
+        }
+        assert(tryReadVerboseFile(depsFilename, lastBuild, objDir, No.checkStale),
+               "failed to read verbose output file after build: " ~ depsFilename);
+        assert(lastBuild.deps !is null, "code bug");
     }
 
-    return dryRun ? null : readDepsFile();
 }
 
 // Is any file newer than the given file?
@@ -726,7 +990,6 @@ bool anyNewerThan(T)(T files, SysTime t)
     bool result;
     foreach (source; taskPool.parallel(files))
     {
-        yap("stat ", source);
         if (!result && source.newerThan(t))
         {
             result = true;
@@ -1012,7 +1275,9 @@ static:
             yap("stat ", args[0]);
         else static if (fileFunc == "rename")
             yap("mv ", args[0], " ", args[1]);
-        else static if (fileFunc.among("remove", "mkdirRecurse", "rmdirRecurse", "dirEntries", "write", "touchEmptyFile"))
+        else static if (fileFunc == "copy")
+            yap("copy ", args[0], " ", args[1]);
+        else static if (fileFunc.among("remove", "mkdirRecurse", "rmdirRecurse", "dirEntries", "write", "touchEmptyFile", "readText"))
             yap(fileFunc, " ", args[0]);
         else static assert(0, "Filesystem.opDispatch has not implemented " ~ fileFunc);
 
@@ -1049,4 +1314,66 @@ static:
             return file.exists(name) && file.isFile(name);
         }
     }
+}
+struct CompilerInfo
+{
+    string versionString;
+    Flag!"supportsDashI" supportsDashI;
+    Flag!"useJsonDeps" useJsonDeps;
+}
+auto getCompilerInfo(string compiler)
+{
+    auto helpPipe = pipe();
+    auto compilerName = baseName(compiler);
+    if (compilerName == "dmd")
+    {
+        auto exitCode = runProcess([compiler, "--version"], stdin, helpPipe.writeEnd);
+        auto firstLine = helpPipe.readEnd.readln().strip();
+        yap("compiler version line: ", firstLine);
+        string versionString;
+        {
+            auto start = firstLine.indexOf(" v2");
+            assert(start >= 0);
+            versionString = firstLine[start + 1 .. $];
+        }
+        auto version_ = parseDmdVersion(versionString);
+        return CompilerInfo(versionString,
+            (version_.major >= 2 && version_.major >= 79) ? Yes.supportsDashI : No.supportsDashI);
+    }
+    else if (compilerName == "ldmd2")
+    {
+        return CompilerInfo("----", No.supportsDashI);
+    }
+    else if (compilerName == "gdmd")
+    {
+        return CompilerInfo("----", No.supportsDashI);
+    }
+    else
+    {
+        return CompilerInfo(null, No.supportsDashI);
+    }
+}
+
+struct DmdVersion
+{
+   ushort major;
+   ushort minor;
+}
+DmdVersion parseDmdVersion(const(char)[] versionString)
+{
+    yap("DMD version string: ", versionString);
+    assert(versionString[0] == 'v');
+    versionString = versionString[1 .. $];
+
+    auto components = splitter(versionString, '.');
+    assert(!components.empty());
+
+    auto version_ = DmdVersion();
+    static import std.conv;
+    version_.major = std.conv.to!ushort(components.front);
+    components.popFront();
+    assert(!components.empty());
+    version_.minor = std.conv.to!ushort(components.front);
+    yap("DMD version major=", version_.major, " minor=", version_.minor);
+    return version_;
 }
