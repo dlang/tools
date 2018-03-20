@@ -146,6 +146,18 @@ void runCompilerAgnosticTests(string rdmdApp, string defaultCompiler, string mod
     assert(res.status == 0, res.output);
     assert(res.output.canFind("Usage: rdmd [RDMD AND DMD OPTIONS]... program [PROGRAM OPTIONS]..."));
 
+    string helpText = res.output;
+
+    // verify help text matches expected defaultCompiler
+    {
+        enum compilerHelpLine = "  --compiler=comp    use the specified compiler (e.g. gdmd) instead of ";
+        auto offset = helpText.indexOf(compilerHelpLine);
+        assert(offset >= 0);
+        auto compilerInHelp = helpText[offset + compilerHelpLine.length .. $];
+        compilerInHelp = compilerInHelp[0 .. compilerInHelp.indexOf('\n')];
+        assert(defaultCompiler.baseName == compilerInHelp);
+    }
+
     // run the fallback compiler test (this involves
     // searching for the default compiler, so cannot
     // be run with other test compilers)
