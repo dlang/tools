@@ -55,7 +55,7 @@ int main(string[] args)
     string testCompilerList; // e.g. "ldmd2,gdmd" (comma-separated list of compiler names)
 
     auto helpInfo = getopt(args,
-        "rdmd-default-compiler", "[REQUIRED] default D compiler used by rdmd executable", &defaultCompiler,
+        "rdmd-default-compiler", "default D compiler used by rdmd executable", &defaultCompiler,
         "concurrency", "whether to perform the concurrency test cases", &concurrencyTest,
         "m|model", "architecture to run the tests for [32 or 64]", &model,
         "test-compilers", "comma-separated list of D compilers to test with rdmd", &testCompilerList,
@@ -85,9 +85,6 @@ int main(string[] args)
 
     if (rdmd.length == 0)
         reportHelp("ERROR: missing required --rdmd flag");
-
-    if (defaultCompiler.length == 0)
-        reportHelp("ERROR: missing required --rdmd-default-compiler flag");
 
     enforce(rdmd.exists,
             format("rdmd executable path '%s' does not exist", rdmd));
@@ -134,7 +131,7 @@ auto execute(T...)(T args)
     return std.process.execute(args);
 }
 
-void runCompilerAgnosticTests(string rdmdApp, string defaultCompiler, string model)
+void runCompilerAgnosticTests(string rdmdApp, ref string defaultCompiler, string model)
 {
     /* Test help string output when no arguments passed. */
     auto res = execute([rdmdApp]);
@@ -155,7 +152,14 @@ void runCompilerAgnosticTests(string rdmdApp, string defaultCompiler, string mod
         assert(offset >= 0);
         auto compilerInHelp = helpText[offset + compilerHelpLine.length .. $];
         compilerInHelp = compilerInHelp[0 .. compilerInHelp.indexOf('\n')];
-        assert(defaultCompiler.baseName == compilerInHelp);
+        if (defaultCompiler.length > 0)
+            assert(defaultCompiler.baseName == compilerInHelp);
+        else
+        {
+            writefln("Warning: missing --rdmd-default-compiler option, using '%s' from rdmd's help text",
+                compilerInHelp);
+            defaultCompiler = compilerInHelp;
+        }
     }
 
     // run the fallback compiler test (this involves
