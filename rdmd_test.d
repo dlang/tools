@@ -58,7 +58,7 @@ int main(string[] args)
         "rdmd-default-compiler", "[REQUIRED] default D compiler used by rdmd executable", &defaultCompiler,
         "concurrency", "whether to perform the concurrency test cases", &concurrencyTest,
         "m|model", "architecture to run the tests for [32 or 64]", &model,
-        "test-compilers", "comma-separated list of D compilers to test with rdmd", &testCompilerList,
+        "compilers", "comma-separated list of D compilers to test with rdmd", &testCompilerList,
         "v|verbose", "verbose output", &verbose,
     );
 
