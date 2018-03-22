@@ -55,7 +55,7 @@ int main(string[] args)
     string testCompilerList; // e.g. "ldmd2,gdmd" (comma-separated list of compiler names)
 
     auto helpInfo = getopt(args,
-        "rdmd-default-compiler", "[REQUIRED] default D compiler used by rdmd executable", &defaultCompiler,
+        "D|default-compiler", "[REQUIRED] default D compiler used by rdmd executable", &defaultCompiler,
         "concurrency", "whether to perform the concurrency test cases", &concurrencyTest,
         "m|model", "architecture to run the tests for [32 or 64]", &model,
         "test-compilers", "comma-separated list of D compilers to test with rdmd", &testCompilerList,

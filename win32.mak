@@ -102,7 +102,7 @@ $(ROOT)\rdmd_test.exe : rdmd_test.d
 test_rdmd : $(ROOT)\rdmd_test.exe $(RDMD_TEST_EXECUTABLE)
         $(ROOT)\rdmd_test.exe \
            $(RDMD_TEST_EXECUTABLE) -m$(MODEL) -v \
-           --rdmd-default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
+           --default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
            --test-compilers=$(RDMD_TEST_COMPILERS)
 
 test : test_rdmd
