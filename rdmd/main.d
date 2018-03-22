@@ -16,6 +16,7 @@
 
 module rdmd.main;
 
+import rdmd.args;
 import rdmd.config;
 
 import std.algorithm, std.array, core.stdc.stdlib, std.datetime,
@@ -26,13 +27,6 @@ import std.algorithm, std.array, core.stdc.stdlib, std.datetime,
 // Globally import types and functions that don't need to be logged
 import std.file : FileException, DirEntry, SpanMode, thisExePath, tempDir;
 
-private bool chatty, buildOnly, dryRun, force, preserveOutputPaths;
-private string exe, userTempDir;
-private string[] exclusions = RDMDConfig.defaultExclusions; // packages that are to be excluded
-private string[] extraFiles = [];
-
-private string compiler = RDMDConfig.defaultCompiler;
-
 version(unittest) {} else
 int main(string[] args)
 {
@@ -41,7 +35,7 @@ int main(string[] args)
     // and fall back to using the one in your path otherwise.
     string compilerPath = buildPath(dirName(thisExePath()), RDMDConfig.defaultCompiler);
     if (Filesystem.existsAsFile(compilerPath))
-        compiler = compilerPath;
+        RDMDGlobalArgs.compiler = compilerPath;
 
     if (args.length > 1 && args[1].startsWith("--shebang ", "--shebang="))
     {
@@ -59,21 +53,21 @@ int main(string[] args)
         {
             // -ofmyfile passed
             value.skipOver('='); // support -of... and -of=...
-            exe = value;
+            RDMDGlobalArgs.exe = value;
         }
         else if (value.skipOver('d'))
         {
             // -odmydir passed
-            if (!exe.ptr) // Don't let -od override -of
+            if (!RDMDGlobalArgs.exe.ptr) // Don't let -od override -of
             {
                 value.skipOver('='); // support -od... and -od=...
-                exe = value;
+                RDMDGlobalArgs.exe = value;
                 // add a trailing dir separator to clarify it's a dir
-                if (!exe.endsWith(dirSeparator))
+                if (!RDMDGlobalArgs.exe.endsWith(dirSeparator))
                 {
-                    exe ~= dirSeparator;
+                    RDMDGlobalArgs.exe ~= dirSeparator;
                 }
-                assert(exe.endsWith(dirSeparator));
+                assert(RDMDGlobalArgs.exe.endsWith(dirSeparator));
             }
         }
         else if (value == "-")
@@ -84,7 +78,7 @@ int main(string[] args)
         else if (value == "p")
         {
             // -op passed
-            preserveOutputPaths = true;
+            RDMDGlobalArgs.preserveOutputPaths = true;
         }
         else
         {
@@ -112,25 +106,25 @@ int main(string[] args)
     getopt(argsBeforeProgram,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
-            "build-only", &buildOnly,
-            "chatty", &chatty,
-            "compiler", &compiler,
-            "dry-run", &dryRun,
+            "build-only", &RDMDGlobalArgs.buildOnly,
+            "chatty", &RDMDGlobalArgs.chatty,
+            "compiler", &RDMDGlobalArgs.compiler,
+            "dry-run", &RDMDGlobalArgs.dryRun,
             "eval", &eval,
             "loop", &loop,
-            "exclude", &exclusions,
-            "include", (string opt, string p) { exclusions = exclusions.filter!(ex => ex != p).array(); },
-            "extra-file", &extraFiles,
-            "force", &force,
+            "exclude", &RDMDGlobalArgs.exclusions,
+            "include", (string opt, string p) { RDMDGlobalArgs.exclusions = RDMDGlobalArgs.exclusions.filter!(ex => ex != p).array(); },
+            "extra-file", &RDMDGlobalArgs.extraFiles,
+            "force", &RDMDGlobalArgs.force,
             "help", { writeln(helpString); bailout = true; },
             "main", &addStubMain,
             "makedepend", &makeDepend,
             "makedepfile", &makeDepFile,
             "man", { man(); bailout = true; },
-            "tmpdir", &userTempDir,
+            "tmpdir", &RDMDGlobalArgs.userTempDir,
             "o", &dashOh);
     if (bailout) return 0;
-    if (dryRun) chatty = true; // dry-run implies chatty
+    if (RDMDGlobalArgs.dryRun) RDMDGlobalArgs.chatty = true; // dry-run implies chatty
 
     /* Only -of is supported because Make is very susceptible to file names, and
      * it doesn't do a good job resolving them. One option would be to use
@@ -139,7 +133,7 @@ int main(string[] args)
      * To see the full discussion please refer to:
      * https://github.com/dlang/tools/pull/122
      */
-    if ((makeDepend || makeDepFile.ptr) && (!exe.ptr || exe.endsWith(dirSeparator)))
+    if ((makeDepend || makeDepFile.ptr) && (!RDMDGlobalArgs.exe.ptr || RDMDGlobalArgs.exe.endsWith(dirSeparator)))
     {
         stderr.write(helpString);
         stderr.writeln();
@@ -147,7 +141,7 @@ int main(string[] args)
         return 1;
     }
 
-    if (preserveOutputPaths)
+    if (RDMDGlobalArgs.preserveOutputPaths)
     {
         argsBeforeProgram = argsBeforeProgram[0] ~ ["-op"] ~ argsBeforeProgram[1 .. $];
     }
@@ -193,16 +187,16 @@ int main(string[] args)
     string outExt = lib ? RDMDConfig.libExt : obj ? RDMDConfig.objExt : RDMDConfig.binExt;
 
     // Assume --build-only for -c and -lib.
-    buildOnly |= obj || lib;
+    RDMDGlobalArgs.buildOnly |= obj || lib;
 
     // --build-only implies the user would like a binary in the program's directory
-    if (buildOnly && !exe.ptr)
-        exe = exeDirname ~ dirSeparator;
+    if (RDMDGlobalArgs.buildOnly && !RDMDGlobalArgs.exe.ptr)
+        RDMDGlobalArgs.exe = exeDirname ~ dirSeparator;
 
-    if (exe.ptr && exe.endsWith(dirSeparator))
+    if (RDMDGlobalArgs.exe.ptr && RDMDGlobalArgs.exe.endsWith(dirSeparator))
     {
         // user specified a directory, complete it to a file
-        exe = buildPath(exe, exeBasename) ~ outExt;
+        RDMDGlobalArgs.exe = buildPath(RDMDGlobalArgs.exe, exeBasename) ~ outExt;
     }
 
     // Compute the object directory and ensure it exists
@@ -229,7 +223,7 @@ int main(string[] args)
     // --makedepend mode. Just print dependencies and exit.
     if (makeDepend)
     {
-        writeDeps(exe, root, myDeps, stdout);
+        writeDeps(RDMDGlobalArgs.exe, root, myDeps, stdout);
         return 0;
     }
 
@@ -240,7 +234,7 @@ int main(string[] args)
     // prog:
     //      rdmd --makedepfile=.deps.mak --build-only prog.d
     if (makeDepFile !is null)
-        writeDeps(exe, root, myDeps, File(makeDepFile, "w"));
+        writeDeps(RDMDGlobalArgs.exe, root, myDeps, File(makeDepFile, "w"));
 
     // Compute executable name, check for freshness, rebuild
     /*
@@ -257,11 +251,11 @@ int main(string[] args)
      */
     string buildWitness;
     SysTime lastBuildTime = SysTime.min;
-    if (exe.ptr)
+    if (RDMDGlobalArgs.exe.ptr)
     {
         // user-specified exe name
         buildWitness = buildPath(workDir, ".built");
-        if (!exe.newerThan(buildWitness))
+        if (!RDMDGlobalArgs.exe.newerThan(buildWitness))
         {
             // Both exe and buildWitness exist, and exe is older than
             // buildWitness. This is the only situation in which we
@@ -271,25 +265,25 @@ int main(string[] args)
     }
     else
     {
-        exe = buildPath(workDir, exeBasename) ~ outExt;
-        buildWitness = exe;
+        RDMDGlobalArgs.exe = buildPath(workDir, exeBasename) ~ outExt;
+        buildWitness = RDMDGlobalArgs.exe;
         lastBuildTime = Filesystem.timeLastModified(buildWitness, SysTime.min);
     }
 
     // Have at it
     if (chain(root.only, myDeps.byKey).anyNewerThan(lastBuildTime))
     {
-        immutable result = rebuild(root, exe, workDir, objDir,
+        immutable result = rebuild(root, RDMDGlobalArgs.exe, workDir, objDir,
                                    myDeps, compilerFlags, addStubMain);
         if (result)
             return result;
 
         // Touch the build witness to track the build time
-        if (buildWitness != exe)
+        if (buildWitness != RDMDGlobalArgs.exe)
             Filesystem.touchEmptyFileIfLive(buildWitness);
     }
 
-    if (buildOnly)
+    if (RDMDGlobalArgs.buildOnly)
     {
         // Pretty much done!
         return 0;
@@ -299,7 +293,7 @@ int main(string[] args)
     unlockWorkPath();
 
     // run
-    return exec(exe ~ programArgs);
+    return exec(RDMDGlobalArgs.exe ~ programArgs);
 }
 
 size_t indexOfProgram(string[] args)
@@ -342,7 +336,7 @@ bool inALibrary(string source, string object)
             || source == "object" || source == "gcstats")
         return true;
 
-    foreach(string exclusion; exclusions)
+    foreach(string exclusion; RDMDGlobalArgs.exclusions)
         if (source.startsWith(exclusion ~ '.'))
             return true;
 
@@ -356,7 +350,7 @@ bool inALibrary(string source, string object)
 
 private @property string myOwnTmpDir()
 {
-    auto tmpRoot = userTempDir ? userTempDir : tempDir();
+    auto tmpRoot = RDMDGlobalArgs.userTempDir ? RDMDGlobalArgs.userTempDir : tempDir();
     version (Posix)
     {
         import core.sys.posix.unistd;
@@ -380,14 +374,14 @@ private string getWorkPath(in string root, in string[] compilerFlags)
 
     MD5 context;
     context.start();
-    context.put(compiler.representation);
+    context.put(RDMDGlobalArgs.compiler.representation);
     context.put(root.absolutePath().representation);
     foreach (flag; compilerFlags)
     {
         if (irrelevantSwitches.canFind(flag)) continue;
         context.put(flag.representation);
     }
-    foreach (f; extraFiles) context.put(f.representation);
+    foreach (f; RDMDGlobalArgs.extraFiles) context.put(f.representation);
     auto digest = context.finish();
     auto hash = toHexString(digest);
 
@@ -405,15 +399,15 @@ private File lockFile;
 private void lockWorkPath(string workPath)
 {
     string lockFileName = buildPath(workPath, "rdmd.lock");
-    if (!dryRun) lockFile.open(lockFileName, "w");
+    if (!RDMDGlobalArgs.dryRun) lockFile.open(lockFileName, "w");
     yap("lock ", lockFile.name);
-    if (!dryRun) lockFile.lock();
+    if (!RDMDGlobalArgs.dryRun) lockFile.lock();
 }
 
 private void unlockWorkPath()
 {
     yap("unlock ", lockFile.name);
-    if (!dryRun)
+    if (!RDMDGlobalArgs.dryRun)
     {
         lockFile.unlock();
         lockFile.close();
@@ -475,7 +469,7 @@ private int rebuild(string root, string fullExe,
     // but 1024 seems to be the smallest maximum outside of MS-DOS.
     enum maxLength = 1024;
     auto commandLength = escapeShellCommand(todo).length;
-    if (commandLength + compiler.length >= maxLength)
+    if (commandLength + RDMDGlobalArgs.compiler.length >= maxLength)
     {
         auto rspName = buildPath(workDir, "rdmd.rsp");
 
@@ -486,7 +480,7 @@ private int rebuild(string root, string fullExe,
         todo = [ "@" ~ rspName ];
     }
 
-    immutable result = run([ compiler ] ~ todo);
+    immutable result = run([ RDMDGlobalArgs.compiler ] ~ todo);
     if (result)
     {
         // build failed
@@ -497,7 +491,7 @@ private int rebuild(string root, string fullExe,
     }
     // clean up the dir containing the object file, just not in dry
     // run mode because we haven't created any!
-    if (!dryRun)
+    if (!RDMDGlobalArgs.dryRun)
     {
         if (Filesystem.exists(objDir) && objDir.startsWith(workDir))
         {
@@ -518,7 +512,7 @@ private int run(string[] args, string output = null, bool replace = false)
 {
     import std.conv;
     yap(replace ? "exec " : "spawn ", args.text);
-    if (dryRun) return 0;
+    if (RDMDGlobalArgs.dryRun) return 0;
 
     if (replace && !output.ptr)
     {
@@ -640,13 +634,13 @@ private string[string] getDependencies(string rootModule, string workDir,
             }
         }
         // All dependencies specified through --extra-file
-        foreach (immutable moduleSrc; extraFiles)
+        foreach (immutable moduleSrc; RDMDGlobalArgs.extraFiles)
             result[moduleSrc] = d2obj(moduleSrc);
         return result;
     }
 
     // Check if the old dependency file is fine
-    if (!force)
+    if (!RDMDGlobalArgs.force)
     {
         auto depsT = Filesystem.timeLastModified(depsFilename, SysTime.min);
         if (depsT > SysTime.min)
@@ -672,7 +666,7 @@ private string[string] getDependencies(string rootModule, string workDir,
     // Collect dependencies
     auto depsGetter =
         // "cd " ~ shellQuote(rootDir) ~ " && "
-        [ compiler ] ~ compilerFlags ~
+        [ RDMDGlobalArgs.compiler ] ~ compilerFlags ~
         ["-v", "-o-", rootModule, "-I" ~ rootDir];
 
     scope(failure)
@@ -690,7 +684,7 @@ private string[string] getDependencies(string rootModule, string workDir,
         exit(depsExitCode);
     }
 
-    return dryRun ? null : readDepsFile();
+    return RDMDGlobalArgs.dryRun ? null : readDepsFile();
 }
 
 // Is any file newer than the given file?
@@ -721,13 +715,13 @@ than target's. Otherwise, returns true.
  */
 private bool newerThan(string source, string target)
 {
-    if (force) return true;
+    if (RDMDGlobalArgs.force) return true;
     return source.newerThan(Filesystem.timeLastModified(target, SysTime.min));
 }
 
 private bool newerThan(string source, SysTime target)
 {
-    if (force) return true;
+    if (RDMDGlobalArgs.force) return true;
     try
     {
         return Filesystem.timeLastModified(DirEntry(source)) > target;
@@ -893,7 +887,7 @@ string makeEvalFile(string todo)
     auto srcfile = buildPath(pathname,
             "eval." ~ todo.md5Of.toHexString ~ ".d");
 
-    if (force || !Filesystem.exists(srcfile))
+    if (RDMDGlobalArgs.force || !Filesystem.exists(srcfile))
     {
         Filesystem.write(srcfile, todo);
     }
@@ -957,7 +951,7 @@ string which(string path)
 
 void yap(size_t line = __LINE__, T...)(auto ref T stuff)
 {
-    if (!chatty) return;
+    if (!RDMDGlobalArgs.chatty) return;
     debug stderr.writeln(line, ": ", stuff);
     else stderr.writeln(stuff);
 }
@@ -997,7 +991,7 @@ static:
 
         static if (skipOnDryRun)
         {
-            if (dryRun)
+            if (RDMDGlobalArgs.dryRun)
                 return;
         }
         mixin("return DirectFilesystem." ~ fileFunc ~ "(args);");
