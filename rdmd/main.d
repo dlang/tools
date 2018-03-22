@@ -14,6 +14,8 @@
 
 // Written in the D programming language.
 
+module rdmd.main;
+
 import std.algorithm, std.array, core.stdc.stdlib, std.datetime,
     std.digest.md, std.exception, std.getopt,
     std.parallelism, std.path, std.process, std.range, std.regex,

@@ -48,7 +48,6 @@ TOOLS = \
     $(ROOT)/contributors \
     $(ROOT)/ddemangle \
     $(ROOT)/detab \
-    $(ROOT)/rdmd \
     $(ROOT)/tolf
 
 CURL_TOOLS = \
@@ -61,7 +60,7 @@ DOC_TOOLS = \
 TEST_TOOLS = \
     $(ROOT)/rdmd_test
 
-all: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
+all: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite $(ROOT)/rdmd
 
 rdmd:      $(ROOT)/rdmd
 ddemangle: $(ROOT)/ddemangle
@@ -72,6 +71,9 @@ dget:      $(ROOT)/dget
 changed:   $(ROOT)/changed
 dman:      $(ROOT)/dman
 dustmite:  $(ROOT)/dustmite
+
+$(ROOT)/rdmd: rdmd/*.d
+	$(DMD) $(DFLAGS) -I. -of$(@) $(^)
 
 $(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
 	$(DMD) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
@@ -89,7 +91,7 @@ d-tags.json:
 $(ROOT)/dman: d-tags.json
 $(ROOT)/dman: override DFLAGS += -J.
 
-install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
+install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite $(ROOT)/rdmd
 	mkdir -p $(INSTALL_DIR)/bin
 	cp $^ $(INSTALL_DIR)/bin
 
@@ -124,7 +126,7 @@ test_rdmd: $(ROOT)/rdmd_test $(RDMD_TEST_EXECUTABLE)
 	   --rdmd-default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
 	   --test-compilers=$(RDMD_TEST_COMPILERS) \
 	   $(VERBOSE_RDMD_TEST_FLAGS)
-	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d
+	$(DMD) $(DFLAGS) -unittest -main -run rdmd/*.d
 
 test: test_tests_extractor test_rdmd
 
