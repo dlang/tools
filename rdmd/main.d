@@ -16,6 +16,8 @@
 
 module rdmd.main;
 
+import rdmd.config;
+
 import std.algorithm, std.array, core.stdc.stdlib, std.datetime,
     std.digest.md, std.exception, std.getopt,
     std.parallelism, std.path, std.process, std.range, std.regex,
@@ -24,41 +26,12 @@ import std.algorithm, std.array, core.stdc.stdlib, std.datetime,
 // Globally import types and functions that don't need to be logged
 import std.file : FileException, DirEntry, SpanMode, thisExePath, tempDir;
 
-version (Posix)
-{
-    enum objExt = ".o";
-    enum binExt = "";
-    enum libExt = ".a";
-    enum altDirSeparator = "";
-}
-else version (Windows)
-{
-    enum objExt = ".obj";
-    enum binExt = ".exe";
-    enum libExt = ".lib";
-    enum altDirSeparator = "/";
-}
-else
-{
-    static assert(0, "Unsupported operating system.");
-}
-
 private bool chatty, buildOnly, dryRun, force, preserveOutputPaths;
 private string exe, userTempDir;
-immutable string[] defaultExclusions = ["std", "etc", "core"];
-private string[] exclusions = defaultExclusions; // packages that are to be excluded
+private string[] exclusions = RDMDConfig.defaultExclusions; // packages that are to be excluded
 private string[] extraFiles = [];
 
-version (DigitalMars)
-    private enum defaultCompiler = "dmd";
-else version (GNU)
-    private enum defaultCompiler = "gdmd";
-else version (LDC)
-    private enum defaultCompiler = "ldmd2";
-else
-    static assert(false, "Unknown compiler");
-
-private string compiler = defaultCompiler;
+private string compiler = RDMDConfig.defaultCompiler;
 
 version(unittest) {} else
 int main(string[] args)
@@ -66,7 +39,7 @@ int main(string[] args)
     //writeln("Invoked with: ", args);
     // Look for the D compiler rdmd invokes automatically in the same directory as rdmd
     // and fall back to using the one in your path otherwise.
-    string compilerPath = buildPath(dirName(thisExePath()), defaultCompiler);
+    string compilerPath = buildPath(dirName(thisExePath()), RDMDConfig.defaultCompiler);
     if (Filesystem.existsAsFile(compilerPath))
         compiler = compilerPath;
 
@@ -217,7 +190,7 @@ int main(string[] args)
 
     bool obj = compilerFlags.canFind("-c");
     bool lib = compilerFlags.canFind("-lib");
-    string outExt = lib ? libExt : obj ? objExt : binExt;
+    string outExt = lib ? RDMDConfig.libExt : obj ? RDMDConfig.objExt : RDMDConfig.binExt;
 
     // Assume --build-only for -c and -lib.
     buildOnly |= obj || lib;
@@ -587,7 +560,7 @@ private string[string] getDependencies(string rootModule, string workDir,
     {
         string d2obj(string dfile)
         {
-            return buildPath(objDir, dfile.baseName.chomp(".d") ~ objExt);
+            return buildPath(objDir, dfile.baseName.chomp(".d") ~ RDMDConfig.objExt);
         }
         string findLib(string libName)
         {
@@ -797,7 +770,7 @@ addition to compiler options, rdmd recognizes the following options:
   --man              open web browser on manual page
   --shebang          rdmd is in a shebang line (put as first argument)
   --tmpdir           set an alternative temporary directory
-".format(defaultCompiler, defaultExclusions);
+".format(RDMDConfig.defaultCompiler, RDMDConfig.defaultExclusions);
 }
 
 // For --eval and --loop
@@ -967,7 +940,7 @@ string makeEvalFile(string todo)
 string which(string path)
 {
     yap("which ", path);
-    if (path.canFind(dirSeparator) || altDirSeparator != "" && path.canFind(altDirSeparator)) return path;
+    if (path.canFind(dirSeparator) || RDMDConfig.altDirSeparator != "" && path.canFind(RDMDConfig.altDirSeparator)) return path;
     string[] extensions = [""];
     version(Windows) extensions ~= environment["PATHEXT"].split(pathSeparator);
     foreach (envPath; environment["PATH"].splitter(pathSeparator))
