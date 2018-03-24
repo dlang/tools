@@ -80,18 +80,20 @@ int main(string[] args)
     // Parse the -o option (-ofmyfile or -odmydir).
     void dashOh(string key, string value)
     {
-        if (value[0] == 'f')
+        if (value.skipOver('f'))
         {
             // -ofmyfile passed
-            exe = value[1 .. $];
+            value.skipOver('='); // support -of... and -of=...
+            exe = value;
         }
-        else if (value[0] == 'd')
+        else if (value.skipOver('d'))
         {
             // -odmydir passed
             if (!exe.ptr) // Don't let -od override -of
             {
+                value.skipOver('='); // support -od... and -od=...
+                exe = value;
                 // add a trailing dir separator to clarify it's a dir
-                exe = value[1 .. $];
                 if (!exe.endsWith(dirSeparator))
                 {
                     exe ~= dirSeparator;

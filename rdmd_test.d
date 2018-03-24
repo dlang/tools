@@ -432,6 +432,9 @@ void runTests(string rdmdApp, string compiler, string model)
     res = execute(rdmdArgs ~ ["-of" ~ conflictDir, forceSrc]);
     assert(res.status != 0, "-of set to a directory should fail");
 
+    res = execute(rdmdArgs ~ ["-of=" ~ conflictDir, forceSrc]);
+    assert(res.status != 0, "-of= set to a directory should fail");
+
     /* rdmd should force rebuild when --compiler changes: https://issues.dlang.org/show_bug.cgi?id=15031 */
 
     res = execute(rdmdArgs ~ [forceSrc]);
@@ -505,6 +508,12 @@ void runTests(string rdmdApp, string compiler, string model)
         res = execute(rdmdArgs ~ ["--build-only", "--force", "-lib", "-od" ~ libDir, srcName]);
         assert(res.status == 0, res.output);
         assert(exists(libDir.buildPath("test" ~ libExt)));
+
+        // test with -od= too
+        TmpDir altLibDir = "rdmdTestAltLib";
+        res = execute(rdmdArgs ~ ["--build-only", "--force", "-lib", "-od=" ~ altLibDir, srcName]);
+        assert(res.status == 0, res.output);
+        assert(exists(altLibDir.buildPath("test" ~ libExt)));
     }
 
     // Test with -of
@@ -519,6 +528,13 @@ void runTests(string rdmdApp, string compiler, string model)
         res = execute(rdmdArgs ~ ["--build-only", "--force", "-lib", "-of" ~ libName, srcName]);
         assert(res.status == 0, res.output);
         assert(exists(libName));
+
+        // test that -of= works too
+        string altLibName = libDir.buildPath("altlibtest" ~ libExt);
+
+        res = execute(rdmdArgs ~ ["--build-only", "--force", "-lib", "-of=" ~ altLibName, srcName]);
+        assert(res.status == 0, res.output);
+        assert(exists(altLibName));
     }
 
     /* rdmd --build-only --force -c main.d fails: ./main: No such file or directory: https://issues.dlang.org/show_bug.cgi?id=16962 */
