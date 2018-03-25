@@ -101,12 +101,12 @@ int main(string[] args)
                 assert(exe.endsWith(dirSeparator));
             }
         }
-        else if (value[0] == '-')
+        else if (value == "-")
         {
             // -o- passed
             enforce(false, "Option -o- currently not supported by rdmd");
         }
-        else if (value[0] == 'p')
+        else if (value == "p")
         {
             // -op passed
             preserveOutputPaths = true;

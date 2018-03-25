@@ -158,6 +158,19 @@ void runCompilerAgnosticTests(string rdmdApp, string defaultCompiler, string mod
         assert(defaultCompiler.baseName == compilerInHelp);
     }
 
+    /* Test that unsupported -o... options result in failure */
+    res = execute([rdmdApp, "-o-"]);  // valid option for dmd but unsupported by rdmd
+    assert(res.status == 1, res.output);
+    assert(res.output.canFind("Option -o- currently not supported by rdmd"), res.output);
+
+    res = execute([rdmdApp, "-o-foo"]); // should not be treated the same as -o-
+    assert(res.status == 1, res.output);
+    assert(res.output.canFind("Unrecognized option: o-foo"), res.output);
+
+    res = execute([rdmdApp, "-opbreak"]); // should not be treated like valid -op
+    assert(res.status == 1, res.output);
+    assert(res.output.canFind("Unrecognized option: opbreak"), res.output);
+
     // run the fallback compiler test (this involves
     // searching for the default compiler, so cannot
     // be run with other test compilers)
