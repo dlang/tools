@@ -329,12 +329,14 @@ int main(string[] args)
 
 size_t indexOfProgram(string[] args)
 {
-    foreach(i, arg; args[1 .. $])
+    foreach(i; 1 .. args.length)
     {
+        auto arg = args[i];
         if (!arg.startsWith('-', '@') &&
-                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map", ".res"))
+                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map", ".res") &&
+                args[i - 1] != "--eval")
         {
-            return i + 1;
+            return i;
         }
     }
 

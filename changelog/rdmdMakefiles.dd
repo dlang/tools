@@ -1,0 +1,12 @@
+rdmd can now be used as a shell in makefiles
+
+With gnu make(3.82 or higher), rdmd can now be used in makefiles.
+This is accomplished by setting the SHELL and .SHELLFLAGS to /usr/bin/rdmd and --eval respectively.
+---
+.ONESHELL:
+SHELL = /usr/bin/rdmd
+.SHELLFLAGS = --eval
+hello.txt:
+$(TAB)import std.file;
+$(TAB)write("$@","hello world\n");
+---
