@@ -231,7 +231,8 @@ int main(string[] args)
     }
 
     // Compute the object directory and ensure it exists
-    immutable workDir = getWorkPath(root, compilerFlags);
+    auto environmentFlags = environment.get("DFLAGS", "").split(" ");
+    immutable workDir = getWorkPath(root, compilerFlags ~ environmentFlags);
     lockWorkPath(workDir); // will be released by the OS on process exit
     string objDir = buildPath(workDir, "objs");
     Filesystem.mkdirRecurseIfLive(objDir);
