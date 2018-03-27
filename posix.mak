@@ -94,7 +94,7 @@ install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 	cp $^ $(INSTALL_DIR)/bin
 
 clean:
-	rm -r $(GENERATED)
+	rm -rf $(GENERATED)
 
 $(ROOT)/tests_extractor: tests_extractor.d
 	mkdir -p $(ROOT)
