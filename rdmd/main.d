@@ -19,6 +19,7 @@ module rdmd.main;
 import rdmd.args;
 import rdmd.config;
 import rdmd.eval;
+import rdmd.verbose;
 
 import std.algorithm, std.array, core.stdc.stdlib, std.datetime,
     std.digest.md, std.exception, std.getopt,
@@ -834,13 +835,6 @@ string which(string path)
         }
     }
     throw new FileException(path, "File not found in PATH");
-}
-
-void yap(size_t line = __LINE__, T...)(auto ref T stuff)
-{
-    if (!RDMDGlobalArgs.chatty) return;
-    debug stderr.writeln(line, ": ", stuff);
-    else stderr.writeln(stuff);
 }
 
 /**

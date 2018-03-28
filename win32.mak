@@ -44,7 +44,8 @@ MAKEFILES=win32.mak posix.mak
 RDMD_SRC = rdmd/main.d \
            rdmd/args.d \
            rdmd/config.d \
-           rdmd/eval.d
+           rdmd/eval.d \
+           rdmd/verbose.d
 
 SRCS=dman.d $(RDMD_SRC) ddemangle.d
 
