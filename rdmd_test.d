@@ -243,6 +243,19 @@ void runTests(string rdmdApp, string compiler, string model)
     assert(res.status == 0, res.output);
     assert(res.output.canFind("eval_works"));  // there could be a "DMD v2.xxx header in the output"
 
+    // Test automatic .writeln for --eval
+    import std.conv : text;
+    import std.typecons : tuple;
+    foreach (t; [tuple(`@"eval_works"`, "eval_works"),
+                 tuple("@2 + 2", "4"),
+                 tuple("2.write; @2 + 2", "24")])
+    {
+        res = execute(rdmdArgs ~ ["--force", "-de", text("--eval=", t[0])]);
+        assert(res.status == 0, res.output);
+        // there could be a "DMD v2.xxx header in the output" (NB: only seems to be the case for GDC)
+        assert(res.output.canFind(t[1]), text("got:", res.output, " expected:", t[1]));
+    }
+
     // compiler flags
     res = execute(rdmdArgs ~ ["--force", "-debug",
         "--eval=debug {} else assert(false);"]);
@@ -316,22 +329,24 @@ void runTests(string rdmdApp, string compiler, string model)
     {
     auto testLines = "foo\nbar\ndoo".split("\n");
 
-    auto pipes = pipeProcess(rdmdArgs ~ ["--force", "--loop=writeln(line);"], Redirect.stdin | Redirect.stdout);
-    foreach (input; testLines)
-        pipes.stdin.writeln(input);
-    pipes.stdin.close();
-
-    while (!testLines.empty)
+    // Test --loop with automatic writeln
+    foreach (loopArg; ["--loop=writeln(line);", "--loop=@line"])
     {
-        auto line = pipes.stdout.readln.strip;
-        if (line.empty || line.startsWith("DMD v")) continue;  // git-head header
-        assert(line == testLines.front, "Expected %s, got %s".format(testLines.front, line));
-        testLines.popFront;
-    }
-    auto status = pipes.pid.wait();
-    assert(status == 0);
-    }
+        auto pipes = pipeProcess(rdmdArgs ~ ["--force", loopArg], Redirect.stdin | Redirect.stdout);
+        foreach (input; testLines)
+            pipes.stdin.writeln(input);
+        pipes.stdin.close();
 
+        while (!testLines.empty)
+        {
+            auto line = pipes.stdout.readln.strip;
+            if (line.empty || line.startsWith("DMD v")) continue;  // git-head header
+            assert(line == testLines.front, "Expected %s, got %s".format(testLines.front, line));
+            testLines.popFront;
+        }
+        auto status = pipes.pid.wait();
+        assert(status == 0);
+    }}
     // vs program file
     res = execute(rdmdArgs ~ ["--force",
         "--loop=assert(true);", voidMain]);
