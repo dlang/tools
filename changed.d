@@ -42,7 +42,7 @@ module changed;
 
 import std.net.curl, std.conv, std.exception, std.algorithm, std.csv, std.typecons,
     std.stdio, std.datetime, std.array, std.string, std.file, std.format, std.getopt,
-    std.path;
+    std.path, std.functional;
 
 import std.range.primitives, std.traits;
 
@@ -60,6 +60,39 @@ struct ChangelogEntry
     string repo; // origin repository that contains the changelog entry
     string filePath; // path to the changelog entry (relative from the repository root)
 }
+
+struct ChangelogStats
+{
+    size_t bugzillaIssues; // number of referenced bugzilla issues of this release
+    size_t changelogEntries; // number of changelog entries of this release
+    size_t contributors; // number of distinct contributors that have contributed to this release
+
+    /**
+    Adds a changelog entry to the summary statistics.
+
+    Params:
+        entry = changelog entry
+    */
+    void addChangelogEntry(const ref ChangelogEntry entry)
+    {
+        changelogEntries++;
+    }
+
+    /**
+    Adds a Bugzilla issue to the summary statistics.
+
+    Params:
+        entry = bugzilla entry
+        component = component of the bugzilla issue (e.g. "dmd" or "phobos")
+        type = type of the bugzilla issue (e.g. "regression" or "blocker")
+    */
+    void addBugzillaIssue(const ref BugzillaEntry, string component, string type)
+    {
+        bugzillaIssues++;
+    }
+}
+ChangelogStats changelogStats;
+
 
 // Also retrieve new (but not reopened) bugs, as bugs are only auto-closed when
 // merged into master, but the changelog gets generated on stable.
@@ -179,7 +212,9 @@ auto getBugzillaChanges(string revRange)
             default: assert(0, type);
         }
 
-        entries[comp][type] ~= BugzillaEntry(fields[0], fields[3].idup);
+        auto entry = BugzillaEntry(fields[0], fields[3].idup);
+        entries[comp][type] ~= entry;
+        changelogStats.addBugzillaIssue(entry, comp, type);
     }
     return entries;
 }
@@ -428,10 +463,32 @@ Please supply a bugzilla version
     w.put("Ddoc\n\n");
     w.put("$(CHANGELOG_NAV_INJECT)\n\n");
 
+    // Accumulate Bugzilla issues
+    typeof(revRange.getBugzillaChanges) bugzillaChanges;
+    if (revRange.length)
+        bugzillaChanges = revRange.getBugzillaChanges;
+
+    // Accumulate contributors from the git log
+    version(Contributors_Lib)
+    {
+        import contributors : FindConfig, findAuthors, reduceAuthors;
+        typeof(revRange.findAuthors(FindConfig.init).reduceAuthors.array) authors;
+        if (revRange)
+        {
+            FindConfig config = {
+                cwd: __FILE_FULL_PATH__.dirName.asNormalizedPath.to!string,
+            };
+            config.mailmapFile = config.cwd.buildPath(".mailmap");
+            authors = revRange.findAuthors(config).reduceAuthors.array;
+            changelogStats.contributors = authors.save.walkLength;
+        }
+    }
+
     {
         w.formattedWrite("$(VERSION %s, =================================================,\n\n", nextVersionDate);
 
         scope(exit) w.put(")\n");
+
 
         if (!hideTextChanges)
         {
@@ -440,8 +497,28 @@ Please supply a bugzilla version
                  .map!(r => tuple!("headline", "changes")(r.headline, r.path.readTextChanges(r.name).array))
                  .filter!(r => !r.changes.empty);
 
+            // accumulate stats
+            {
+                changelogDirs.each!(c => c.changes.each!(c => changelogStats.addChangelogEntry(c)));
+                w.put("$(CHANGELOG_HEADER_STATISTICS\n");
+                scope(exit) w.put(")\n\n");
+
+                with(changelogStats)
+                {
+                    auto changelog = changelogEntries > 0 ? "%d major change%s and".format(changelogEntries, changelogEntries > 1 ? "s" : "") : "";
+                    w.put("$(VER) comes with {changelogEntries} {bugzillaIssues} fixed Bugzilla issue{bugzillaIssuesPluaral}.
+                            A huge thanks goes to the {nrContributors} contributor{nrControbutorsPlural} who made $(VER) possible."
+                        .replace("{bugzillaIssues}", bugzillaIssues.text)
+                        .replace("{bugzillaIssuesPlural}", bugzillaIssues > 1 ? "s" : "")
+                        .replace("{changelogEntries}", changelog)
+                        .replace("{nrContributors}", contributors.text)
+                        .replace("{nrContributorsPlural}", contributors > 1 ? "s" : "")
+                    );
+                }
+            }
+
             // print the overview headers
-            changelogDirs.each!(r => r.changes.writeTextChangesHeader(w, r.headline));
+            changelogDirs.each!(c => c.changes.writeTextChangesHeader(w, c.headline));
 
             if (!revRange.empty)
                 w.put("$(CHANGELOG_SEP_HEADER_TEXT_NONEMPTY)\n\n");
@@ -461,19 +538,13 @@ Please supply a bugzilla version
 
         // print the entire changelog history
         if (revRange.length)
-            revRange.getBugzillaChanges.writeBugzillaChanges(w);
+            bugzillaChanges.writeBugzillaChanges(w);
     }
 
     version(Contributors_Lib)
     if (revRange)
     {
-        import contributors : FindConfig, findAuthors, reduceAuthors;
-        FindConfig config = {
-            cwd: __FILE_FULL_PATH__.dirName.asNormalizedPath.to!string,
-        };
-        config.mailmapFile = config.cwd.buildPath(".mailmap");
-        auto authors = revRange.findAuthors(config).reduceAuthors;
-        w.formattedWrite("$(D_CONTRIBUTORS_HEADER %d)\n", authors.save.walkLength);
+        w.formattedWrite("$(D_CONTRIBUTORS_HEADER %d)\n", changelogStats.contributors);
         w.put("$(D_CONTRIBUTORS\n");
         authors.each!(a => w.formattedWrite("    $(D_CONTRIBUTOR %s)\n", a.name));
         w.put(")\n");
