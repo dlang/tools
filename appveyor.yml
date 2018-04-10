@@ -65,5 +65,5 @@ test_script:
  - echo %DC%
  - echo %PATH%
  - '%DC% --version'
- - make -f win32.mak rdmd dustmite ddemangle changed
- - make -f win32.mak test
+ - make -f win32.mak DFLAGS=-g rdmd dustmite ddemangle changed
+ - make -f win32.mak DFLAGS=-g test
