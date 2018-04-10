@@ -619,26 +619,35 @@ void runTests(string rdmdApp, string compiler, string model)
 
     version (Posix)
     {
-        import std.format : format;
-
-        auto textOutput = tempDir().buildPath("rdmd_makefile_test.txt");
-        if (exists(textOutput))
+        import std.conv : to;
+        auto makeVersion = execute(["make", "--version"]).output.splitLines()[0];
+        if (!makeVersion.skipOver("GNU Make "))
+            stderr.writeln("rdmd_test: Can't detect Make version or not GNU Make, skipping Make SHELL/SHELLFLAGS test");
+        else if (makeVersion.split(".").map!(to!int).array < [3, 82])
+            stderr.writefln("rdmd_test: Make version (%s) is too old, skipping Make SHELL/SHELLFLAGS test", makeVersion);
+        else
         {
-            remove(textOutput);
-        }
-        enum makefileFormatter = `.ONESHELL:
+            import std.format : format;
+
+            auto textOutput = tempDir().buildPath("rdmd_makefile_test.txt");
+            if (exists(textOutput))
+            {
+                remove(textOutput);
+            }
+            enum makefileFormatter = `.ONESHELL:
 SHELL = %s
 .SHELLFLAGS = %-(%s %) --eval
 %s:
 	import std.file;
 	write("$@","hello world\n");`;
-        string makefileString = format!makefileFormatter(rdmdArgs[0], rdmdArgs[1 .. $], textOutput);
-        auto makefilePath = tempDir().buildPath("rdmd_makefile_test.mak");
-        std.file.write(makefilePath, makefileString);
-        auto make = environment.get("MAKE") is null ? "make" : environment.get("MAKE");
-        res = execute([make, "-f", makefilePath]);
-        enforce(res.status == 0, res.output);
-        enforce(std.file.read(textOutput) == "hello world\n");
+            string makefileString = format!makefileFormatter(rdmdArgs[0], rdmdArgs[1 .. $], textOutput);
+            auto makefilePath = tempDir().buildPath("rdmd_makefile_test.mak");
+            std.file.write(makefilePath, makefileString);
+            auto make = environment.get("MAKE") is null ? "make" : environment.get("MAKE");
+            res = execute([make, "-f", makefilePath]);
+            enforce(res.status == 0, res.output);
+            enforce(std.file.read(textOutput) == "hello world\n");
+        }
     }
 }
 
