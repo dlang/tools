@@ -415,7 +415,7 @@ void runTests(string rdmdApp, string compiler, string model)
     {
         string outPath = tempDir().buildPath("test_of_app");
         string exePath = outPath ~ ".exe";
-        res = execute([rdmdApp, "--build-only", "-of" ~ outPath, voidMain]);
+        res = execute(rdmdArgs ~ ["--build-only", "-of" ~ outPath, voidMain]);
         enforce(exePath.exists(), exePath);
     }
 
@@ -462,7 +462,7 @@ void runTests(string rdmdApp, string compiler, string model)
         .filter!exists
         .front;
 
-    res = execute([rdmdApp, "--compiler=" ~ fullCompilerPath, forceSrc]);
+    res = execute([rdmdApp, "--compiler=" ~ fullCompilerPath, modelSwitch(model), forceSrc]);
     assert(res.status == 0, res.output ~ "\nCan't run with --compiler=" ~ fullCompilerPath);
 
     // Create an empty temporary directory and clean it up when exiting scope
