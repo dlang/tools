@@ -678,7 +678,7 @@ void runFallbackTest(string rdmdApp, string buildCompiler, string model)
        if an explicit --compiler flag is not provided, rdmd should
        search its own binary path first when looking for the default
        compiler (determined by the compiler used to build it) */
-    string localDMD = buildPath(tempDir(), baseName(buildCompiler));
+    string localDMD = buildPath(tempDir(), baseName(buildCompiler).setExtension(binExt));
     std.file.write(localDMD, "empty shell");
     scope(exit) std.file.remove(localDMD);
 
