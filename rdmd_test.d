@@ -679,7 +679,7 @@ void runFallbackTest(string rdmdApp, string buildCompiler, string model)
        search its own binary path first when looking for the default
        compiler (determined by the compiler used to build it) */
     string localDMD = buildPath(tempDir(), baseName(buildCompiler).setExtension(binExt));
-    std.file.write(localDMD, "empty shell");
+    std.file.write(localDMD, ""); // An empty file avoids the "Not a valid 16-bit application" pop-up on Windows
     scope(exit) std.file.remove(localDMD);
 
     auto res = execute(rdmdApp ~ [modelSwitch(model), "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
