@@ -684,5 +684,5 @@ void runFallbackTest(string rdmdApp, string buildCompiler, string model)
 
     auto res = execute(rdmdApp ~ [modelSwitch(model), "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
     assert(res.status == 1, res.output);
-    assert(res.output.canFind(`spawn ["` ~ localDMD ~ `",`));
+    assert(res.output.canFind(format(`spawn [%(%s%),`, localDMD.only)), localDMD ~ " would not have been executed");
 }
