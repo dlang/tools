@@ -617,6 +617,7 @@ void runTests(string rdmdApp, string compiler, string model)
         assert(res.status == 1, res.output);
     }
 
+    version (Posix)
     {
         import std.format : format;
 
