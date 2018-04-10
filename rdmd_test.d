@@ -150,12 +150,14 @@ void runCompilerAgnosticTests(string rdmdApp, string defaultCompiler, string mod
 
     // verify help text matches expected defaultCompiler
     {
+        version (Windows) helpText = helpText.replace("\r\n", "\n");
         enum compilerHelpLine = "  --compiler=comp    use the specified compiler (e.g. gdmd) instead of ";
         auto offset = helpText.indexOf(compilerHelpLine);
         assert(offset >= 0);
         auto compilerInHelp = helpText[offset + compilerHelpLine.length .. $];
         compilerInHelp = compilerInHelp[0 .. compilerInHelp.indexOf('\n')];
-        assert(defaultCompiler.baseName == compilerInHelp);
+        assert(defaultCompiler.baseName == compilerInHelp,
+            "Expected to find " ~ compilerInHelp ~ " in help text, found " ~ defaultCompiler ~ " instead");
     }
 
     /* Test that unsupported -o... options result in failure */
