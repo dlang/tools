@@ -64,7 +64,7 @@ int main(string[] args)
     //writeln("Invoked with: ", args);
     // Look for the D compiler rdmd invokes automatically in the same directory as rdmd
     // and fall back to using the one in your path otherwise.
-    string compilerPath = buildPath(dirName(thisExePath()), defaultCompiler);
+    string compilerPath = buildPath(dirName(thisExePath()), defaultCompiler ~ binExt);
     if (Filesystem.existsAsFile(compilerPath))
         compiler = compilerPath;
 
@@ -80,18 +80,20 @@ int main(string[] args)
     // Parse the -o option (-ofmyfile or -odmydir).
     void dashOh(string key, string value)
     {
-        if (value[0] == 'f')
+        if (value.skipOver('f'))
         {
             // -ofmyfile passed
-            exe = value[1 .. $];
+            value.skipOver('='); // support -of... and -of=...
+            exe = value;
         }
-        else if (value[0] == 'd')
+        else if (value.skipOver('d'))
         {
             // -odmydir passed
             if (!exe.ptr) // Don't let -od override -of
             {
+                value.skipOver('='); // support -od... and -od=...
+                exe = value;
                 // add a trailing dir separator to clarify it's a dir
-                exe = value[1 .. $];
                 if (!exe.endsWith(dirSeparator))
                 {
                     exe ~= dirSeparator;
@@ -99,12 +101,12 @@ int main(string[] args)
                 assert(exe.endsWith(dirSeparator));
             }
         }
-        else if (value[0] == '-')
+        else if (value == "-")
         {
             // -o- passed
             enforce(false, "Option -o- currently not supported by rdmd");
         }
-        else if (value[0] == 'p')
+        else if (value == "p")
         {
             // -op passed
             preserveOutputPaths = true;
@@ -327,12 +329,14 @@ int main(string[] args)
 
 size_t indexOfProgram(string[] args)
 {
-    foreach(i, arg; args[1 .. $])
+    foreach(i; 1 .. args.length)
     {
+        auto arg = args[i];
         if (!arg.startsWith('-', '@') &&
-                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map", ".res"))
+                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map", ".res") &&
+                args[i - 1] != "--eval")
         {
-            return i + 1;
+            return i;
         }
     }
 

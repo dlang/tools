@@ -1,18 +1,11 @@
 DMD_DIR = ../dmd
-DMD = $(DMD_DIR)/generated/$(OS)/release/$(MODEL)/dmd
+BUILD = release
+DMD = $(DMD_DIR)/generated/$(OS)/$(BUILD)/$(MODEL)/dmd
 CC = gcc
 INSTALL_DIR = ../install
 DRUNTIME_PATH = ../druntime
 PHOBOS_PATH = ../phobos
 DUB=dub
-
-RDMD_TEST_COMPILERS = $(abspath $(DMD))
-
-VERBOSE_RDMD_TEST=0
-
-ifeq ($(VERBOSE_RDMD_TEST), 1)
-	override VERBOSE_RDMD_TEST_FLAGS:=-v
-endif
 
 WITH_DOC = no
 DOC = ../dlang.org
@@ -22,8 +15,8 @@ $(shell [ ! -d $(DMD_DIR) ] && git clone --depth=1 https://github.com/dlang/dmd 
 include $(DMD_DIR)/src/osmodel.mak
 
 # Build folder for all binaries
-ROOT_OF_THEM_ALL = generated
-ROOT = $(ROOT_OF_THEM_ALL)/$(OS)/$(MODEL)
+GENERATED = generated
+ROOT = $(GENERATED)/$(OS)/$(MODEL)
 
 # Set DRUNTIME name and full path
 ifeq (,$(findstring win,$(OS)))
@@ -35,15 +28,15 @@ endif
 
 # Set PHOBOS name and full path
 ifeq (,$(findstring win,$(OS)))
-	PHOBOS = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.a
-	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL)/libphobos2.so
+	PHOBOS = $(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL)/libphobos2.a
+	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL)/libphobos2.so
 endif
 
 # default to warnings and deprecations as errors, override via e.g. make -f posix.mak WARNINGS=-wi
 WARNINGS = -w -de
 # default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
 DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
-		 -L-L$(PHOBOS_PATH)/generated/$(OS)/release/$(MODEL) $(MODEL_FLAG) -fPIC
+		 -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL) $(MODEL_FLAG) -fPIC
 DFLAGS += $(WARNINGS)
 
 # Default DUB flags (DUB uses a different architecture format)
@@ -101,12 +94,12 @@ install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
 	cp $^ $(INSTALL_DIR)/bin
 
 clean:
-	rm -f $(ROOT)/dustmite $(TOOLS) $(CURL_TOOLS) $(DOC_TOOLS) $(TAGS) *.o $(ROOT)/*.o
+	rm -rf $(GENERATED)
 
 $(ROOT)/tests_extractor: tests_extractor.d
 	mkdir -p $(ROOT)
 	DFLAGS="$(DFLAGS)" $(DUB) build \
-		   --single $< --force --compiler=$(abspath $(DMD)) $(DUBFLAGS) \
+		   --single $< --force --compiler=$(DMD) $(DUBFLAGS) \
 		   && mv ./tests_extractor $@
 
 ################################################################################
@@ -117,8 +110,18 @@ test_tests_extractor: $(ROOT)/tests_extractor
 	$< -i ./test/tests_extractor/ascii.d | diff - ./test/tests_extractor/ascii.d.ext
 	$< -i ./test/tests_extractor/iteration.d | diff - ./test/tests_extractor/iteration.d.ext
 
-test_rdmd: $(ROOT)/rdmd_test $(ROOT)/rdmd
-	$< --compiler=$(abspath $(DMD)) -m$(MODEL) \
+RDMD_TEST_COMPILERS = $(DMD)
+RDMD_TEST_EXECUTABLE = $(ROOT)/rdmd
+RDMD_TEST_DEFAULT_COMPILER = $(basename $(DMD))
+
+VERBOSE_RDMD_TEST=0
+ifeq ($(VERBOSE_RDMD_TEST), 1)
+	override VERBOSE_RDMD_TEST_FLAGS:=-v
+endif
+
+test_rdmd: $(ROOT)/rdmd_test $(RDMD_TEST_EXECUTABLE)
+	$< $(RDMD_TEST_EXECUTABLE) -m$(MODEL) \
+	   --rdmd-default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
 	   --test-compilers=$(RDMD_TEST_COMPILERS) \
 	   $(VERBOSE_RDMD_TEST_FLAGS)
 	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d

@@ -57,6 +57,8 @@ struct ChangelogEntry
     string title; // the first line (can't contain links)
     string description; // a detailed description (separated by a new line)
     string basename; // basename without extension (used for the anchor link to the description)
+    string repo; // origin repository that contains the changelog entry
+    string filePath; // path to the changelog entry (relative from the repository root)
 }
 
 // Also retrieve new (but not reopened) bugs, as bugs are only auto-closed when
@@ -190,10 +192,11 @@ the description
 
 Params:
     filename = changelog file to be parsed
+    repoName = origin repository that contains the changelog entry
 
 Returns: The parsed `ChangelogEntry`
 */
-ChangelogEntry readChangelog(string filename)
+ChangelogEntry readChangelog(string filename, string repoName)
 {
     import std.algorithm.searching : countUntil;
     import std.file : read;
@@ -219,7 +222,9 @@ ChangelogEntry readChangelog(string filename)
     ChangelogEntry entry = {
         title: lines[0].strip,
         description: lines[2..$].join("\n").strip,
-        basename: filename.baseName.stripExtension
+        basename: filename.baseName.stripExtension,
+        repo: repoName,
+        filePath: filename.findSplitAfter(repoName)[1].findSplitAfter("/")[1],
     };
     return entry;
 }
@@ -229,10 +234,11 @@ Looks for changelog files (ending with `.dd`) in a directory and parses them.
 
 Params:
     changelogDir = directory to search for changelog files
+    repoName = origin repository that contains the changelog entry
 
 Returns: An InputRange of `ChangelogEntry`s
 */
-auto readTextChanges(string changelogDir)
+auto readTextChanges(string changelogDir, string repoName)
 {
     import std.algorithm.iteration : filter, map;
     import std.file : dirEntries, SpanMode;
@@ -241,7 +247,7 @@ auto readTextChanges(string changelogDir)
     return dirEntries(changelogDir, SpanMode.shallow)
             .filter!(a => a.name().endsWith(".dd"))
             .array.sort()
-            .map!readChangelog
+            .map!(a => readChangelog(a, repoName))
             .filter!(a => a.title.length > 0);
 }
 
@@ -278,6 +284,7 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
     foreach(change; changes)
     {
         w.formattedWrite("$(LI $(LNAME2 %s,%s)\n", change.basename, change.title);
+        w.formattedWrite("$(CHANGELOG_SOURCE_FILE %s, %s)\n", change.repo, change.filePath);
         scope(exit) w.put(")\n\n");
 
         bool inPara, inCode;
@@ -355,16 +362,12 @@ int main(string[] args)
     bool hideTextChanges = false;
     string revRange;
 
-    // TODO: no-op - remove me as soon as dlang.org is upgraded
-    bool useNightlyTemplate;
-
     auto helpInformation = getopt(
         args,
         std.getopt.config.passThrough,
         "output|o", &outputFile,
         "date", &nextVersionDate,
         "version", &nextVersionString,
-        "nightly", &useNightlyTemplate,
         "prev-version", &previousVersion, // this can automatically be detected
         "no-text", &hideTextChanges);
 
@@ -389,10 +392,41 @@ Please supply a bugzilla version
         writeln("Skipped querying Bugzilla for changes. Please define a revision range e.g ./changed v2.072.2..upstream/stable");
     }
 
+    // location of the changelog files
+    alias Repo = Tuple!(string, "name", string, "headline", string, "path");
+    auto repos = [Repo("dmd", "Compiler changes", null),
+                  Repo("druntime", "Runtime changes", null),
+                  Repo("phobos", "Library changes", null),
+                  Repo("dlang.org", "Language changes", null),
+                  Repo("installer", "Installer changes", null),
+                  Repo("tools", "Tools changes", null),
+                  Repo("dub", "Dub changes", null)];
+
+    auto changedRepos = repos
+         .map!(repo => Repo(repo.name, repo.headline, buildPath(__FILE_FULL_PATH__.dirName, "..", repo.name, repo.name == "dlang.org" ? "language-changelog" : "changelog")))
+         .filter!(r => r.path.exists);
+
+    // ensure that all files either end on .dd or .md
+    bool errors;
+    foreach (repo; changedRepos)
+    {
+        auto invalidFiles = repo.path
+            .dirEntries(SpanMode.shallow)
+            .filter!(a => !a.name.endsWith(".dd", ".md"));
+        if (!invalidFiles.empty)
+        {
+            invalidFiles.each!(f => stderr.writefln("ERROR: %s needs to have .dd or .md as extension", f.buildNormalizedPath));
+            errors = 1;
+        }
+    }
+    import core.stdc.stdlib : exit;
+    if (errors)
+        1.exit;
+
     auto f = File(outputFile, "w");
     auto w = f.lockingTextWriter();
     w.put("Ddoc\n\n");
-    w.formattedWrite("$(CHANGELOG_NAV_LAST %s)\n\n", previousVersion);
+    w.put("$(CHANGELOG_NAV_INJECT)\n\n");
 
     {
         w.formattedWrite("$(VERSION %s, =================================================,\n\n", nextVersionDate);
@@ -402,23 +436,12 @@ Please supply a bugzilla version
         if (!hideTextChanges)
         {
             // search for raw change files
-            alias Repo = Tuple!(string, "path", string, "headline");
-            auto repos = [Repo("dmd", "Compiler changes"),
-                          Repo("druntime", "Runtime changes"),
-                          Repo("phobos", "Library changes"),
-                          Repo("dlang.org", "Language changes"),
-                          Repo("installer", "Installer changes"),
-                          Repo("tools", "Tools changes"),
-                          Repo("dub", "Dub changes")];
-
-            auto changedRepos = repos
-                 .map!(repo => Repo(buildPath("..", repo.path, repo.path == "dlang.org" ? "language-changelog" : "changelog"), repo.headline))
-                 .filter!(r => r.path.exists)
-                 .map!(r => tuple!("headline", "changes")(r.headline, r.path.readTextChanges.array))
+            auto changelogDirs = changedRepos
+                 .map!(r => tuple!("headline", "changes")(r.headline, r.path.readTextChanges(r.name).array))
                  .filter!(r => !r.changes.empty);
 
             // print the overview headers
-            changedRepos.each!(r => r.changes.writeTextChangesHeader(w, r.headline));
+            changelogDirs.each!(r => r.changes.writeTextChangesHeader(w, r.headline));
 
             if (!revRange.empty)
                 w.put("$(CHANGELOG_SEP_HEADER_TEXT_NONEMPTY)\n\n");
@@ -426,7 +449,7 @@ Please supply a bugzilla version
             w.put("$(CHANGELOG_SEP_HEADER_TEXT)\n\n");
 
             // print the detailed descriptions
-            changedRepos.each!(x => x.changes.writeTextChangesBody(w, x.headline));
+            changelogDirs.each!(x => x.changes.writeTextChangesBody(w, x.headline));
 
             if (revRange.length)
                 w.put("$(CHANGELOG_SEP_TEXT_BUGZILLA)\n\n");
@@ -457,7 +480,7 @@ Please supply a bugzilla version
         w.put("$(D_CONTRIBUTORS_FOOTER)\n");
     }
 
-    w.formattedWrite("$(CHANGELOG_NAV_LAST %s)\n", previousVersion);
+    w.put("$(CHANGELOG_NAV_INJECT)\n\n");
 
     // write own macros
     w.formattedWrite(`Macros:

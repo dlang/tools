@@ -7,7 +7,6 @@ module dget;
 
 import std.algorithm, std.exception, std.file, std.range, std.net.curl;
 static import std.stdio;
-pragma(lib, "curl");
 
 void usage()
 {
