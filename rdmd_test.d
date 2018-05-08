@@ -552,6 +552,19 @@ void runTests(string rdmdApp, string compiler, string model)
         enforce(exists(altLibName));
     }
 
+    // Test --objdir
+    {
+        TmpDir srcDir = "rdmdTestSrc";
+        TmpDir objDir = "rdmdTestObj";
+
+        string srcName = srcDir.buildPath("test.d");
+        std.file.write(srcName, `void main() {}`);
+
+        res = execute(rdmdArgs ~ ["--build-only", "--force", "--objdir=" ~ objDir, srcName]);
+        enforce(res.status == 0, res.output);
+        enforce(exists(objDir.buildPath("test" ~ objExt)));
+    }
+
     /* rdmd --build-only --force -c main.d fails: ./main: No such file or directory: https://issues.dlang.org/show_bug.cgi?id=16962 */
     {
         TmpDir srcDir = "rdmdTest";
