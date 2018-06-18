@@ -1,0 +1,74 @@
+name "dtools"
+description "D Tools"
+authors "DLang Community"
+copyright "Copyright © 1999-2018, The D Language Foundation"
+license "BSL-1.0"
+targetType "none"
+
+subPackage {
+  name "tests_extractor"
+  targetType "executable"
+  dependency "libdparse" version="~>0.8.0"
+  sourceFiles "tests_extractor.d"
+}
+
+subPackage {
+  name "dman"
+  targetType "executable"
+  sourceFiles "dman.d"
+  stringImportPaths "."
+}
+
+subPackage {
+  name "dget"
+  targetType "executable"
+  sourceFiles "dget.d"
+}
+
+subPackage {
+  name "checkwhitespace"
+  targetType "executable"
+  sourceFiles "checkwhitespace.d"
+}
+
+subPackage {
+  name "ddemangle"
+  targetType "executable"
+  sourceFiles "ddemangle.d"
+}
+
+subPackage {
+  name "detab"
+  targetType "executable"
+  sourceFiles "detab.d"
+}
+
+subPackage {
+  name "tolf"
+  targetType "executable"
+  sourceFiles "tolf.d"
+}
+
+subPackage {
+  name "rdmd"
+  targetType "executable"
+  sourceFiles "rdmd.d"
+}
+
+subPackage {
+  name "contributors"
+  targetType "executable"
+  sourceFiles "contributors.d"
+}
+
+subPackage {
+  name "changed"
+  targetType "executable"
+  sourceFiles "changed.d"
+}
+
+subPackage {
+  name "catdoc"
+  targetType "executable"
+  sourceFiles "catdoc.d"
+}
