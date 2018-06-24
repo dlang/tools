@@ -1,4 +1,4 @@
-// Line 109
+# line 107
 unittest
 {
     import std.ascii;
@@ -11,7 +11,7 @@ unittest
     assert(!isAlphaNum('á'));
 }
 
-// Line 140
+# line 138
 unittest
 {
     import std.ascii;
@@ -24,7 +24,7 @@ unittest
     assert(!isAlpha('á'));
 }
 
-// Line 170
+# line 168
 unittest
 {
     import std.ascii;
@@ -38,7 +38,7 @@ unittest
     assert(!isLower('Á'));
 }
 
-// Line 201
+# line 199
 unittest
 {
     import std.ascii;
@@ -52,7 +52,7 @@ unittest
     assert(!isUpper('Á'));
 }
 
-// Line 232
+# line 230
 unittest
 {
     import std.ascii;
@@ -67,7 +67,7 @@ unittest
     assert(!isDigit('４')); // full-width digit four (U+FF14)
 }
 
-// Line 264
+# line 262
 unittest
 {
     import std.ascii;
@@ -79,7 +79,7 @@ unittest
     assert(!isOctalDigit('#'));
 }
 
-// Line 293
+# line 291
 unittest
 {
     import std.ascii;
@@ -92,7 +92,7 @@ unittest
     assert(!isHexDigit('#'));
 }
 
-// Line 325
+# line 323
 unittest
 {
     import std.ascii;
@@ -110,7 +110,7 @@ unittest
     assert(!isWhite('\u00A0')); // std.ascii.isWhite
 }
 
-// Line 360
+# line 358
 unittest
 {
     import std.ascii;
@@ -129,7 +129,7 @@ unittest
     assert(!isControl('\u2029'));
 }
 
-// Line 399
+# line 397
 unittest
 {
     import std.ascii;
@@ -153,7 +153,7 @@ unittest
     assert(!isPunctuation('\u2012')); // (U+2012 = en-dash)
 }
 
-// Line 443
+# line 441
 unittest
 {
     import std.ascii;
@@ -169,7 +169,7 @@ unittest
     assert(!isGraphical('á'));
 }
 
-// Line 479
+# line 477
 unittest
 {
     import std.ascii;
@@ -184,7 +184,7 @@ unittest
     assert(!isPrintable('á'));
 }
 
-// Line 515
+# line 513
 unittest
 {
     import std.ascii;
@@ -193,7 +193,7 @@ unittest
     assert(!isASCII('á'));
 }
 
-// Line 556
+# line 554
 unittest
 {
     import std.ascii;
@@ -206,7 +206,7 @@ unittest
     assert(toLower('Á') == 'Á');
 }
 
-// Line 618
+# line 616
 unittest
 {
     import std.ascii;
