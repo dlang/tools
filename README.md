@@ -32,6 +32,24 @@ To report a problem or browse the list of open bugs, please visit the
 For a list and descriptions of D development tools, please visit the
 [D wiki](http://wiki.dlang.org/Development_tools).
 
+Building
+--------
+
+On a Posix system all tools can be built with:
+
+```
+make -f posix.mak all
+```
+
+Using DUB as a build tool
+-------------------------
+
+Most tools can also be built with DUB:
+
+```
+dub build :ddemangle
+```
+
 Running DUB tools
 -----------------
 
