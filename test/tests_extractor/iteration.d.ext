@@ -1,4 +1,4 @@
-// Line 165
+# line 163
 unittest
 {
     import std.algorithm.iteration;
@@ -42,7 +42,7 @@ unittest
     assert(counter == iota(-4, 5).length);
 }
 
-// Line 220
+# line 218
 unittest
 {
     import std.algorithm.iteration;
@@ -62,7 +62,7 @@ unittest
     assert(i == 3); //cache has accessed 3. It is still stored internally by cache.
 }
 
-// Line 497
+# line 495
 unittest
 {
     import std.algorithm.iteration;
@@ -75,7 +75,7 @@ unittest
     assert(equal(squares, [ 1, 4, 9, 16, 25, 36 ]));
 }
 
-// Line 512
+# line 510
 unittest
 {
     import std.algorithm.iteration;
@@ -92,7 +92,7 @@ unittest
     }
 }
 
-// Line 530
+# line 528
 unittest
 {
     import std.algorithm.iteration;
@@ -104,7 +104,7 @@ unittest
     assert(equal(stringize([ 1, 2, 3, 4 ]), [ "1", "2", "3", "4" ]));
 }
 
-// Line 957
+# line 955
 unittest
 {
     import std.algorithm.iteration;
@@ -147,7 +147,7 @@ unittest
     assert(s.x == 1);
 }
 
-// Line 1102
+# line 1100
 unittest
 {
     import std.algorithm.iteration;
@@ -178,7 +178,7 @@ unittest
     assert(approxEqual(r1, [ 2.5 ]));
 }
 
-// Line 1322
+# line 1320
 unittest
 {
     import std.algorithm.iteration;
@@ -199,7 +199,7 @@ unittest
     assert(r.back == 102);
 }
 
-// Line 1504
+# line 1502
 unittest
 {
     import std.algorithm.iteration;
@@ -212,7 +212,7 @@ unittest
         tuple(4, 3u), tuple(5, 1u) ][]));
 }
 
-// Line 1518
+# line 1516
 unittest
 {
     import std.algorithm.iteration;
@@ -229,7 +229,7 @@ unittest
     assert(result == ["a": 2U, "b": 2U, "c": 3U, "d": 1U, "e": 1U]);
 }
 
-// Line 1909
+# line 1907
 unittest
 {
     import std.algorithm.iteration;
@@ -258,7 +258,7 @@ unittest
     ]));
 }
 
-// Line 1959
+# line 1957
 unittest
 {
     import std.algorithm.iteration;
@@ -310,7 +310,7 @@ unittest
     }
 }
 
-// Line 2282
+# line 2280
 unittest
 {
     import std.algorithm.iteration;
@@ -327,7 +327,7 @@ unittest
     assert(["", ""].joiner("xyz").equal("xyz"));
 }
 
-// Line 2885
+# line 2883
 unittest
 {
     import std.algorithm.iteration;
@@ -377,7 +377,7 @@ unittest
     assert(approxEqual(r2, 112.5));
 }
 
-// Line 2940
+# line 2938
 unittest
 {
     import std.algorithm.iteration;
@@ -402,7 +402,7 @@ unittest
     auto stdev = sqrt(r[1] / a.length - avg * avg);
 }
 
-// Line 3212
+# line 3210
 unittest
 {
     import std.algorithm.iteration;
@@ -431,7 +431,7 @@ unittest
     assert(arr.fold!((a, b) => b) == 5);
 }
 
-// Line 3420
+# line 3418
 unittest
 {
     import std.algorithm.iteration;
@@ -482,7 +482,7 @@ unittest
     assert(approxEqual(r2, [3, 7, 107, 109.5, 112.5]));
 }
 
-// Line 3476
+# line 3474
 unittest
 {
     import std.algorithm.iteration;
@@ -505,7 +505,7 @@ unittest
     assert(approxEqual(r2.map!"a[1]", [9, 25, 74, 195, 204, 208, 233])); // sum of squares
 }
 
-// Line 3833
+# line 3831
 unittest
 {
     import std.algorithm.iteration;
@@ -524,7 +524,7 @@ unittest
     assert(equal(splitter!"a.front == b"(w, 1), [ [[0]], [[2]] ]));
 }
 
-// Line 4071
+# line 4069
 unittest
 {
     import std.algorithm.iteration;
@@ -541,7 +541,7 @@ unittest
     assert(equal(splitter(a, [0, 0]), [ [], [1] ]));
 }
 
-// Line 4220
+# line 4218
 unittest
 {
     import std.algorithm.iteration;
@@ -561,7 +561,7 @@ unittest
     assert(equal(splitter!(a => a.front == 1)(w), [ [[0]], [[2]] ]));
 }
 
-// Line 4509
+# line 4507
 unittest
 {
     import std.algorithm.iteration;
@@ -571,7 +571,7 @@ unittest
     assert(equal(splitter(a), ["a", "bcd", "ef", "gh"][]));
 }
 
-// Line 4822
+# line 4820
 unittest
 {
     import std.algorithm.iteration;
@@ -603,7 +603,7 @@ unittest
                .approxEqual((ulong.max / 2) * 4096.0 + 4096^^2 / 2));
 }
 
-// Line 4954
+# line 4952
 unittest
 {
     import std.algorithm.iteration;
@@ -624,7 +624,7 @@ unittest
     assert(equal(uniq([ 1, 1, 2, 1, 1, 3, 1]), [1, 2, 1, 3, 1]));
 }
 
-// Line 5180
+# line 5178
 unittest
 {
     import std.algorithm.iteration;

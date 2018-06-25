@@ -67,9 +67,13 @@ class TestVisitor : ASTVisitor
 private:
     void print(const Unittest u)
     {
-
-        // write the origin source code line
-        outFile.writefln("// Line %d", u.line);
+        /*
+        Write the origin source code line
+        u.line is the first line of the unittest block, hence we need to
+        subtract two lines from it as we add "import <current.module>\n\n" at
+        the top of the unittest.
+        */
+        outFile.writefln("# line %d", u.line > 2 ? u.line - 2 : 0);
 
         // write the unittest block
         outFile.write("unittest\n{\n");
