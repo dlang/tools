@@ -134,6 +134,7 @@ int main(string[] args)
     string[] eval;     // set by --eval
     bool makeDepend;
     string makeDepFile;
+    string objDir;
     getopt(argsBeforeProgram,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
@@ -153,6 +154,7 @@ int main(string[] args)
             "makedepfile", &makeDepFile,
             "man", { man(); bailout = true; },
             "tmpdir", &userTempDir,
+            "objdir", &objDir,
             "o", &dashOh);
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
@@ -233,20 +235,23 @@ int main(string[] args)
     // Compute the object directory and ensure it exists
     immutable workDir = getWorkPath(root, compilerFlags);
     lockWorkPath(workDir); // will be released by the OS on process exit
-    string objDir = buildPath(workDir, "objs");
-    Filesystem.mkdirRecurseIfLive(objDir);
-
-    if (lib)
+    if (!objDir)
     {
-        // When using -lib, the behavior of the DMD -of switch
-        // changes: instead of being relative to the current
-        // directory, it becomes relative to the output directory.
-        // When building libraries, DMD does not generate any object
-        // files; thus, we can override objDir (which is normally a
-        // temporary directory) to be the current directory, so that
-        // the relative -of path becomes correct.
-        objDir = ".";
+        objDir = buildPath(workDir, "objs");
+
+        if (lib)
+        {
+            // When using -lib, the behavior of the DMD -of switch
+            // changes: instead of being relative to the current
+            // directory, it becomes relative to the output directory.
+            // When building libraries, DMD does not generate any object
+            // files; thus, we can override objDir (which is normally a
+            // temporary directory) to be the current directory, so that
+            // the relative -of path becomes correct.
+            objDir = ".";
+        }
     }
+    Filesystem.mkdirRecurseIfLive(objDir);
 
     // Fetch dependencies
     const myDeps = getDependencies(root, workDir, objDir, compilerFlags);
@@ -524,6 +529,8 @@ private int rebuild(string root, string fullExe,
     // run mode because we haven't created any!
     if (!dryRun)
     {
+        // Be sure to only clean up objDir if it is the default one,
+        // under our temporary work directory, and not when it's user-specified.
         if (Filesystem.exists(objDir) && objDir.startsWith(workDir))
         {
             // We swallow the exception because of a potential race: two
