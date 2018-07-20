@@ -506,13 +506,13 @@ Please supply a bugzilla version
                 with(changelogStats)
                 {
                     auto changelog = changelogEntries > 0 ? "%d major change%s and".format(changelogEntries, changelogEntries > 1 ? "s" : "") : "";
-                    w.put("$(VER) comes with {changelogEntries} {bugzillaIssues} fixed Bugzilla issue{bugzillaIssuesPluaral}.
-                            A huge thanks goes to the {nrContributors} contributor{nrControbutorsPlural} who made $(VER) possible."
+                    w.put("$(VER) comes with {changelogEntries} {bugzillaIssues} fixed Bugzilla issue{bugzillaIssuesPlural}.
+                            A huge thanks goes to the {nrContributors} contributor{nrContributorsPlural} who made $(VER) possible."
                         .replace("{bugzillaIssues}", bugzillaIssues.text)
-                        .replace("{bugzillaIssuesPlural}", bugzillaIssues > 1 ? "s" : "")
+                        .replace("{bugzillaIssuesPlural}", bugzillaIssues != 1 ? "s" : "")
                         .replace("{changelogEntries}", changelog)
                         .replace("{nrContributors}", contributors.text)
-                        .replace("{nrContributorsPlural}", contributors > 1 ? "s" : "")
+                        .replace("{nrContributorsPlural}", contributors != 1 ? "s" : "")
                     );
                 }
             }
