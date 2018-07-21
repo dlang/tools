@@ -7,7 +7,7 @@ dependency "libdparse" version="~>0.8.0"
  * Parses all public unittests that are visible on dlang.org
  * (= annotated with three slashes)
  *
- * Copyright (C) 2017 by D Language Foundation
+ * Copyright (C) 2018 by D Language Foundation
  *
  * Author: Sebastian Wilzbach
  *
@@ -33,11 +33,13 @@ class TestVisitor : ASTVisitor
     File outFile;
     ubyte[] sourceCode;
     string moduleName;
+    string[] attributes;
 
-    this(File outFile, ubyte[] sourceCode)
+    this(File outFile, ubyte[] sourceCode, string[] attributes)
     {
         this.outFile = outFile;
         this.sourceCode = sourceCode;
+        this.attributes = attributes;
     }
 
     alias visit = ASTVisitor.visit;
@@ -58,13 +60,51 @@ class TestVisitor : ASTVisitor
 
     override void visit(const Declaration decl)
     {
-        if (decl.unittest_ !is null && hasDdocHeader(sourceCode, decl))
+        if (decl.unittest_ !is null && shouldIncludeUnittest(decl))
             print(decl.unittest_);
 
         decl.accept(this);
     }
 
 private:
+
+    bool shouldIncludeUnittest(const Declaration decl)
+    {
+        if (!attributes.empty)
+            return filterForUDAs(decl);
+        else
+            return hasDdocHeader(sourceCode, decl);
+    }
+
+    bool filterForUDAs(const Declaration decl)
+    {
+        foreach (attr; decl.attributes)
+        {
+            // check for @myArg
+            if (attributes.canFind(attr.atAttribute.identifier.text))
+                return true;
+
+            // support @("myArg") too
+            if (auto argList = attr.atAttribute.argumentList)
+            {
+                foreach (arg; argList.items)
+                {
+                    if (auto unaryExp = cast(UnaryExpression) arg)
+                    if (auto primaryExp = unaryExp.primaryExpression)
+                    {
+                        auto attribute = primaryExp.primary.text;
+                        if (attribute.length >= 2)
+                        {
+                            attribute = attribute[1 .. $ - 1];
+                            if (attributes.canFind(attribute))
+                                return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
     void print(const Unittest u)
     {
         /*
@@ -93,7 +133,7 @@ private:
     }
 }
 
-void parseFile(File inFile, File outFile)
+void parseFile(File inFile, File outFile, string[] attributes)
 {
     import dparse.lexer;
     import dparse.parser : parseModule;
@@ -111,11 +151,11 @@ void parseFile(File inFile, File outFile)
 
     RollbackAllocator rba;
     auto m = parseModule(tokens.array, inFile.name, &rba);
-    auto visitor = new TestVisitor(outFile, sourceCode);
+    auto visitor = new TestVisitor(outFile, sourceCode, attributes);
     visitor.visit(m);
 }
 
-void parseFileDir(string inputDir, string fileName, string outputDir)
+void parseFileDir(string inputDir, string fileName, string outputDir, string[] attributes)
 {
     import std.path : buildPath, dirSeparator, buildNormalizedPath;
 
@@ -132,7 +172,7 @@ void parseFileDir(string inputDir, string fileName, string outputDir)
     // convert the file path to a nice output file, e.g. std/uni.d -> std_uni.d
     string outName = fileNameNormalized.replace(dirSeparator, "_");
 
-    parseFile(File(fileName), File(buildPath(outputDir, outName), "w"));
+    parseFile(File(fileName), File(buildPath(outputDir, outName), "w"), attributes);
 }
 
 void main(string[] args)
@@ -143,12 +183,15 @@ void main(string[] args)
     string inputDir;
     string outputDir = "./out";
     string ignoredFilesStr;
-    string modulePrefix = "";
+    string modulePrefix;
+    string attributesStr;
 
     auto helpInfo = getopt(args, config.required,
             "inputdir|i", "Folder to start the recursive search for unittest blocks (can be a single file)", &inputDir,
             "outputdir|o", "Folder to which the extracted test files should be saved (stdout for a single file)", &outputDir,
-            "ignore", "Comma-separated list of files to exclude (partial matching is supported)", &ignoredFilesStr);
+            "ignore", "Comma-separated list of files to exclude (partial matching is supported)", &ignoredFilesStr,
+            "attributes|a", "Comma-separated list of UDAs that the unittest should have", &attributesStr,
+    );
 
     if (helpInfo.helpWanted)
     {
@@ -162,6 +205,7 @@ to in the output directory.
 
     inputDir = inputDir.asNormalizedPath.array;
     Algebraic!(string, File) outputLocation = cast(string) outputDir.asNormalizedPath.array;
+    auto attributes = attributesStr.split(",");
 
     if (!exists(outputDir))
         mkdir(outputDir);
@@ -196,8 +240,8 @@ to in the output directory.
         {
             stderr.writeln("parsing ", file);
             outputLocation.visit!(
-                (string outputFolder) => parseFileDir(inputDir, file, outputFolder),
-                (File outputFile) => parseFile(File(file.name, "r"), outputFile),
+                (string outputFolder) => parseFileDir(inputDir, file, outputFolder, attributes),
+                (File outputFile) => parseFile(File(file.name, "r"), outputFile, attributes),
             );
         }
         else
