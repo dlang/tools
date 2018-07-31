@@ -111,6 +111,7 @@ test_tests_extractor: $(ROOT)/tests_extractor
 		$< -i "./test/tests_extractor/$${file}.d" | diff -p - "./test/tests_extractor/$${file}.d.ext"; \
 	done
 	$< -a betterc -i "./test/tests_extractor/attributes.d" | diff -p - "./test/tests_extractor/attributes.d.ext";
+	$< --betterC -i "./test/tests_extractor/betterc.d" | diff -p - "./test/tests_extractor/betterc.d.ext";
 
 RDMD_TEST_COMPILERS = $(DMD)
 RDMD_TEST_EXECUTABLE = $(ROOT)/rdmd

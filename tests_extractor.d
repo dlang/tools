@@ -33,13 +33,13 @@ class TestVisitor : ASTVisitor
     File outFile;
     ubyte[] sourceCode;
     string moduleName;
-    string[] attributes;
+    VisitorConfig config;
 
-    this(File outFile, ubyte[] sourceCode, string[] attributes)
+    this(File outFile, ubyte[] sourceCode, VisitorConfig config)
     {
         this.outFile = outFile;
         this.sourceCode = sourceCode;
-        this.attributes = attributes;
+        this.config = config;
     }
 
     alias visit = ASTVisitor.visit;
@@ -56,6 +56,15 @@ class TestVisitor : ASTVisitor
             moduleName = outFile.name.replace(".d", "").replace(dirSeparator, ".").replace(".package", "");
         }
         m.accept(this);
+        // -betterC doesn't run unittests out of the box
+        if (config.betterCOutput)
+        {
+            outFile.writeln(q{extern(C) void main()
+{
+    static foreach(u; __traits(getUnitTests, __traits(parent, main)))
+        u();
+}});
+        }
     }
 
     override void visit(const Declaration decl)
@@ -70,7 +79,7 @@ private:
 
     bool shouldIncludeUnittest(const Declaration decl)
     {
-        if (!attributes.empty)
+        if (!config.attributes.empty)
             return filterForUDAs(decl);
         else
             return hasDdocHeader(sourceCode, decl);
@@ -80,8 +89,11 @@ private:
     {
         foreach (attr; decl.attributes)
         {
+            if (attr.atAttribute is null)
+                continue;
+
             // check for @myArg
-            if (attributes.canFind(attr.atAttribute.identifier.text))
+            if (config.attributes.canFind(attr.atAttribute.identifier.text))
                 return true;
 
             // support @("myArg") too
@@ -96,7 +108,7 @@ private:
                         if (attribute.length >= 2)
                         {
                             attribute = attribute[1 .. $ - 1];
-                            if (attributes.canFind(attribute))
+                            if (config.attributes.canFind(attribute))
                                 return true;
                         }
                     }
@@ -133,7 +145,7 @@ private:
     }
 }
 
-void parseFile(File inFile, File outFile, string[] attributes)
+void parseFile(File inFile, File outFile, VisitorConfig visitorConfig)
 {
     import dparse.lexer;
     import dparse.parser : parseModule;
@@ -151,11 +163,11 @@ void parseFile(File inFile, File outFile, string[] attributes)
 
     RollbackAllocator rba;
     auto m = parseModule(tokens.array, inFile.name, &rba);
-    auto visitor = new TestVisitor(outFile, sourceCode, attributes);
+    auto visitor = new TestVisitor(outFile, sourceCode, visitorConfig);
     visitor.visit(m);
 }
 
-void parseFileDir(string inputDir, string fileName, string outputDir, string[] attributes)
+void parseFileDir(string inputDir, string fileName, string outputDir, VisitorConfig visitorConfig)
 {
     import std.path : buildPath, dirSeparator, buildNormalizedPath;
 
@@ -172,7 +184,13 @@ void parseFileDir(string inputDir, string fileName, string outputDir, string[] a
     // convert the file path to a nice output file, e.g. std/uni.d -> std_uni.d
     string outName = fileNameNormalized.replace(dirSeparator, "_");
 
-    parseFile(File(fileName), File(buildPath(outputDir, outName), "w"), attributes);
+    parseFile(File(fileName), File(buildPath(outputDir, outName), "w"), visitorConfig);
+}
+
+struct VisitorConfig
+{
+    string[] attributes; /// List of attributes to extract;
+    bool betterCOutput; /// Add custom extern(C) main method for running D's unittests
 }
 
 void main(string[] args)
@@ -185,12 +203,14 @@ void main(string[] args)
     string ignoredFilesStr;
     string modulePrefix;
     string attributesStr;
+    VisitorConfig visitorConfig;
 
     auto helpInfo = getopt(args, config.required,
             "inputdir|i", "Folder to start the recursive search for unittest blocks (can be a single file)", &inputDir,
             "outputdir|o", "Folder to which the extracted test files should be saved (stdout for a single file)", &outputDir,
             "ignore", "Comma-separated list of files to exclude (partial matching is supported)", &ignoredFilesStr,
             "attributes|a", "Comma-separated list of UDAs that the unittest should have", &attributesStr,
+            "betterC", "Add custom extern(C) main method for running D's unittests", &visitorConfig.betterCOutput,
     );
 
     if (helpInfo.helpWanted)
@@ -205,7 +225,7 @@ to in the output directory.
 
     inputDir = inputDir.asNormalizedPath.array;
     Algebraic!(string, File) outputLocation = cast(string) outputDir.asNormalizedPath.array;
-    auto attributes = attributesStr.split(",");
+    visitorConfig.attributes = attributesStr.split(",");
 
     if (!exists(outputDir))
         mkdir(outputDir);
@@ -240,8 +260,8 @@ to in the output directory.
         {
             stderr.writeln("parsing ", file);
             outputLocation.visit!(
-                (string outputFolder) => parseFileDir(inputDir, file, outputFolder, attributes),
-                (File outputFile) => parseFile(File(file.name, "r"), outputFile, attributes),
+                (string outputFolder) => parseFileDir(inputDir, file, outputFolder, visitorConfig),
+                (File outputFile) => parseFile(File(file.name, "r"), outputFile, visitorConfig),
             );
         }
         else
