@@ -1,0 +1,32 @@
+# line 3
+unittest
+{
+    import attributes;
+
+    assert(1 == 1);
+}
+
+# line 19
+unittest
+{
+    import attributes;
+
+    assert(4 == 4);
+}
+
+# line 24
+unittest
+{
+    import attributes;
+
+    assert(5 == 5);
+}
+
+# line 29
+unittest
+{
+    import attributes;
+
+    assert(6 == 6);
+}
+
