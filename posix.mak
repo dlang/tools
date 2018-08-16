@@ -107,8 +107,11 @@ $(ROOT)/tests_extractor: tests_extractor.d
 ################################################################################
 
 test_tests_extractor: $(ROOT)/tests_extractor
-	$< -i ./test/tests_extractor/ascii.d | diff - ./test/tests_extractor/ascii.d.ext
-	$< -i ./test/tests_extractor/iteration.d | diff - ./test/tests_extractor/iteration.d.ext
+	for file in ascii iteration ; do \
+		$< -i "./test/tests_extractor/$${file}.d" | diff -p - "./test/tests_extractor/$${file}.d.ext"; \
+	done
+	$< -a betterc -i "./test/tests_extractor/attributes.d" | diff -p - "./test/tests_extractor/attributes.d.ext";
+	$< --betterC -i "./test/tests_extractor/betterc.d" | diff -p - "./test/tests_extractor/betterc.d.ext";
 
 RDMD_TEST_COMPILERS = $(DMD)
 RDMD_TEST_EXECUTABLE = $(ROOT)/rdmd

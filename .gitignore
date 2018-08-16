@@ -8,3 +8,5 @@
 GNUmakefile
 /.dub
 /tests_extractor
+/dtools_*
+/dub.selections.json

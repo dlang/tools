@@ -1,0 +1,24 @@
+# line 2
+unittest
+{
+    import betterc;
+
+    int a = 1;
+    assert(a == 2);
+}
+
+# line 9
+unittest
+{
+    import betterc;
+
+    int b = 2;
+    assert(b == 2);
+    assert(b == 3);
+}
+
+extern(C) void main()
+{
+    static foreach(u; __traits(getUnitTests, __traits(parent, main)))
+        u();
+}

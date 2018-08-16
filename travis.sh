@@ -45,3 +45,6 @@ popd && rm -rf "$dir" && mkdir "$dir" && pushd "$dir"
 echo "y" | "$cwd"/setup.sh --tag=2.078.1
 echo 'void main(){ import std.stdio; __VERSION__.writeln;}' | "./2.078.1/${dmd}" -run - | grep -q "2078"
 popd
+
+# test building the DUB packages
+./test/test_dub.sh
