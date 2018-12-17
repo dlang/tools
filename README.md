@@ -25,6 +25,7 @@ rdmd                   | Public   | [D build tool](http://dlang.org/rdmd.html).
 rdmd_test              | Internal | rdmd test suite.
 tests_extractor 	   | Internal | Extracts public unittests (requires DUB)
 tolf                   | Internal | Line endings converter.
+updatecopyright        | Internal | Update the copyright notices in DMD
 
 To report a problem or browse the list of open bugs, please visit the
 [bug tracker](http://issues.dlang.org/).
