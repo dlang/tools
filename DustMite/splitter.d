@@ -878,7 +878,7 @@ struct DSplitter
 				}
 				return false;
 			}
-			
+
 			if (consume(tokenLookup["if"]) || consume(tokenLookup["static if"]))
 				consume(tokenLookup["else"]);
 			else
@@ -1153,7 +1153,7 @@ struct DSplitter
 		postProcessArgs(entities);
 	}
 
-	static Entity* firstHead(ref Entity e)
+	static Entity* firstHead(ref return Entity e)
 	{
 		if (e.head.length)
 			return &e;

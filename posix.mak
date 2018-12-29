@@ -36,7 +36,7 @@ endif
 WARNINGS = -w -de
 # default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
 DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
-		 -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL) $(MODEL_FLAG) -fPIC
+		 -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL) $(MODEL_FLAG) -fPIC -dip25
 DFLAGS += $(WARNINGS)
 
 # Default DUB flags (DUB uses a different architecture format)
