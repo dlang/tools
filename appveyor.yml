@@ -23,8 +23,8 @@ build_script:
                 $latestVersion = $latest.split("-")[0].split("~")[0];
                 $url = "http://downloads.dlang.org/pre-releases/2.x/$($latestVersion)/dmd.$($latest).windows.7z";
             }elseif($version -eq "nightly") {
-                $latest = (Invoke-WebRequest "https://nightlies.dlang.org/dmd-nightly/LATEST").toString().replace("`n","").replace("`r","");
-                $url = "https://nightlies.dlang.org/dmd-$($latest)/dmd.master.windows.7z"
+                $latest = (Invoke-WebRequest "http://downloads.dlang.org/nightlies/dmd-master/LATEST").toString().replace("`n","").replace("`r","");
+                $url = "http://downloads.dlang.org/nightlies/dmd-$($latest)/dmd.master.windows.7z"
             }else {
                 $url = "http://downloads.dlang.org/releases/2.x/$($version)/dmd.$($version).windows.7z";
             }
