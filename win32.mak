@@ -66,7 +66,7 @@ $(ROOT)\ddemangle.exe : ddemangle.d
 	$(DMD) $(DFLAGS) -of$@ ddemangle.d
 
 $(ROOT)\dustmite.exe : DustMite/dustmite.d DustMite/splitter.d
-	$(DMD) $(DFLAGS) -of$@ DustMite/dustmite.d DustMite/splitter.d
+	$(DMD) $(DFLAGS) -of$@ -version=Dlang_Tools DustMite/dustmite.d DustMite/splitter.d
 
 $(ROOT)\changed.exe : changed.d
 	$(DMD) $(DFLAGS) -of$@ changed.d
