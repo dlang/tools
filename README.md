@@ -3,8 +3,8 @@ D tools
 
 [![GitHub tag](https://img.shields.io/github/tag/dlang/tools.svg?maxAge=86400)](https://github.com/dlang/tools/releases)
 [![Bugzilla Issues](https://img.shields.io/badge/issues-Bugzilla-green.svg)](https://issues.dlang.org/buglist.cgi?component=tools&list_id=220149&product=D&resolution=---)
-[![Build Status](https://travis-ci.org/dlang/tools.svg?branch=master)](https://travis-ci.org/dlang/tools)
-[![Issue Stats](https://img.shields.io/issuestats/p/github/dlang/tools.svg?maxAge=2592000)](http://www.issuestats.com/github/dlang/tools)
+[![Travis](https://img.shields.io/travis/dlang/tools/master.svg?logo=travis&style=flat&label=travis)](https://travis-ci.org/dlang/tools)
+[![Buildkite](https://img.shields.io/buildkite/8cc605b3a89338bc41b144efcd5226acfe6b91c844a8a27ad9/master.svg?logo=dependabot&style=flat&label=buildkite)](https://buildkite.com/dlang/tools)
 [![license](https://img.shields.io/github/license/dlang/tools.svg)](https://github.com/dlang/tools/blob/master/LICENSE.txt)
 
 This repository hosts various tools redistributed with DMD or used
@@ -25,6 +25,7 @@ rdmd                   | Public   | [D build tool](http://dlang.org/rdmd.html).
 rdmd_test              | Internal | rdmd test suite.
 tests_extractor 	   | Internal | Extracts public unittests (requires DUB)
 tolf                   | Internal | Line endings converter.
+updatecopyright        | Internal | Update the copyright notices in DMD
 
 To report a problem or browse the list of open bugs, please visit the
 [bug tracker](http://issues.dlang.org/).

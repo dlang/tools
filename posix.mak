@@ -36,7 +36,7 @@ endif
 WARNINGS = -w -de
 # default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
 DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
-		 -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL) $(MODEL_FLAG) -fPIC
+		 -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL) $(MODEL_FLAG) -fPIC -dip25
 DFLAGS += $(WARNINGS)
 
 # Default DUB flags (DUB uses a different architecture format)
@@ -49,7 +49,8 @@ TOOLS = \
     $(ROOT)/ddemangle \
     $(ROOT)/detab \
     $(ROOT)/rdmd \
-    $(ROOT)/tolf
+    $(ROOT)/tolf \
+    $(ROOT)/updatecopyright
 
 CURL_TOOLS = \
     $(ROOT)/changed \
@@ -74,7 +75,7 @@ dman:      $(ROOT)/dman
 dustmite:  $(ROOT)/dustmite
 
 $(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
-	$(DMD) $(DFLAGS) DustMite/dustmite.d DustMite/splitter.d -of$(@)
+	$(DMD) $(DFLAGS) -version=Dlang_Tools DustMite/dustmite.d DustMite/splitter.d -of$(@)
 
 $(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS) $(TEST_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(DFLAGS) -of$(@) $(<)
