@@ -507,7 +507,9 @@ Please supply a bugzilla version
                 {
                     auto changelog = changelogEntries > 0 ? "%d major change%s and".format(changelogEntries, changelogEntries > 1 ? "s" : "") : "";
                     w.put("$(VER) comes with {changelogEntries} {bugzillaIssues} fixed Bugzilla issue{bugzillaIssuesPlural}.
-                            A huge thanks goes to the {nrContributors} contributor{nrContributorsPlural} who made $(VER) possible."
+        A huge thanks goes to the
+        $(LINK2 #contributors, {nrContributors} contributor{nrContributorsPlural})
+        who made $(VER) possible."
                         .replace("{bugzillaIssues}", bugzillaIssues.text)
                         .replace("{bugzillaIssuesPlural}", bugzillaIssues != 1 ? "s" : "")
                         .replace("{changelogEntries}", changelog)
