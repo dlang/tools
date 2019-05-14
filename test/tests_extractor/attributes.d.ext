@@ -1,5 +1,5 @@
 # line 3
-unittest
+@safe unittest
 {
     import attributes;
 
@@ -23,7 +23,7 @@ unittest
 }
 
 # line 29
-unittest
+@nogc @safe unittest
 {
     import attributes;
 

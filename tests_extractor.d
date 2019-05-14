@@ -70,7 +70,7 @@ class TestVisitor : ASTVisitor
     override void visit(const Declaration decl)
     {
         if (decl.unittest_ !is null && shouldIncludeUnittest(decl))
-            print(decl.unittest_);
+            print(decl.unittest_, decl.attributes);
 
         decl.accept(this);
     }
@@ -117,7 +117,7 @@ private:
         }
         return false;
     }
-    void print(const Unittest u)
+    void print(const Unittest u, const Attribute[] attributes)
     {
         /*
         Write the origin source code line
@@ -126,6 +126,24 @@ private:
         the top of the unittest.
         */
         outFile.writefln("# line %d", u.line > 2 ? u.line - 2 : 0);
+
+        static immutable predefinedAttributes = ["nogc", "system", "nothrow", "safe", "trusted", "pure"];
+
+        // write system attributes
+        foreach (attr; attributes)
+        {
+            const atAttribute = attr.atAttribute;
+            if (atAttribute is null)
+                continue;
+
+            const atText = atAttribute.identifier.text;
+
+            // ignore custom attributes (@myArg)
+            if (!predefinedAttributes.canFind(atText))
+                continue;
+
+            outFile.write(text("@", atText, " "));
+        }
 
         // write the unittest block
         outFile.write("unittest\n{\n");
