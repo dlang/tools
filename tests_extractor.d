@@ -132,6 +132,14 @@ private:
         // write system attributes
         foreach (attr; attributes)
         {
+            // pure and nothrow
+            if (attr.attribute.type != 0)
+            {
+                import dparse.lexer : str;
+                const attrText = attr.attribute.type.str;
+                outFile.write(text(attrText, " "));
+            }
+
             const atAttribute = attr.atAttribute;
             if (atAttribute is null)
                 continue;
