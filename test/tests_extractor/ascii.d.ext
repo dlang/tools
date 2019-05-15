@@ -1,5 +1,5 @@
 # line 107
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -12,7 +12,7 @@
 }
 
 # line 138
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -25,7 +25,7 @@
 }
 
 # line 168
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -39,7 +39,7 @@
 }
 
 # line 199
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -53,7 +53,7 @@
 }
 
 # line 230
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -68,7 +68,7 @@
 }
 
 # line 262
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -80,7 +80,7 @@
 }
 
 # line 291
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -93,7 +93,7 @@
 }
 
 # line 323
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -111,7 +111,7 @@
 }
 
 # line 358
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -130,7 +130,7 @@
 }
 
 # line 397
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -154,7 +154,7 @@
 }
 
 # line 441
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -170,7 +170,7 @@
 }
 
 # line 477
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -185,7 +185,7 @@
 }
 
 # line 513
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -194,7 +194,7 @@
 }
 
 # line 554
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
@@ -207,7 +207,7 @@
 }
 
 # line 616
-@safe @nogc unittest
+@safe pure nothrow @nogc unittest
 {
     import std.ascii;
 
