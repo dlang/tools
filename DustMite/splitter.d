@@ -612,7 +612,7 @@ struct DSplitter
 
 	static bool isWordChar(char c)
 	{
-	    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
 	}
 
 	void reset(string code)
@@ -873,8 +873,8 @@ struct DSplitter
 				 && entities[j].children.length == 2
 				 && firstToken(entities[j].children[0]) == t)
 				{
-				 	j++;
-				 	return true;
+					j++;
+					return true;
 				}
 				return false;
 			}
@@ -1130,13 +1130,13 @@ struct DSplitter
 		debug callRoot.comments ~= "Args root";
 		entities ~= callRoot;
 
-		foreach (id, params; calls)
+		foreach (id; calls.keys.sort())
 		{
 			auto funRoot = new Entity();
 			debug funRoot.comments ~= "%s root".format(id);
 			callRoot.children ~= funRoot;
 
-			foreach (i, args; params)
+			foreach (i, args; calls[id])
 			{
 				auto e = new Entity();
 				debug e.comments ~= "%s param %d".format(id, i);
