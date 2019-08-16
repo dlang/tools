@@ -83,7 +83,7 @@ function handleCmdLine() {
         esac
     done
 
-    if [ ! -z "${tag+x}" ] ; then
+    if [ -n "${tag+x}" ] ; then
         wd+="/$tag"
         mkdir -p "$wd"
     fi
@@ -193,16 +193,16 @@ function update() {
 
 function makeWorld() {
     local BOOTSTRAP=""
-    which dmd >/dev/null || BOOTSTRAP="AUTO_BOOTSTRAP=1"
+    command -v dmd >/dev/null || BOOTSTRAP="AUTO_BOOTSTRAP=1"
     for repo in dmd druntime phobos ; do
         "$makecmd" -C "$wd/$repo" -f posix.mak clean
         "$makecmd" -C "$wd/$repo" -f posix.mak "-j${parallel}" MODEL="$model" BUILD="$build" $BOOTSTRAP
     done
 
     # Update the running dmd version (only required once)
-    if [[ ! -z "${install+x}" ]]; then
+    if [[ -n "${install+x}" ]]; then
         local old dmdBinary
-        old=$(which dmd)
+        old=$(command -v dmd)
         dmdBinary=$(ls -1 $wd/dmd/generated/*/$build/$model/dmd)
         if [ -f "$old" ]; then
             echo "Linking '$dmdBinary' to $old"
