@@ -7,12 +7,12 @@
 /* Replace line endings with LF
  */
 
-import std.file, std.path, std.string;
+import std.file, std.path, std.string, std.range;
 
 void main(string[] args)
 {
     foreach (f; args[1 .. $])
         if (f.exists)
-            f.write(f.readText.lineSplitter.join('\n'));
+            f.write(f.readText.lineSplitter.chain([""]).join('\n'));
 }
 
