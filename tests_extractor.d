@@ -61,8 +61,9 @@ class TestVisitor : ASTVisitor
         {
             outFile.writeln(q{extern(C) void main()
 {
-    static foreach(u; __traits(getUnitTests, __traits(parent, main)))
-        u();
+    static foreach(test; __traits(allMembers, mixin(__MODULE__)))
+        static if (test.length > 8 && test[0..8] == "unittest")
+            mixin(test)();
 }});
         }
     }
@@ -125,7 +126,8 @@ private:
         subtract two lines from it as we add "import <current.module>\n\n" at
         the top of the unittest.
         */
-        outFile.writefln("# line %d", u.line > 2 ? u.line - 2 : 0);
+        const line = u.line > 2 ? u.line - 2 : 0;
+        outFile.writefln("# line %d", line);
 
         static immutable predefinedAttributes = ["nogc", "system", "nothrow", "safe", "trusted", "pure"];
 
@@ -154,7 +156,10 @@ private:
         }
 
         // write the unittest block
-        outFile.write("unittest\n{\n");
+        if (config.betterCOutput)
+            outFile.writef("void unittest_line_%s()\n{\n", line);
+        else
+            outFile.write("unittest\n{\n");
         scope(exit) outFile.writeln("}\n");
 
         // add an import to the current module

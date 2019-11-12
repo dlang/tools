@@ -1,5 +1,5 @@
 # line 2
-unittest
+void unittest_line_2()
 {
     import betterc;
 
@@ -8,7 +8,7 @@ unittest
 }
 
 # line 9
-unittest
+void unittest_line_9()
 {
     import betterc;
 
@@ -19,6 +19,7 @@ unittest
 
 extern(C) void main()
 {
-    static foreach(u; __traits(getUnitTests, __traits(parent, main)))
-        u();
+    static foreach(test; __traits(allMembers, mixin(__MODULE__)))
+        static if (test.length > 8 && test[0..8] == "unittest")
+            mixin(test)();
 }
