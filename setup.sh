@@ -195,7 +195,8 @@ function makeWorld() {
     local BOOTSTRAP=""
     command -v dmd >/dev/null || BOOTSTRAP="AUTO_BOOTSTRAP=1"
     for repo in dmd druntime phobos ; do
-        "$makecmd" -C "$wd/$repo" -f posix.mak clean
+        # Pass `AUTO_BOOTSTRAP` because of https://issues.dlang.org/show_bug.cgi?id=20727
+        "$makecmd" -C "$wd/$repo" -f posix.mak clean $BOOTSTRAP
         "$makecmd" -C "$wd/$repo" -f posix.mak "-j${parallel}" MODEL="$model" BUILD="$build" $BOOTSTRAP
     done
 
