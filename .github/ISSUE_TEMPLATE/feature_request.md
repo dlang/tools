@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: 'Suggest an idea for this project (see also: '
+about: 'Suggest an idea for this project'
 title: ''
 labels: Prio.3.Normal, Type.Enhancement
 assignees: ''
