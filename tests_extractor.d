@@ -1,7 +1,7 @@
 #!/usr/bin/env dub
 /++dub.sdl:
 name "tests_extractor"
-dependency "libdparse" version="~>0.14.0"
+dependency "libdparse" version="~>0.15.1"
 +/
 /*
  * Parses all public unittests that are visible on dlang.org
