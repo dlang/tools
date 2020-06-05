@@ -190,10 +190,9 @@ int main(string[] args)
     }
     else if (eval.ptr)
     {
-        enforce(programPos == args.length, "Cannot have both --eval and a " ~
-                "program file ('" ~ args[programPos] ~ "').");
         root = makeEvalFile(makeEvalCode(eval, No.loop));
         argsBeforeProgram ~= "-d";
+        programArgs = args[programPos .. $];
     }
     else if (programPos < args.length)
     {
