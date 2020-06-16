@@ -21,6 +21,7 @@ module rdmd_test;
 import std.algorithm;
 import std.exception;
 import std.file;
+import std.format;
 import std.getopt;
 import std.path;
 import std.process;
@@ -250,12 +251,10 @@ void runTests(string rdmdApp, string compiler, string model)
         "--eval=debug {} else assert(false);"]);
     enforce(res.status == 0, res.output);
 
-    // vs program file
+    // When using eval, extra arguments are program arguments
     res = execute(rdmdArgs ~ ["--force",
-        "--eval=assert(true);", voidMain]);
-    enforce(res.status != 0);
-    enforce(res.output.canFind("Cannot have both --eval and a program file ('" ~
-            voidMain ~ "')."));
+        format("--eval=assert(args[1] == `%s`);", voidMain), voidMain]);
+    enforce(res.status == 0, res.output);
 
     /* Test --exclude. */
     string packFolder = tempDir().buildPath("dsubpack");
@@ -627,8 +626,6 @@ void runTests(string rdmdApp, string compiler, string model)
             stderr.writefln("rdmd_test: Make version (%s) is too old, skipping Make SHELL/SHELLFLAGS test", makeVersion);
         else
         {
-            import std.format : format;
-
             auto textOutput = tempDir().buildPath("rdmd_makefile_test.txt");
             if (exists(textOutput))
             {

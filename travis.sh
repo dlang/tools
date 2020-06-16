@@ -10,15 +10,8 @@ set -uexo pipefail
 GDMD=$(find ~/dlang -type f -name "gdmd")
 LDMD2=$(find ~/dlang -type f -name "ldmd2")
 
-curl https://ftp.gnu.org/gnu/make/make-4.2.tar.gz | tar -xz
-cd make-4.2
-./configure
-./build.sh
-cd ..
-export MAKE=$(pwd)/make-4.2/make
-
-$MAKE -f posix.mak all DMD="$(which dmd)"
-$MAKE -f posix.mak test DMD="$(which dmd)" \
+make -f posix.mak all DMD="$(which dmd)"
+make -f posix.mak test DMD="$(which dmd)" \
     RDMD_TEST_COMPILERS=dmd,"$GDMD","$LDMD2" \
     VERBOSE_RDMD_TEST=1
 
