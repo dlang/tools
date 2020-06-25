@@ -83,7 +83,7 @@ private:
         if (!config.attributes.empty)
             return filterForUDAs(decl);
         else
-            return hasDdocHeader(sourceCode, decl);
+            return decl.unittest_.comment !is null;
     }
 
     bool filterForUDAs(const Declaration decl)
@@ -300,47 +300,6 @@ to in the output directory.
             stderr.writeln("ignoring ", file);
         }
     }
-}
-
-bool hasDdocHeader(const(ubyte)[] sourceCode, const Declaration decl)
-{
-    import std.algorithm.comparison : min;
-
-    bool hasComment;
-    size_t firstPos = size_t.max;
-
-    if (decl.unittest_ !is null)
-    {
-        firstPos = decl.unittest_.location;
-        hasComment = decl.unittest_.comment.length > 0;
-    }
-    else if (decl.functionDeclaration !is null)
-    {
-        // skip the return type
-        firstPos = sourceCode.skipPreviousWord(decl.functionDeclaration.name.index);
-        if (auto stClasses = decl.functionDeclaration.storageClasses)
-            firstPos = min(firstPos, stClasses[0].token.index);
-        hasComment = decl.functionDeclaration.comment.length > 0;
-    }
-    else if (decl.templateDeclaration !is null)
-    {
-        // skip the word `template`
-        firstPos = sourceCode.skipPreviousWord(decl.templateDeclaration.name.index);
-        hasComment = decl.templateDeclaration.comment.length > 0;
-    }
-
-    // libdparse will put any ddoc comment with at least one character in the comment field
-    if (hasComment)
-        return true;
-
-    firstPos = min(firstPos, getAttributesStartLocation(decl.attributes));
-
-    // scan the previous line for ddoc header -> skip to last real character
-    auto prevLine = sourceCode[0 .. firstPos].retro.find!(c => whitespace.countUntil(c) < 0);
-
-    // if there is no comment annotation, only three possible cases remain.
-    // one line ddoc: ///, multi-line comments: /** */ or /++ +/
-    return prevLine.filter!(c => !whitespace.canFind(c)).startsWith("///", "/+++/", "/***/") > 0;
 }
 
 /**
