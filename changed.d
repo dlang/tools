@@ -153,10 +153,9 @@ auto getIssues(string revRange)
 
         foreach (line; p.stdout.byLine())
         {
-            if (auto m = match(line, closedRE))
+            if (auto m = match(line.stripLeft, closedRE))
             {
-                if (!m.captures[1].length) continue;
-                m.captures[5]
+                m.captures[1]
                     .splitter(ctRegex!`[^\d]+`)
                     .filter!(b => b.length)
                     .map!(to!int)
