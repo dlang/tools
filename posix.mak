@@ -74,8 +74,8 @@ changed:   $(ROOT)/changed
 dman:      $(ROOT)/dman
 dustmite:  $(ROOT)/dustmite
 
-$(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d
-	$(DMD) $(DFLAGS) -version=Dlang_Tools DustMite/dustmite.d DustMite/splitter.d -of$(@)
+$(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d DustMite/polyhash.d
+	$(DMD) $(DFLAGS) -version=Dlang_Tools DustMite/dustmite.d DustMite/splitter.d DustMite/polyhash.d -of$(@)
 
 $(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS) $(TEST_TOOLS): $(ROOT)/%: %.d
 	$(DMD) $(DFLAGS) -of$(@) $(<)
