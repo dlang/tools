@@ -1,6 +1,6 @@
 /// Simple source code splitter
 /// Written by Vladimir Panteleev <vladimir@thecybershadow.net>
-/// Released into the Public Domain
+/// License: Boost Software License, Version 1.0
 
 module splitter;
 
@@ -17,8 +17,49 @@ import std.string;
 import std.traits;
 import std.stdio : stderr;
 
+import polyhash;
+
+/// Represents an Entity's position within a program tree.
+struct Address
+{
+	Address* parent;       /// Upper node's Address. If null, then this is the root node (and index should be 0).
+	size_t index;          /// Index within the parent's children array
+	size_t depth;          /// Distance from the root address
+
+	Address*[] children;   /// Used to keep a global cached tree of addresses.
+	ref Address* child(size_t index) const
+	{
+		auto mutableThis = cast(Address*)&this; // Break const for caching
+		if (mutableThis.children.length < index + 1)
+			mutableThis.children.length = index + 1;
+		if (!mutableThis.children[index])
+			mutableThis.children[index] = new Address(mutableThis, index, depth+1);
+		return mutableThis.children[index];
+	}
+}
+
+struct EntityRef             /// Reference to another Entity in the same tree
+{
+	Entity entity;           /// Pointer - only valid during splitting / optimizing
+	const(Address)* address; /// Address - assigned after splitting / optimizing
+}
+
+enum largest64bitPrime = 18446744073709551557UL; // 0xFFFFFFFF_FFFFFFC5
+// static if (is(ModQ!(ulong, largest64bitPrime)))
+static if (modQSupported) // https://issues.dlang.org/show_bug.cgi?id=20677
+	alias EntityHash = PolynomialHash!(ModQ!(ulong, largest64bitPrime));
+else
+{
+	pragma(msg,
+		"64-bit long multiplication/division is not supported on this platform.\n" ~
+		"Falling back to working in modulo 2^^64.\n" ~
+		"Hashing / cache accuracy may be impaired.\n" ~
+		"---------------------------------------------------------------------");
+	alias EntityHash = PolynomialHash!ulong;
+}
+
 /// Represents a slice of the original code.
-class Entity
+final class Entity
 {
 	string head;           /// This node's "head", e.g. "{" for a statement block.
 	Entity[] children;     /// This node's children nodes, e.g. the statements of the statement block.
@@ -29,14 +70,18 @@ class Entity
 
 	bool isPair;           /// Internal hint for --dump output
 	bool noRemove;         /// Don't try removing this entity (children OK)
+	bool clean;            /// Computed fields are up-to-date
 
-	bool removed;          /// For dangling dependencies
-	Entity[] dependencies; /// If any of these entities are omitted, so should this entity.
+	bool dead;             /// Tombstone or redirect
+	EntityRef[] dependents;/// If this entity is removed, so should all these entities.
+	Address* redirect;     /// If moved, this is where this entity is now
 
 	int id;                /// For diagnostics
-	size_t descendants;    /// For progress display
-
-	DSplitter.Token token; /// Used internally
+	size_t descendants;    /// [Computed] For progress display
+	EntityHash hash;       /// [Computed] Hashed value of this entity's content (as if it were saved to disk).
+	const(Address)*[] allDependents; /// [Computed] External dependents of this and child nodes
+	string deadContents;   /// [Computed] For --white-out - all of this node's contents, with non-whitespace replaced by whitespace
+	EntityHash deadHash;   /// [Computed] Hash of deadContents
 
 	this(string head = null, Entity[] children = null, string tail = null)
 	{
@@ -45,11 +90,10 @@ class Entity
 		this.tail     = tail;
 	}
 
-	string[] comments;
-
 	@property string comment()
 	{
-		string[] result = comments;
+		string[] result;
+		debug result = comments;
 		if (isPair)
 		{
 			assert(token == DSplitter.Token.none);
@@ -60,10 +104,33 @@ class Entity
 		return result.length ? result.join(" / ") : null;
 	}
 
-	override string toString()
+	override string toString() const
 	{
 		return "%(%s%) %s %(%s%)".format([head], children, [tail]);
 	}
+
+	Entity dup()           /// Creates a shallow copy
+	{
+		auto result = new Entity;
+		foreach (i, item; this.tupleof)
+			result.tupleof[i] = this.tupleof[i];
+		result.children = result.children.dup;
+		return result;
+	}
+
+	void kill()            /// Convert to tombstone/redirect
+	{
+		dependents = null;
+		isPair = false;
+		descendants = 0;
+		allDependents = null;
+		dead = true;
+	}
+
+private: // Used during parsing only
+	DSplitter.Token token;    /// Used internally
+
+	debug string[] comments;  /// Used to debug the splitter
 }
 
 enum Mode
@@ -79,6 +146,7 @@ enum Splitter
 	words,     /// Split by whitespace
 	D,         /// Parse D source code
 	diff,      /// Unified diffs
+	indent,    /// Indentation (Python, YAML...)
 }
 immutable string[] splitterNames = [EnumMembers!Splitter].map!(e => e.text().toLower()).array();
 
@@ -95,6 +163,7 @@ struct ParseOptions
 	bool stripComments;
 	ParseRule[] rules;
 	Mode mode;
+	uint tabWidth;
 }
 
 /// Parse the given file/directory.
@@ -123,15 +192,15 @@ Entity loadFiles(ref string path, ParseOptions options)
 
 enum BIN_SIZE = 2;
 
-void optimize(Entity set)
+void optimizeUntil(alias stop)(Entity set)
 {
-	static void group(ref Entity[] set, size_t start, size_t end)
+	static Entity group(Entity[] children)
 	{
-		//set = set[0..start] ~ [new Entity(removable, set[start..end])] ~ set[end..$];
-		auto children = set[start..end].dup;
+		if (children.length == 1)
+			return children[0];
 		auto e = new Entity(null, children, null);
 		e.noRemove = children.any!(c => c.noRemove)();
-		set.replaceInPlace(start, end, [e]);
+		return e;
 	}
 
 	static void clusterBy(ref Entity[] set, size_t binSize)
@@ -141,16 +210,14 @@ void optimize(Entity set)
 			auto size = set.length >= binSize*2 ? binSize : (set.length+1) / 2;
 			//auto size = binSize;
 
-			auto bins = set.length/size;
-			if (set.length % size > 1)
-				group(set, bins*size, set.length);
-			foreach_reverse (i; 0..bins)
-				group(set, i*size, (i+1)*size);
+			set = set.chunks(size).map!group.array;
 		}
 	}
 
-	static void doOptimize(Entity e)
+	void doOptimize(Entity e)
 	{
+		if (stop(e))
+			return;
 		foreach (c; e.children)
 			doOptimize(c);
 		clusterBy(e.children, BIN_SIZE);
@@ -158,6 +225,8 @@ void optimize(Entity set)
 
 	doOptimize(set);
 }
+
+alias optimize = optimizeUntil!((Entity e) => false);
 
 private:
 
@@ -219,6 +288,9 @@ Entity loadFile(string name, string path, ParseOptions options)
 				case Splitter.diff:
 					result.children = parseDiff(result.contents);
 					return result;
+				case Splitter.indent:
+					result.children = parseIndent(result.contents, options.tabWidth);
+					return result;
 			}
 		}
 	assert(false); // default * rule should match everything
@@ -279,20 +351,24 @@ struct DSplitter
 
 		generated0, /// First value of generated tokens (see below)
 
-		max = generated0 + tokenLookup.length
+		max = tokenText.length
 	}
 
-	enum Token[string] tokenLookup = // DMD pr/2824
+	static immutable string[] tokenText =
 	{
+		auto result = new string[Token.generated0];
 		Token[string] lookup;
 
-		auto t = Token.generated0;
 		Token add(string s)
 		{
 			auto p = s in lookup;
 			if (p)
 				return *p;
-			return lookup[s] = t++;
+
+			Token t = cast(Token)result.length;
+			result ~= s;
+			lookup[s] = t;
+			return t;
 		}
 
 		foreach (pair; pairs)
@@ -304,21 +380,21 @@ struct DSplitter
 		foreach (i, synonyms; separators)
 			foreach (sep; synonyms)
 				add(sep);
-
-		return lookup;
-	}();
-
-	static immutable string[Token.max] tokenText =
-	{
-		string[Token.max] result;
-		foreach (k, v; tokenLookup)
-			result[v] = k;
 		return result;
 	}();
 
+	static Token lookupToken(string s)
+	{
+		if (!__ctfe) assert(false, "Don't use at runtime");
+		foreach (t; Token.generated0 .. Token.max)
+			if (s == tokenText[t])
+				return t;
+		assert(false, "No such token: " ~ s);
+	}
+	enum Token tokenLookup(string s) = lookupToken(s);
+
 	struct TokenPair { Token start, end; }
-	static Token lookupToken(string s) { return tokenLookup[s]; }
-	static TokenPair makeTokenPair(Pair pair) { return TokenPair(tokenLookup[pair.start], tokenLookup[pair.end]); }
+	static TokenPair makeTokenPair(Pair pair) { return TokenPair(lookupToken(pair.start), lookupToken(pair.end)); }
 	alias lookupTokens = arrayMap!(lookupToken, const string);
 	static immutable TokenPair[] pairTokens      = pairs     .arrayMap!makeTokenPair();
 	static immutable Token[][]   separatorTokens = separators.arrayMap!lookupTokens ();
@@ -338,11 +414,11 @@ struct DSplitter
 	{
 		switch (t)
 		{
-			case tokenLookup[";"]:
+			case tokenLookup!";":
 				return SeparatorType.postfix;
-			case tokenLookup["import"]:
+			case tokenLookup!"import":
 				return SeparatorType.prefix;
-			case tokenLookup["else"]:
+			case tokenLookup!"else":
 				return SeparatorType.binary;
 			default:
 				if (pairTokens.any!(pair => pair.start == t))
@@ -449,7 +525,7 @@ struct DSplitter
 				advance();
 				break;
 			case 'r':
-				if (consume(`r"`))
+				if (consume(`"`))
 				{
 					result = Token.other;
 					while (advance() != '"')
@@ -645,7 +721,6 @@ struct DSplitter
 			return r;
 		}
 
-		tokenLoop:
 		while (true)
 		{
 			Token token;
@@ -771,7 +846,7 @@ struct DSplitter
 		for (size_t i=0; i<entities.length;)
 		{
 			auto e = entities[i];
-			if (e.head.empty && e.tail.empty && e.dependencies.empty)
+			if (e.head.empty && e.tail.empty && e.dependents.empty)
 			{
 				assert(e.token == Token.none);
 				if (e.children.length == 0)
@@ -813,7 +888,7 @@ struct DSplitter
 			auto head = entities[0..i] ~ group(e.children);
 			e.children = null;
 			auto tail = new Entity(null, group(entities[i+1..$]), null);
-			e.dependencies ~= tail;
+			tail.dependents ~= EntityRef(e);
 			entities = group(head ~ e) ~ tail;
 			foreach (c; entities)
 				postProcessDependency(c.children);
@@ -825,11 +900,10 @@ struct DSplitter
 		if (!entities.length)
 			return;
 		foreach_reverse (i, e; entities[0..$-1])
-			if (e.token == tokenLookup["!"] && entities[i+1].children.length && entities[i+1].children[0].token == tokenLookup["("])
+			if (e.token == tokenLookup!"!" && entities[i+1].children.length && entities[i+1].children[0].token == tokenLookup!"(")
 			{
 				auto dependency = new Entity;
-				e.dependencies ~= dependency;
-				entities[i+1].children[0].dependencies ~= dependency;
+				dependency.dependents = [EntityRef(e), EntityRef(entities[i+1].children[0])];
 				entities = entities[0..i+1] ~ dependency ~ entities[i+1..$];
 			}
 	}
@@ -838,27 +912,22 @@ struct DSplitter
 	{
 		foreach (i, e; entities)
 			if (i && !e.token && e.children.length && getSeparatorType(e.children[0].token) == SeparatorType.binary && !e.children[0].children)
-				e.children[0].dependencies ~= entities[i-1];
+				entities[i-1].dependents ~= EntityRef(e.children[0]);
 	}
 
 	static void postProcessBlockKeywords(ref Entity[] entities)
 	{
-		for (size_t i=0; i<entities.length;)
+		foreach_reverse (i; 0 .. entities.length)
 		{
 			if (blockKeywordTokens.canFind(entities[i].token) && i+1 < entities.length)
 			{
 				auto j = i + 1;
-				if (j < entities.length && entities[j].token == tokenLookup["("])
+				if (j < entities.length && entities[j].token == tokenLookup!"(")
 					j++;
 				j++; // ; or {
 				if (j <= entities.length)
-				{
 					entities = entities[0..i] ~ group(group(entities[i..j-1]) ~ entities[j-1..j]) ~ entities[j..$];
-					continue;
-				}
 			}
-
-			i++;
 		}
 	}
 
@@ -879,23 +948,23 @@ struct DSplitter
 				return false;
 			}
 
-			if (consume(tokenLookup["if"]) || consume(tokenLookup["static if"]))
-				consume(tokenLookup["else"]);
+			if (consume(tokenLookup!"if") || consume(tokenLookup!"static if"))
+				consume(tokenLookup!"else");
 			else
-			if (consume(tokenLookup["do"]))
-				consume(tokenLookup["while"]);
+			if (consume(tokenLookup!"do"))
+				consume(tokenLookup!"while");
 			else
-			if (consume(tokenLookup["try"]))
+			if (consume(tokenLookup!"try"))
 			{
-				while (consume(tokenLookup["catch"]))
+				while (consume(tokenLookup!"catch"))
 					continue;
-				consume(tokenLookup["finally"]);
+				consume(tokenLookup!"finally");
 			}
 
 			if (i == j)
 			{
 				j++;
-				while (consume(tokenLookup["in"]) || consume(tokenLookup["out"]) || consume(tokenLookup["body"]))
+				while (consume(tokenLookup!"in") || consume(tokenLookup!"out") || consume(tokenLookup!"body"))
 					continue;
 			}
 
@@ -917,7 +986,7 @@ struct DSplitter
 		{
 			// Create pair entities
 
-			if (entities[i].token == tokenLookup["{"])
+			if (entities[i].token == tokenLookup!"{")
 			{
 				if (i >= lastPair + 1)
 				{
@@ -932,7 +1001,7 @@ struct DSplitter
 					lastPair = i + 1;
 			}
 			else
-			if (entities[i].token == tokenLookup[";"])
+			if (entities[i].token == tokenLookup!";")
 				lastPair = i + 1;
 
 			i++;
@@ -948,7 +1017,7 @@ struct DSplitter
 				auto pparen = firstHead(entities[i+1]);
 				if (pparen
 				 && *pparen !is entities[i+1]
-				 && pparen.token == tokenLookup["("])
+				 && pparen.token == tokenLookup!"(")
 				{
 					auto paren = *pparen;
 					*pparen = new Entity();
@@ -1041,7 +1110,7 @@ struct DSplitter
 			if (entity.token == Token.other && isValidIdentifier(id) && !entity.tail && !entity.children)
 				lastID = id;
 			else
-			if (lastID && entity.token == tokenLookup["("])
+			if (lastID && entity.token == tokenLookup!"(")
 			{
 				size_t[] stack;
 				struct Comma { size_t[] addr, after; }
@@ -1060,7 +1129,7 @@ struct DSplitter
 						afterComma = false;
 					}
 
-					if (entity.token == tokenLookup[","])
+					if (entity.token == tokenLookup!",")
 					{
 						commas ~= Comma(stack);
 						//entity.comments ~= "Comma %d".format(commas.length);
@@ -1112,7 +1181,7 @@ struct DSplitter
 				return;
 			}
 			else
-			if (entity.token == tokenLookup["!"])
+			if (entity.token == tokenLookup!"!")
 				{}
 			else
 			if (entity.head || entity.tail)
@@ -1142,7 +1211,7 @@ struct DSplitter
 				debug e.comments ~= "%s param %d".format(id, i);
 				funRoot.children ~= e;
 				foreach (arg; args)
-					arg.dependencies ~= e;
+					e.dependents ~= EntityRef(arg);
 			}
 		}
 	}
@@ -1239,6 +1308,50 @@ Entity[] parseDiff(string s)
 		)
 		.array
 	;
+}
+
+Entity[] parseIndent(string s, uint tabWidth)
+{
+	Entity[] root;
+	Entity[]*[] stack;
+
+	foreach (line; s.split2!("\n", ""))
+	{
+		size_t indent = 0;
+	charLoop:
+		foreach (c; line)
+			switch (c)
+			{
+				case ' ':
+					indent++;
+					break;
+				case '\t':
+					indent += tabWidth;
+					break;
+				case '\r':
+				case '\n':
+					// Treat empty (whitespace-only) lines as belonging to the
+					// immediately higher (most-nested) block.
+					indent = stack.length;
+					break charLoop;
+				default:
+					break charLoop;
+			}
+
+		auto e = new Entity(line);
+		foreach_reverse (i; 0 .. min(indent, stack.length)) // non-inclusively up to indent
+			if (stack[i])
+			{
+				*stack[i] ~= e;
+				goto parentFound;
+			}
+		root ~= e;
+	parentFound:
+		stack.length = indent + 1;
+		stack[indent] = &e.children;
+	}
+
+	return root;
 }
 
 private:
