@@ -1,25 +1,32 @@
-/// DustMite, a D test case minimization tool
+/// DustMite, a general-purpose data reduction tool
 /// Written by Vladimir Panteleev <vladimir@thecybershadow.net>
-/// Released into the Public Domain
+/// License: Boost Software License, Version 1.0
 
 module dustmite;
+
+import core.atomic;
+import core.thread;
 
 import std.algorithm;
 import std.array;
 import std.ascii;
+import std.container.rbtree;
 import std.conv;
 import std.datetime;
 import std.datetime.stopwatch : StopWatch;
 import std.exception;
 import std.file;
 import std.getopt;
+import std.math : nextPow2;
 import std.path;
 import std.parallelism : totalCPUs;
 import std.process;
 import std.random;
+import std.range;
 import std.regex;
 import std.stdio;
 import std.string;
+import std.typecons;
 
 import splitter;
 
@@ -33,16 +40,15 @@ string dir, resultDir, tester, globalCache;
 string dirSuffix(string suffix) { return (dir.absolutePath().buildNormalizedPath() ~ "." ~ suffix).relativePath(); }
 
 size_t maxBreadth;
-Entity root;
 size_t origDescendants;
-int tests; bool foundAnything;
-bool noSave, trace, noRedirect;
+int tests, maxSteps = -1; bool foundAnything;
+bool noSave, trace, noRedirect, doDump, whiteout;
 string strategy = "inbreadth";
 
-struct Times { StopWatch total, load, testSave, resultSave, test, clean, cacheHash, globalCache, misc; }
+struct Times { StopWatch total, load, testSave, resultSave, apply, lookaheadApply, lookaheadWaitThread, lookaheadWaitProcess, test, clean, globalCache, misc; }
 Times times;
 static this() { times.total.start(); times.misc.start(); }
-void measure(string what)(void delegate() p)
+void measure(string what)(scope void delegate() p)
 {
 	times.misc.stop(); mixin("times."~what~".start();");
 	p();
@@ -51,12 +57,14 @@ void measure(string what)(void delegate() p)
 
 struct Reduction
 {
-	enum Type { None, Remove, Unwrap, Concat, ReplaceWord }
+	enum Type { None, Remove, Unwrap, Concat, ReplaceWord, Swap }
 	Type type;
+	Entity root;
 
-	// Remove / Unwrap / Concat
-	size_t[] address;
-	Entity target;
+	// Remove / Unwrap / Concat / Swap
+	const(Address)* address;
+	// Swap
+	const(Address)* address2;
 
 	// ReplaceWord
 	string from, to;
@@ -75,13 +83,19 @@ struct Reduction
 			case Reduction.Type.Remove:
 			case Reduction.Type.Unwrap:
 			case Reduction.Type.Concat:
+			{
+				auto address = addressToArr(this.address);
 				string[] segments = new string[address.length];
 				Entity e = root;
 				size_t progress;
 				bool binary = maxBreadth == 2;
 				foreach (i, a; address)
 				{
-					segments[i] = binary ? text(a) : format("%d/%d", e.children.length-a, e.children.length);
+					auto p = a;
+					foreach (c; e.children[0..a])
+						if (c.dead)
+							p--;
+					segments[i] = binary ? text(p) : format("%d/%d", e.children.length-a, e.children.length);
 					foreach (c; e.children[0..a])
 						progress += c.descendants;
 					progress++; // account for this node
@@ -90,18 +104,47 @@ struct Reduction
 				progress += e.descendants;
 				auto progressPM = (origDescendants-progress) * 1000 / origDescendants; // per-mille
 				return format("[%2d.%d%%] %s [%s]", progressPM/10, progressPM%10, name, segments.join(binary ? "" : ", "));
+			}
+			case Reduction.Type.Swap:
+			{
+				static string addressToString(Entity root, const(Address)* addressPtr)
+				{
+					auto address = addressToArr(findEntityEx(root, addressPtr).address);
+					string[] segments = new string[address.length];
+					bool binary = maxBreadth == 2;
+					Entity e = root;
+					foreach (i, a; address)
+					{
+						auto p = a;
+						foreach (c; e.children[0..a])
+							if (c.dead)
+								p--;
+						segments[i] = binary ? text(p) : format("%d/%d", e.children.length-a, e.children.length);
+						e = e.children[a];
+					}
+					return segments.join(binary ? "" : ", ");
+				}
+				return format("[%s] <-> [%s]",
+					addressToString(root, address),
+					addressToString(root, address2));
+			}
 		}
 	}
 }
 
+Address rootAddress;
+
 auto nullReduction = Reduction(Reduction.Type.None);
+
+struct RemoveRule { Regex!char regexp; string shellGlob; bool remove; }
 
 int main(string[] args)
 {
-	bool force, dump, dumpHtml, showTimes, stripComments, obfuscate, keepLength, showHelp, showVersion, noOptimize;
+	bool force, dumpHtml, showTimes, stripComments, obfuscate, fuzz, keepLength, showHelp, showVersion, noOptimize, inPlace;
 	string coverageDir;
-	string[] reduceOnly, noRemoveStr, splitRules;
-	uint lookaheadCount;
+	RemoveRule[] removeRules;
+	string[] splitRules;
+	uint lookaheadCount, tabWidth = 8;
 
 	args = args.filter!(
 		(arg)
@@ -117,15 +160,18 @@ int main(string[] args)
 
 	getopt(args,
 		"force", &force,
-		"reduceonly|reduce-only", &reduceOnly,
-		"noremove|no-remove", &noRemoveStr,
+		"reduceonly|reduce-only", (string opt, string value) { removeRules ~= RemoveRule(Regex!char.init, value, true); },
+		"remove"                , (string opt, string value) { removeRules ~= RemoveRule(regex(value, "mg"), null, true); },
+		"noremove|no-remove"    , (string opt, string value) { removeRules ~= RemoveRule(regex(value, "mg"), null, false); },
 		"strip-comments", &stripComments,
+		"whiteout|white-out", &whiteout,
 		"coverage", &coverageDir,
 		"obfuscate", &obfuscate,
+		"fuzz", &fuzz,
 		"keep-length", &keepLength,
 		"strategy", &strategy,
 		"split", &splitRules,
-		"dump", &dump,
+		"dump", &doDump,
 		"dump-html", &dumpHtml,
 		"times", &showTimes,
 		"noredirect|no-redirect", &noRedirect,
@@ -133,6 +179,9 @@ int main(string[] args)
 		"trace", &trace, // for debugging
 		"nosave|no-save", &noSave, // for research
 		"nooptimize|no-optimize", &noOptimize, // for research
+		"tab-width", &tabWidth,
+		"max-steps", &maxSteps, // for research / benchmarking
+		"i|in-place", &inPlace,
 		"h|help", &showHelp,
 		"V|version", &showVersion,
 	);
@@ -163,17 +212,22 @@ Supported options:
   --force            Force reduction of unusual files
   --reduce-only MASK Only reduce paths glob-matching MASK
                        (may be used multiple times)
+  --remove REGEXP    Only reduce blocks covered by REGEXP
+                       (may be used multiple times)
   --no-remove REGEXP Do not reduce blocks containing REGEXP
                        (may be used multiple times)
-  --strip-comments   Attempt to remove comments from source code.
+  --strip-comments   Attempt to remove comments from source code
+  --white-out        Replace deleted text with spaces to preserve line numbers
   --coverage DIR     Load .lst files corresponding to source files from DIR
+  --fuzz             Instead of reducing, fuzz the input by performing random
+                       changes until TESTER returns 0
   --obfuscate        Instead of reducing, obfuscate the input by replacing
                        words with random substitutions
   --keep-length      Preserve word length when obfuscating
   --split MASK:MODE  Parse and reduce files specified by MASK using the given
                        splitter. Can be repeated. MODE must be one of:
                        %-(%s, %)
-  --no-redirect      Don't redirect stdout/stderr streams of test command.
+  --no-redirect      Don't redirect stdout/stderr streams of test command
   -j[N]              Use N look-ahead processes (%d by default)
 EOS", args[0], splitterNames, totalCPUs);
 
@@ -187,8 +241,8 @@ EOS");
 		{
 			stderr.write(q"EOS
   -h, --help         Show this message
-  -V, --version      Show program version
 Less interesting options:
+  -V, --version      Show program version
   --strategy STRAT   Set strategy (careful/lookback/pingpong/indepth/inbreadth)
   --dump             Dump parsed tree to DIR.dump file
   --dump-html        Dump parsed tree to DIR.html file
@@ -196,9 +250,13 @@ Less interesting options:
   --cache DIR        Use DIR as persistent disk cache
                        (in addition to memory cache)
   --trace            Save all attempted reductions to DIR.trace
+  -i, --in-place     Overwrite input with results
   --no-save          Disable saving in-progress results
   --no-optimize      Disable tree optimization step
                        (may be useful with --dump)
+  --max-steps N      Perform no more than N steps when reducing
+  --tab-width N      How many spaces one tab is equivalent to
+                       (for the "indent" split mode)
 EOS");
 		}
 		stderr.write(q"EOS
@@ -220,13 +278,16 @@ EOS");
 
 	bool isDotName(string fn) { return fn.startsWith(".") && !(fn=="." || fn==".."); }
 
+	bool suspiciousFilesFound;
 	if (!force && isDir(dir))
 		foreach (string path; dirEntries(dir, SpanMode.breadth))
 			if (isDotName(baseName(path)) || isDotName(baseName(dirName(path))) || extension(path)==".o" || extension(path)==".obj" || extension(path)==".exe")
 			{
-				stderr.writefln("Suspicious file found: %s\nYou should use a clean copy of the source tree.\nIf it was your intention to include this file in the file-set to be reduced,\nre-run dustmite with the --force option.", path);
-				return 1;
+				stderr.writeln("Warning: Suspicious file found: ", path);
+				suspiciousFilesFound = true;
 			}
+	if (suspiciousFilesFound)
+		stderr.writeln("You should use a clean copy of the source tree.\nIf it was your intention to include this file in the file-set to be reduced,\nyou can use --force to silence this message.");
 
 	ParseRule parseSplitRule(string rule)
 	{
@@ -239,29 +300,33 @@ EOS");
 		return ParseRule(pattern, cast(Splitter)splitterIndex);
 	}
 
+	Entity root;
+
 	ParseOptions parseOptions;
 	parseOptions.stripComments = stripComments;
 	parseOptions.mode = obfuscate ? ParseOptions.Mode.words : ParseOptions.Mode.source;
 	parseOptions.rules = splitRules.map!parseSplitRule().array();
+	parseOptions.tabWidth = tabWidth;
 	measure!"load"({root = loadFiles(dir, parseOptions);});
 	enforce(root.children.length, "No files in specified directory");
 
-	applyNoRemoveMagic();
-	applyNoRemoveRegex(noRemoveStr, reduceOnly);
-	applyNoRemoveDeps();
+	applyNoRemoveMagic(root);
+	applyNoRemoveRules(root, removeRules);
+	applyNoRemoveDeps(root);
 	if (coverageDir)
-		loadCoverage(coverageDir);
+		loadCoverage(root, coverageDir);
 	if (!obfuscate && !noOptimize)
 		optimize(root);
 	maxBreadth = getMaxBreadth(root);
-	countDescendants(root);
-	resetProgress();
 	assignID(root);
+	convertRefs(root);
+	recalculate(root);
+	resetProgress(root);
 
-	if (dump)
-		dumpSet(dirSuffix("dump"));
+	if (doDump)
+		dumpSet(root, dirSuffix("dump"));
 	if (dumpHtml)
-		dumpToHtml(dirSuffix("html"));
+		dumpToHtml(root, dirSuffix("html"));
 
 	if (tester is null)
 	{
@@ -269,54 +334,75 @@ EOS");
 		return 0;
 	}
 
-	resultDir = dirSuffix("reduced");
-	if (resultDir.exists)
+	if (inPlace)
+		resultDir = dir;
+	else
 	{
-		writeln("Hint: read https://github.com/CyberShadow/DustMite/wiki#result-directory-already-exists");
-		throw new Exception("Result directory already exists");
+		resultDir = dirSuffix("reduced");
+		if (resultDir.exists)
+		{
+			writeln("Hint: read https://github.com/CyberShadow/DustMite/wiki#result-directory-already-exists");
+			throw new Exception("Result directory already exists");
+		}
 	}
 
-	auto nullResult = test(nullReduction);
-	if (!nullResult.success)
+	if (!fuzz)
 	{
-		auto testerFile = dir.buildNormalizedPath(tester);
-		version (Posix)
+		auto nullResult = test(root, [nullReduction]);
+		if (!nullResult.success)
 		{
-			if (testerFile.exists && (testerFile.getAttributes() & octal!111) == 0)
-				writeln("Hint: test program seems to be a non-executable file, try: chmod +x " ~ testerFile.escapeShellFileName());
+			auto testerFile = dir.buildNormalizedPath(tester);
+			version (Posix)
+			{
+				if (testerFile.exists && (testerFile.getAttributes() & octal!111) == 0)
+					writeln("Hint: test program seems to be a non-executable file, try: chmod +x " ~ testerFile.escapeShellFileName());
+			}
+			if (!testerFile.exists && tester.exists)
+				writeln("Hint: test program path should be relative to the source directory, try " ~
+					tester.absolutePath.relativePath(dir.absolutePath).escapeShellFileName() ~
+					" instead of " ~ tester.escapeShellFileName());
+			if (!noRedirect)
+				writeln("Hint: use --no-redirect to see test script output");
+			writeln("Hint: read https://github.com/CyberShadow/DustMite/wiki#initial-test-fails");
+			throw new Exception("Initial test fails: " ~ nullResult.reason);
 		}
-		if (!testerFile.exists && tester.exists)
-			writeln("Hint: test program path should be relative to the source directory, try " ~
-				tester.absolutePath.relativePath(dir.absolutePath).escapeShellFileName() ~
-				" instead of " ~ tester.escapeShellFileName());
-		if (!noRedirect)
-			writeln("Hint: use --no-redirect to see test script output");
-		writeln("Hint: read https://github.com/CyberShadow/DustMite/wiki#initial-test-fails");
-		throw new Exception("Initial test fails: " ~ nullResult.reason);
 	}
 
 	lookaheadProcesses = new Lookahead[lookaheadCount];
 
 	foundAnything = false;
+	string resultAdjective;
 	if (obfuscate)
-		.obfuscate(keepLength);
+	{
+		resultAdjective = "obfuscated";
+		.obfuscate(root, keepLength);
+	}
 	else
-		reduce();
+	if (fuzz)
+	{
+		resultAdjective = "fuzzed";
+		.fuzz(root);
+	}
+	else
+	{
+		resultAdjective = "reduced";
+		reduce(root);
+	}
 
 	auto duration = times.total.peek();
 	duration = dur!"msecs"(duration.total!"msecs"); // truncate anything below ms, users aren't interested in that
 	if (foundAnything)
 	{
-		if (root.children.length)
+		if (!root.dead)
 		{
 			if (noSave)
-				measure!"resultSave"({safeSave(resultDir);});
-			writefln("Done in %s tests and %s; reduced version is in %s", tests, duration, resultDir);
+				measure!"resultSave"({safeSave(root, resultDir);});
+			writefln("Done in %s tests and %s; %s version is in %s", tests, duration, resultAdjective, resultDir);
 		}
 		else
 		{
 			writeln("Hint: read https://github.com/CyberShadow/DustMite/wiki#reduced-to-empty-set");
-			writefln("Done in %s tests and %s; reduced to empty set", tests, duration);
+			writefln("Done in %s tests and %s; %s to empty set", tests, duration, resultAdjective);
 		}
 	}
 	else
@@ -341,34 +427,252 @@ size_t getMaxBreadth(Entity e)
 	return breadth;
 }
 
-size_t countDescendants(Entity e)
+/// An output range which only allocates a new copy on the first write
+/// that's different from a given original copy.
+auto cowRange(E)(E[] arr)
 {
-	size_t n = 1;
-	foreach (c; e.children)
-		n += countDescendants(c);
-	return e.descendants = n;
+	static struct Range
+	{
+		void put(ref E item)
+		{
+			if (pos != size_t.max)
+			{
+				if (pos == arr.length || item != arr[pos])
+				{
+					arr = arr[0 .. pos];
+					pos = size_t.max;
+					// continue to append (appending to a slice will copy)
+				}
+				else
+				{
+					pos++;
+					return;
+				}
+			}
+
+			arr ~= item;
+		}
+
+		E[] get() { return pos == size_t.max ? arr : arr[0 .. pos]; }
+
+	private:
+		E[] arr;
+		size_t pos; // if size_t.max, then the copy has occurred
+	}
+	return Range(arr);
+}
+
+/// Update computed fields for dirty nodes
+void recalculate(Entity root)
+{
+	// Pass 1 - length + hash (and some other calculated fields)
+	{
+		bool pass1(Entity e, Address *addr)
+		{
+			if (e.clean)
+				return false;
+
+			auto allDependents = e.allDependents.cowRange();
+			e.descendants = 1;
+			e.hash = e.deadHash = EntityHash.init;
+			e.contents = e.deadContents = null;
+
+			void putString(string s)
+			{
+				e.hash.put(s);
+
+				// There is a circular dependency here.
+				// Calculating the whited-out string efficiently
+				// requires the total length of all children,
+				// which is conveniently included in the hash.
+				// However, calculating the hash requires knowing
+				// the whited-out string that will be written.
+				// Break the cycle by calculating the hash of the
+				// redundantly whited-out string explicitly here.
+				if (whiteout)
+					foreach (c; s)
+						e.deadHash.put(c.isWhite ? c : ' ');
+			}
+
+			putString(e.filename);
+			putString(e.head);
+
+			void addDependents(R)(R range, bool fresh)
+			{
+				if (e.dead)
+					return;
+
+				auto oldDependents = allDependents.get();
+			dependentLoop:
+				foreach (const(Address)* d; range)
+				{
+					if (!fresh)
+					{
+						d = findEntity(root, d).address;
+						if (!d)
+							continue; // Gone
+					}
+
+					if (d.startsWith(addr))
+						continue; // Internal
+
+					// Deduplicate
+					foreach (o; oldDependents)
+						if (equal(d, o))
+							continue dependentLoop;
+
+					allDependents.put(d);
+				}
+			}
+			if (e.dead)
+				assert(!e.dependents);
+			else
+			{
+				// Update dependents' addresses
+				auto dependents = cowRange(e.dependents);
+				foreach (d; e.dependents)
+				{
+					d.address = findEntity(root, d.address).address;
+					if (d.address)
+						dependents.put(d);
+				}
+				e.dependents = dependents.get();
+			}
+			addDependents(e.dependents.map!(d => d.address), true);
+
+			foreach (i, c; e.children)
+			{
+				bool fresh = pass1(c, addr.child(i));
+				e.descendants += c.descendants;
+				e.hash.put(c.hash);
+				e.deadHash.put(c.deadHash);
+				addDependents(c.allDependents, fresh);
+			}
+			putString(e.tail);
+
+			e.allDependents = allDependents.get();
+
+			assert(e.deadHash.length == (whiteout ? e.hash.length : 0));
+
+			if (e.dead)
+			{
+				e.descendants = 0;
+				// Switch to the "dead" variant of this subtree's hash at this point.
+				// This is irreversible (in child nodes).
+				e.hash = e.deadHash;
+			}
+
+			return true;
+		}
+		pass1(root, &rootAddress);
+	}
+
+	// --white-out pass - calculate deadContents
+	if (whiteout)
+	{
+		// At the top-most dirty node, start a contiguous buffer
+		// which contains the concatenation of all child nodes.
+
+		char[] buf;
+		size_t pos;
+
+		void putString(string s)
+		{
+			foreach (char c; s)
+			{
+				if (!isWhite(c))
+					c = ' ';
+				buf[pos++] = c;
+			}
+		}
+		void putWhite(string s)
+		{
+			foreach (c; s)
+				buf[pos++] = c;
+		}
+
+		// This needs to run in a second pass because we
+		// need to know the total length of nodes first.
+		void passWO(Entity e, bool inFile)
+		{
+			if (e.clean)
+			{
+				if (buf)
+					putWhite(e.deadContents);
+				return;
+			}
+
+			inFile |= e.isFile;
+
+			assert(e.hash.length == e.deadHash.length);
+
+			bool bufStarted;
+			// We start a buffer even when outside of a file,
+			// for efficiency (use one buffer across many files).
+			if (!buf && e.deadHash.length)
+			{
+				buf = new char[e.deadHash.length];
+				pos = 0;
+				bufStarted = true;
+			}
+
+			auto start = pos;
+
+			putString(e.filename);
+			putString(e.head);
+			foreach (c; e.children)
+				passWO(c, inFile);
+			putString(e.tail);
+			assert(e.deadHash.length == e.hash.length);
+
+			e.deadContents = cast(string)buf[start .. pos];
+
+			if (bufStarted)
+			{
+				assert(pos == buf.length);
+				buf = null;
+				pos = 0;
+			}
+
+			if (inFile)
+				e.contents = e.deadContents;
+		}
+		passWO(root, false);
+	}
+
+	{
+		void passFinal(Entity e)
+		{
+			if (e.clean)
+				return;
+
+			foreach (c; e.children)
+				passFinal(c);
+
+			e.clean = true;
+		}
+		passFinal(root);
+	}
 }
 
 size_t checkDescendants(Entity e)
 {
-	size_t n = 1;
+	if (e.dead)
+		return 0;
+	size_t n = e.dead ? 0 : 1;
 	foreach (c; e.children)
 		n += checkDescendants(c);
 	assert(e.descendants == n, "Wrong descendant count: expected %d, found %d".format(e.descendants, n));
 	return n;
 }
 
-size_t countFiles(Entity e)
+bool addressDead(Entity root, size_t[] address) // TODO: this function shouldn't exist
 {
-	if (e.isFile)
-		return 1;
-	else
-	{
-		size_t n = 0;
-		foreach (c; e.children)
-			n += countFiles(c);
-		return n;
-	}
+	if (root.dead)
+		return true;
+	if (!address.length)
+		return false;
+	return addressDead(root.children[address[0]], address[1..$]);
 }
 
 
@@ -377,7 +681,6 @@ struct ReductionIterator
 	Strategy strategy;
 
 	bool done = false;
-	bool concatPerformed;
 
 	Reduction.Type type = Reduction.Type.None;
 	Entity e;
@@ -386,9 +689,6 @@ struct ReductionIterator
 	{
 		this.strategy = strategy;
 		next(false);
-
-		if (countFiles(root) < 2)
-			concatPerformed = true;
 	}
 
 	this(this)
@@ -396,10 +696,27 @@ struct ReductionIterator
 		strategy = strategy.dup;
 	}
 
-	@property Reduction front() { return Reduction(type, strategy.front, e); }
+	@property ref Entity root() { return strategy.root; }
+	@property Reduction front() { return Reduction(type, root, strategy.front.addressFromArr); }
+
+	void nextEntity(bool success) /// Iterate strategy until the next non-dead node
+	{
+		strategy.next(success);
+		while (!strategy.done && root.addressDead(strategy.front))
+			strategy.next(false);
+	}
+
+	void reset()
+	{
+		strategy.reset();
+		type = Reduction.Type.None;
+	}
 
 	void next(bool success)
 	{
+		if (success && type == Reduction.Type.Concat)
+			reset(); // Significant changes across the tree
+
 		while (true)
 		{
 			final switch (type)
@@ -411,17 +728,17 @@ struct ReductionIterator
 						return;
 					}
 
-					e = entityAt(strategy.front);
+					e = root.entityAt(strategy.front);
 
 					if (e.noRemove)
 					{
-						strategy.next(false);
+						nextEntity(false);
 						continue;
 					}
 
 					if (e is root && !root.children.length)
 					{
-						strategy.next(false);
+						nextEntity(false);
 						continue;
 					}
 
@@ -434,7 +751,7 @@ struct ReductionIterator
 					{
 						// Next node
 						type = Reduction.Type.None;
-						strategy.next(true);
+						nextEntity(true);
 						continue;
 					}
 
@@ -454,14 +771,14 @@ struct ReductionIterator
 					{
 						// Next node
 						type = Reduction.Type.None;
-						strategy.next(true);
+						nextEntity(true);
 						continue;
 					}
 
 					// Try next reduction type
 					type = Reduction.Type.Concat;
 
-					if (e.isFile && !concatPerformed)
+					if (e.isFile)
 						return; // Try this
 					else
 					{
@@ -470,39 +787,40 @@ struct ReductionIterator
 					}
 
 				case Reduction.Type.Concat:
-					if (success)
-						concatPerformed = true;
-
 					// Next node
 					type = Reduction.Type.None;
-					strategy.next(success);
+					nextEntity(success);
 					continue;
 
 				case Reduction.Type.ReplaceWord:
+				case Reduction.Type.Swap:
 					assert(false);
 			}
 		}
 	}
 }
 
-void resetProgress()
+void resetProgress(Entity root)
 {
 	origDescendants = root.descendants;
 }
 
-class Strategy
+abstract class Strategy
 {
+	Entity root;
 	uint progressGeneration = 0;
 	bool done = false;
 
 	void copy(Strategy result) const
 	{
+		result.root = cast()root;
 		result.progressGeneration = this.progressGeneration;
 		result.done = this.done;
 	}
 
 	abstract @property size_t[] front();
 	abstract void next(bool success);
+	abstract void reset(); /// Invoked by ReductionIterator for significant tree changes
 	int getIteration() { return -1; }
 	int getDepth() { return -1; }
 
@@ -561,6 +879,11 @@ class IterativeStrategy : SimpleStrategy
 	void nextIteration()
 	{
 		assert(iterationChanged, "Starting new iteration after no changes");
+		reset();
+	}
+
+	override void reset()
+	{
 		iteration++;
 		iterationChanged = false;
 		address = null;
@@ -573,6 +896,8 @@ class IterativeStrategy : SimpleStrategy
 /// Return false if no address at that level could be found.
 bool findAddressAtLevel(size_t[] address, Entity root)
 {
+	if (root.dead)
+		return false;
 	if (!address.length)
 		return true;
 	foreach_reverse (i, child; root.children)
@@ -589,9 +914,9 @@ bool findAddressAtLevel(size_t[] address, Entity root)
 /// Find the next address at the depth of address.length,
 /// and update address[] accordingly.
 /// Return false if no more addresses at that level could be found.
-bool nextAddressInLevel(size_t[] address, lazy Entity root)
+bool nextAddressInLevel(size_t[] address, Entity root)
 {
-	if (!address.length)
+	if (!address.length || root.dead)
 		return false;
 	if (nextAddressInLevel(address[1..$], root.children[address[0]]))
 		return true;
@@ -613,8 +938,11 @@ bool nextAddressInLevel(size_t[] address, lazy Entity root)
 /// (going depth-first). Update address accordingly.
 /// If descend is false, then skip addresses under the given one.
 /// Return false if no more addresses could be found.
-bool nextAddress(ref size_t[] address, lazy Entity root, bool descend)
+bool nextAddress(ref size_t[] address, Entity root, bool descend)
 {
+	if (root.dead)
+		return false;
+
 	if (!address.length)
 	{
 		if (descend && root.children.length)
@@ -639,14 +967,6 @@ bool nextAddress(ref size_t[] address, lazy Entity root, bool descend)
 	}
 
 	return false;
-}
-
-void validateAddress(size_t[] address, Entity root = root)
-{
-	if (!address.length)
-		return;
-	assert(address[0] < root.children.length);
-	validateAddress(address[1..$], root.children[address[0]]);
 }
 
 class LevelStrategy : IterativeStrategy
@@ -709,7 +1029,7 @@ class LevelStrategy : IterativeStrategy
 /// Keep going deeper until we find a successful reduction.
 /// When found, finish tests at current depth and restart from top depth (new iteration).
 /// If we reach the bottom (depth with no nodes on it), we're done.
-class CarefulStrategy : LevelStrategy
+final class CarefulStrategy : LevelStrategy
 {
 	override void next(bool success)
 	{
@@ -740,7 +1060,7 @@ class CarefulStrategy : LevelStrategy
 /// Once no new reductions are found at higher depths, jump to the next unvisited depth in this iteration.
 /// If we reach the bottom (depth with no nodes on it), start a new iteration.
 /// If we finish an iteration without finding any reductions, we're done.
-class LookbackStrategy : LevelStrategy
+final class LookbackStrategy : LevelStrategy
 {
 	size_t maxLevel = 0;
 
@@ -790,7 +1110,7 @@ class LookbackStrategy : LevelStrategy
 /// Once no new reductions are found at higher depths, start going downwards again.
 /// If we reach the bottom (depth with no nodes on it), start a new iteration.
 /// If we finish an iteration without finding any reductions, we're done.
-class PingPongStrategy : LevelStrategy
+final class PingPongStrategy : LevelStrategy
 {
 	override void next(bool success)
 	{
@@ -818,7 +1138,7 @@ class PingPongStrategy : LevelStrategy
 /// Keep going deeper.
 /// If we reach the bottom (depth with no nodes on it), start a new iteration.
 /// If we finish an iteration without finding any reductions, we're done.
-class InBreadthStrategy : LevelStrategy
+final class InBreadthStrategy : LevelStrategy
 {
 	override void next(bool success)
 	{
@@ -843,7 +1163,7 @@ class InBreadthStrategy : LevelStrategy
 /// Otherwise, recurse and look at its children.
 /// End an iteration once we looked at an entire tree.
 /// If we finish an iteration without finding any reductions, we're done.
-class InDepthStrategy : IterativeStrategy
+final class InDepthStrategy : IterativeStrategy
 {
 	final bool nextAddress(bool descend)
 	{
@@ -871,11 +1191,15 @@ void reduceByStrategy(Strategy strategy)
 	int lastIteration = -1;
 	int lastDepth = -1;
 	int lastProgressGeneration = -1;
+	int steps = 0;
 
 	iter = ReductionIterator(strategy);
 
 	while (!iter.done)
 	{
+		if (maxSteps >= 0 && steps++ == maxSteps)
+			return;
+
 		if (lastIteration != strategy.getIteration())
 		{
 			writefln("############### ITERATION %d ################", strategy.getIteration());
@@ -888,38 +1212,47 @@ void reduceByStrategy(Strategy strategy)
 		}
 		if (lastProgressGeneration != strategy.progressGeneration)
 		{
-			resetProgress();
+			resetProgress(iter.root);
 			lastProgressGeneration = strategy.progressGeneration;
 		}
 
-		auto result = tryReduction(iter.front);
+		auto result = tryReduction(iter.root, iter.front);
 
 		iter.next(result);
+		predictor.put(result);
 	}
 }
 
-void reduce()
+Strategy createStrategy(string name)
 {
-	switch (strategy)
+	switch (name)
 	{
 		case "careful":
-			return reduceByStrategy(new CarefulStrategy());
+			return new CarefulStrategy();
 		case "lookback":
-			return reduceByStrategy(new LookbackStrategy());
+			return new LookbackStrategy();
 		case "pingpong":
-			return reduceByStrategy(new PingPongStrategy());
+			return new PingPongStrategy();
 		case "indepth":
-			return reduceByStrategy(new InDepthStrategy());
+			return new InDepthStrategy();
 		case "inbreadth":
-			return reduceByStrategy(new InBreadthStrategy());
+			return new InBreadthStrategy();
 		default:
 			throw new Exception("Unknown strategy");
 	}
 }
 
+void reduce(ref Entity root)
+{
+	auto strategy = createStrategy(.strategy);
+	strategy.root = root;
+	reduceByStrategy(strategy);
+	root = strategy.root;
+}
+
 Mt19937 rng;
 
-void obfuscate(bool keepLength)
+void obfuscate(ref Entity root, bool keepLength)
 {
 	bool[string] wordSet;
 	string[] words; // preserve file order
@@ -977,136 +1310,154 @@ void obfuscate(bool keepLength)
 		while (r.to in wordSet && tries++ < 10);
 		wordSet[r.to] = true;
 
-		tryReduction(r);
+		tryReduction(root, r);
 	}
 }
 
-bool skipEntity(Entity e)
+void fuzz(ref Entity root)
 {
-	if (e.removed)
-		return true;
-	foreach (dependency; e.dependencies)
-		if (skipEntity(dependency))
-			return true;
-	return false;
-}
+	debug {} else rng.seed(unpredictableSeed);
 
-void dump(Entity root, ref Reduction reduction, void delegate(string) handleFile, void delegate(string) handleText)
-{
-	void dumpEntity(Entity e)
+	Address*[] allAddresses;
+	void collectAddresses(Entity e, Address* addr)
 	{
-		if (reduction.type == Reduction.Type.ReplaceWord)
-		{
-			if (e.isFile)
-			{
-				assert(e.head.length==0 && e.tail.length==0);
-				handleFile(applyReductionToPath(e.filename, reduction));
-				foreach (c; e.children)
-					dumpEntity(c);
-			}
-			else
-			if (e.head || e.tail)
-			{
-				assert(e.children.length==0);
-				if (e.head)
-				{
-					if (e.head == reduction.from)
-						handleText(reduction.to);
-					else
-						handleText(e.head);
-				}
-				handleText(e.tail);
-			}
-			else
-				foreach (c; e.children)
-					dumpEntity(c);
-		}
-		else
-		if (e is reduction.target)
-		{
-			final switch (reduction.type)
-			{
-			case Reduction.Type.None:
-			case Reduction.Type.ReplaceWord:
-				assert(0);
-			case Reduction.Type.Remove: // skip this entity
-				return;
-			case Reduction.Type.Unwrap: // skip head/tail
-				foreach (c; e.children)
-					dumpEntity(c);
-				break;
-			case Reduction.Type.Concat: // write contents of all files to this one; leave other files empty
-				handleFile(e.filename);
+		allAddresses ~= addr;
+		foreach (i, c; e.children)
+			collectAddresses(c, addr.child(i));
+	}
+	collectAddresses(root, &rootAddress);
 
-				void dumpFileContent(Entity e)
-				{
-					foreach (f; e.children)
-						if (f.isFile)
-							foreach (c; f.children)
-								dumpEntity(c);
-						else
-							dumpFileContent(f);
-				}
-				dumpFileContent(root);
-				break;
+	while (true)
+	{
+		import std.math : log2;
+		auto newRoot = root;
+		auto numReductions = uniform(1, cast(int)log2(allAddresses.length), rng);
+		Reduction[] reductions;
+		foreach (n; 0 .. numReductions)
+		{
+			static immutable Reduction.Type[] reductionTypes = [Reduction.Type.Swap];
+			auto r = Reduction(reductionTypes[uniform(0, $, rng)], newRoot);
+			switch (r.type)
+			{
+				case Reduction.Type.Swap:
+					r.address  = findEntity(newRoot, allAddresses[uniform(0, $, rng)]).address;
+					r.address2 = findEntity(newRoot, allAddresses[uniform(0, $, rng)]).address;
+					if (r.address.startsWith(r.address2) ||
+						r.address2.startsWith(r.address))
+						continue;
+					break;
+				default:
+					assert(false);
 			}
+			newRoot = applyReduction(newRoot, r);
+			reductions ~= r;
 		}
-		else
-		if (skipEntity(e))
+		if (newRoot is root)
+			continue;
+
+		auto result = test(newRoot, reductions);
+		if (result.success)
+		{
+			foundAnything = true;
+			root = newRoot;
+			saveResult(root);
 			return;
-		else
-		if (e.isFile)
+		}
+	}
+}
+
+void dump(Writer)(Entity root, Writer writer)
+{
+	void dumpEntity(bool inFile)(Entity e)
+	{
+		if (e.dead)
 		{
-			handleFile(e.filename);
-			if (reduction.type == Reduction.Type.Concat) // not the target - writing an empty file
-				return;
+			if (inFile && e.contents.length)
+				writer.handleText(e.contents[e.filename.length .. $]);
+		}
+		else
+		if (!inFile && e.isFile)
+		{
+			writer.handleFile(e.filename);
 			foreach (c; e.children)
-				dumpEntity(c);
+				dumpEntity!true(c);
 		}
 		else
 		{
-			if (e.head.length) handleText(e.head);
+			if (inFile && e.head.length) writer.handleText(e.head);
 			foreach (c; e.children)
-				dumpEntity(c);
-			if (e.tail.length) handleText(e.tail);
+				dumpEntity!inFile(c);
+			if (inFile && e.tail.length) writer.handleText(e.tail);
 		}
 	}
 
-	debug verifyNotRemoved(root);
-	if (reduction.type == Reduction.Type.Remove)
-		markRemoved(reduction.target, true); // Needed for dependencies
-
-	dumpEntity(root);
-
-	if (reduction.type == Reduction.Type.Remove)
-		markRemoved(reduction.target, false);
-	debug verifyNotRemoved(root);
+	dumpEntity!false(root);
 }
 
-void save(Reduction reduction, string savedir)
+static struct FastWriter(Next) /// Accelerates Writer interface by bulking contiguous strings
 {
+	Next next;
+	immutable(char)* start, end;
+	void finish()
+	{
+		if (start != end)
+			next.handleText(start[0 .. end - start]);
+		start = end = null;
+	}
+	void handleFile(string s)
+	{
+		finish();
+		next.handleFile(s);
+	}
+	void handleText(string s)
+	{
+		if (s.ptr != end)
+		{
+			finish();
+			start = s.ptr;
+		}
+		end = s.ptr + s.length;
+	}
+	~this() { finish(); }
+}
+
+void save(Entity root, string savedir)
+{
+	safeDelete(savedir);
 	safeMkdir(savedir);
 
-	File o;
-
-	void handleFile(string fn)
+	static struct DiskWriter
 	{
-		auto path = buildPath(savedir, fn);
-		if (!exists(dirName(path)))
-			safeMkdir(dirName(path));
+		string dir;
 
-		if (o.isOpen)
-			o.close();
-		o.open(path, "wb");
+		File o;
+		typeof(o.lockingBinaryWriter()) binaryWriter;
+
+		void handleFile(string fn)
+		{
+			static Appender!(char[]) pathBuf;
+			pathBuf.clear();
+			pathBuf.put(dir.chainPath(fn));
+			auto path = pathBuf.data;
+			if (!exists(dirName(path)))
+				safeMkdir(dirName(path));
+
+			o.open(cast(string)path, "wb");
+			binaryWriter = o.lockingBinaryWriter;
+		}
+
+		void handleText(string s)
+		{
+			binaryWriter.put(s);
+		}
 	}
-
-	dump(root, reduction, &handleFile, &o.write!string);
-
-	if (o.isOpen)
-		o.close();
+	FastWriter!DiskWriter writer;
+	writer.next.dir = savedir;
+	dump(root, &writer);
+	writer.finish();
 }
 
-Entity entityAt(size_t[] address)
+Entity entityAt(Entity root, size_t[] address) // TODO: replace uses with findEntity and remove
 {
 	Entity e = root;
 	foreach (a; address)
@@ -1114,112 +1465,401 @@ Entity entityAt(size_t[] address)
 	return e;
 }
 
-/// Try specified reduction. If it succeeds, apply it permanently and save intermediate result.
-bool tryReduction(Reduction r)
+Address* addressFromArr(size_t[] address) // TODO: replace uses with findEntity and remove
 {
-	if (test(r).success)
+	Address* a = &rootAddress;
+	foreach (index; address)
+		a = a.child(index);
+	return a;
+}
+
+size_t[] addressToArr(const(Address)* address)
+{
+	auto result = new size_t[address.depth];
+	while (address.parent)
+	{
+		result[address.depth - 1] = address.index;
+		address = address.parent;
+	}
+	return result;
+}
+
+/// Return true if these two addresses are the same
+/// (they point to the same node).
+bool equal(const(Address)* a, const(Address)* b)
+{
+	if (a is b)
+		return true;
+	if (a.depth != b.depth)
+		return false;
+	if (a.index != b.index)
+		return false;
+	assert(a.parent && b.parent); // If we are at the root node, then the address check should have passed
+	return equal(a.parent, b.parent);
+}
+alias equal = std.algorithm.comparison.equal;
+
+/// Returns true if the `haystack` address starts with the `needle` address,
+/// i.e. the entity that needle points at is a child of the entity that haystack points at.
+bool startsWith(const(Address)* haystack, const(Address)* needle)
+{
+	if (haystack.depth < needle.depth)
+		return false;
+	while (haystack.depth > needle.depth)
+		haystack = haystack.parent;
+	return equal(haystack, needle);
+}
+
+/// Try specified reduction. If it succeeds, apply it permanently and save intermediate result.
+bool tryReduction(ref Entity root, Reduction r)
+{
+	Entity newRoot;
+	measure!"apply"({ newRoot = root.applyReduction(r); });
+	if (newRoot is root)
+	{
+		assert(r.type != Reduction.Type.None);
+		writeln(r, " => N/A");
+		return false;
+	}
+	if (test(newRoot, [r]).success)
 	{
 		foundAnything = true;
-		debug
-			auto hashBefore = hash(r);
-		applyReduction(r);
-		debug
-		{
-			auto hashAfter = hash(nullReduction);
-			assert(hashBefore == hashAfter, "Reduction preview/application mismatch");
-		}
-		saveResult();
+		root = newRoot;
+		saveResult(root);
 		return true;
 	}
 	return false;
 }
 
-void verifyNotRemoved(Entity e)
+/// Apply a reduction to this tree, and return the resulting tree.
+/// The original tree remains unchanged.
+/// Copies only modified parts of the tree, and whatever references them.
+Entity applyReductionImpl(Entity origRoot, ref Reduction r)
 {
-	assert(!e.removed);
-	foreach (c; e.children)
-		verifyNotRemoved(c);
-}
+	Entity root = origRoot;
 
-void markRemoved(Entity e, bool value)
-{
-	assert(e.removed == !value);
-	e.removed = value;
-	foreach (c; e.children)
-		markRemoved(c, value);
-}
+	debug static ubyte[] treeBytes(Entity e) { return (cast(ubyte*)e)[0 .. __traits(classInstanceSize, Entity)] ~ cast(ubyte[])e.children ~ e.children.map!treeBytes.join; }
+	debug auto origBytes = treeBytes(origRoot);
+	scope(exit) debug assert(origBytes == treeBytes(origRoot), "Original tree was changed!");
+	scope(success) debug if (root !is origRoot) assert(treeBytes(root) != origBytes, "Tree was unchanged");
 
-/// Permanently apply specified reduction to set.
-void applyReduction(ref Reduction r)
-{
+	debug void checkClean(Entity e) { assert(e.clean, "Found dirty node before/after reduction"); foreach (c; e.children) checkClean(c); }
+	debug checkClean(root);
+	scope(success) debug checkClean(root);
+
+	static struct EditResult
+	{
+		Entity entity; /// Entity at address. Never null.
+		bool dead;     /// Entity or one of its parents is dead.
+	}
+	EditResult editImpl(const(Address)* addr)
+	{
+		Entity* pEntity;
+		bool dead;
+		if (addr.parent)
+		{
+			auto result = editImpl(addr.parent);
+			auto parent = result.entity;
+			pEntity = &parent.children[addr.index];
+			dead = result.dead;
+		}
+		else
+		{
+			pEntity = &root;
+			dead = false;
+		}
+
+		auto oldEntity = *pEntity;
+
+		if (oldEntity.redirect)
+		{
+			assert(oldEntity.dead);
+			return editImpl(oldEntity.redirect);
+		}
+
+		dead |= oldEntity.dead;
+
+		// We can avoid copying the entity if it (or a parent) is dead, because edit()
+		// will not allow such an entity to be returned back to applyReduction.
+		if (!oldEntity.clean || dead)
+			return EditResult(oldEntity, dead);
+
+		auto newEntity = oldEntity.dup();
+		newEntity.clean = false;
+		*pEntity = newEntity;
+
+		return EditResult(newEntity, dead);
+	}
+	Entity edit(const(Address)* addr) /// Returns a writable copy of the entity at the given Address
+	{
+		auto r = editImpl(addr);
+		return r.dead ? null : r.entity;
+	}
+
 	final switch (r.type)
 	{
 		case Reduction.Type.None:
-			return;
+			break;
+
 		case Reduction.Type.ReplaceWord:
-		{
-			foreach (ref f; root.children)
+			foreach (i; 0 .. root.children.length)
 			{
+				auto fa = rootAddress.children[i];
+				auto f = edit(fa);
 				f.filename = applyReductionToPath(f.filename, r);
-				foreach (ref entity; f.children)
-					if (entity.head == r.from)
-						entity.head = r.to;
+				foreach (j, const word; f.children)
+					if (word.head == r.from)
+						edit(fa.children[j]).head = r.to;
 			}
-			return;
-		}
+			break;
 		case Reduction.Type.Remove:
 		{
-			debug verifyNotRemoved(root);
-
-			markRemoved(entityAt(r.address), true);
-
-			if (r.address.length)
+			assert(!findEntity(root, r.address).entity.dead, "Trying to remove a tombstone");
+			void remove(const(Address)* address)
 			{
-				auto casualties = entityAt(r.address).descendants;
-				foreach (n; 0..r.address.length)
-					entityAt(r.address[0..n]).descendants -= casualties;
-
-				auto p = entityAt(r.address[0..$-1]);
-				p.children = remove(p.children, r.address[$-1]);
+				auto n = edit(address);
+				if (!n)
+					return; // This dependency was removed by something else
+				n.dead = true; // Mark as dead early, so that we don't waste time processing dependencies under this node
+				foreach (dep; n.allDependents)
+					remove(dep);
+				n.kill(); // Convert to tombstone
 			}
-			else
-			{
-				root = new Entity();
-				root.descendants = 1;
-			}
-
-			debug verifyNotRemoved(root);
-			debug checkDescendants(root);
-			return;
+			remove(r.address);
+			break;
 		}
 		case Reduction.Type.Unwrap:
-			with (entityAt(r.address))
-				head = tail = null;
-			return;
+		{
+			assert(!findEntity(root, r.address).entity.dead, "Trying to unwrap a tombstone");
+			bool changed;
+			with (edit(r.address))
+				foreach (value; [&head, &tail])
+				{
+					string newValue = whiteout
+						? cast(string)((*value).representation.map!(c => isWhite(c) ? char(c) : ' ').array)
+						: null;
+					changed |= *value != newValue;
+					*value = newValue;
+				}
+			if (!changed)
+				root = origRoot;
+			break;
+		}
 		case Reduction.Type.Concat:
 		{
+			// Move all nodes from all files to a single file (the target).
+			// Leave behind redirects.
+
+			size_t numFiles;
 			Entity[] allData;
-			void scan(Entity e)
+			Entity[Entity] tombstones; // Map from moved entity to its tombstone
+
+			// Collect the nodes to move, and leave behind tombstones.
+
+			void collect(Entity e, Address* addr)
 			{
+				if (e.dead)
+					return;
 				if (e.isFile)
 				{
+					// Skip noRemove files, except when they are the target
+					// (in which case they will keep their contents after the reduction).
+					if (e.noRemove && !equal(addr, r.address))
+						return;
+
+					if (!e.children.canFind!(c => !c.dead))
+						return; // File is empty (already concat'd?)
+
+					numFiles++;
 					allData ~= e.children;
-					e.children = null;
+					auto f = edit(addr);
+					f.children = new Entity[e.children.length];
+					foreach (i; 0 .. e.children.length)
+					{
+						auto tombstone = new Entity;
+						tombstone.kill();
+						f.children[i] = tombstone;
+						tombstones[e.children[i]] = tombstone;
+					}
 				}
 				else
-					foreach (c; e.children)
-						scan(c);
+					foreach (i, c; e.children)
+						collect(c, addr.child(i));
 			}
 
-			scan(root);
+			collect(root, &rootAddress);
 
-			r.target.children = allData;
-			optimize(r.target);
-			countDescendants(root);
+			// Fail the reduction if there are less than two files to concatenate.
+			if (numFiles < 2)
+			{
+				root = origRoot;
+				break;
+			}
 
-			return;
+			auto n = edit(r.address);
+
+			auto temp = new Entity;
+			temp.children = allData;
+			temp.optimizeUntil!((Entity e) => e in tombstones);
+
+			// The optimize function rearranges nodes in a tree,
+			// so we need to do a recursive scan to find their new location.
+			void makeRedirects(Address* address, Entity e)
+			{
+				if (auto p = e in tombstones)
+					p.redirect = address; // Patch the tombstone to point to the node's new location.
+				else
+				{
+					assert(!e.clean); // This node was created by optimize(), it can't be clean
+					foreach (i, child; e.children)
+						makeRedirects(address.child(i), child);
+				}
+			}
+			foreach (i, child; temp.children)
+				makeRedirects(r.address.child(n.children.length + i), child);
+
+			n.children ~= temp.children;
+
+			break;
+		}
+		case Reduction.Type.Swap:
+		{
+			// Cannot swap child and parent.
+			assert(
+				!r.address.startsWith(r.address2) &&
+				!r.address2.startsWith(r.address),
+				"Invalid swap");
+			// Corollary: neither address may be the root address.
+
+			// Cannot swap siblings (special case).
+			if (equal(r.address.parent, r.address2.parent))
+				break;
+
+			static struct SwapSite
+			{
+				Entity source;       /// Entity currently at this site's address
+				Entity* target;      /// Where to place the other site's entity
+				Address* newAddress; /// Address of target
+				Entity tombstone;    /// Redirect to the other site's swap target
+			}
+
+			SwapSite prepareSwap(const(Address)* address)
+			{
+				auto p = edit(address.parent);
+				assert(address.index < p.children.length);
+
+				SwapSite result;
+				// Duplicate children.
+				// Replace the first half with redirects to the second half.
+				// The second half is the same as the old children,
+				// except with the target node replaced with the swap target.
+				auto children = new Entity[p.children.length * 2];
+				// First half:
+				foreach (i; 0 .. p.children.length)
+				{
+					auto tombstone = new Entity;
+					tombstone.kill();
+					if (i == address.index)
+						result.tombstone = tombstone;
+					else
+						tombstone.redirect = address.parent.child(p.children.length + i);
+					children[i] = tombstone;
+				}
+				// Second half:
+				foreach (i; 0 .. p.children.length)
+				{
+					if (i == address.index)
+					{
+						result.source = p.children[i];
+						result.target = &children[p.children.length + i];
+						result.newAddress = address.parent.child(p.children.length + i);
+					}
+					else
+						children[p.children.length + i] = p.children[i];
+				}
+				p.children = children;
+				return result;
+			}
+
+			auto site1 = prepareSwap(r.address);
+			auto site2 = prepareSwap(r.address2);
+
+			void finalizeSwap(ref SwapSite thisSite, ref SwapSite otherSite)
+			{
+				assert(otherSite.source);
+				*thisSite.target = otherSite.source;
+				thisSite.tombstone.redirect = otherSite.newAddress;
+			}
+
+			finalizeSwap(site1, site2);
+			finalizeSwap(site2, site1);
+			break;
 		}
 	}
+
+	if (root !is origRoot)
+		assert(!root.clean);
+
+	recalculate(root); // Recalculate cumulative information for the part of the tree that we edited
+
+	debug checkDescendants(root);
+
+	return root;
+}
+
+/// Polyfill for object.require
+static if (!__traits(hasMember, object, "require"))
+ref V require(K, V)(ref V[K] aa, K key, lazy V value = V.init)
+{
+	auto p = key in aa;
+	if (p)
+		return *p;
+	return aa[key] = value;
+}
+
+// std.functional.memoize evicts old entries after a hash collision.
+// We have much to gain by evicting in strictly chronological order.
+struct RoundRobinCache(K, V)
+{
+	V[K] lookup;
+	K[] keys;
+	size_t pos;
+
+	void requireSize(size_t size)
+	{
+		if (keys.length >= size)
+			return;
+		T roundUpToPowerOfTwo(T)(T x) { return nextPow2(x-1); }
+		keys.length = roundUpToPowerOfTwo(size);
+	}
+
+	ref V get(ref K key, lazy V value)
+	{
+		return lookup.require(key,
+			{
+				lookup.remove(keys[pos]);
+				keys[pos++] = key;
+				if (pos == keys.length)
+					pos = 0;
+				return value;
+			}());
+	}
+}
+alias ReductionCacheKey = Tuple!(Entity, q{origRoot}, Reduction, q{r});
+RoundRobinCache!(ReductionCacheKey, Entity) reductionCache;
+
+Entity applyReduction(Entity origRoot, ref Reduction r)
+{
+	if (lookaheadProcesses.length)
+	{
+		if (!reductionCache.keys)
+			reductionCache.requireSize(1 + lookaheadProcesses.length);
+
+		auto cacheKey = ReductionCacheKey(origRoot, r);
+		return reductionCache.get(cacheKey, applyReductionImpl(origRoot, r));
+	}
+	else
+		return applyReductionImpl(origRoot, r);
 }
 
 string applyReductionToPath(string path, Reduction reduction)
@@ -1244,7 +1884,7 @@ string applyReductionToPath(string path, Reduction reduction)
 	return path;
 }
 
-void autoRetry(void delegate() fun, string operation)
+void autoRetry(scope void delegate() fun, lazy const(char)[] operation)
 {
 	while (true)
 		try
@@ -1261,13 +1901,6 @@ void autoRetry(void delegate() fun, string operation)
 		}
 }
 
-/// Alternative way to check for file existence
-/// Files marked for deletion act as inexistant, but still prevent creation and appear in directory listings
-bool exists2(string path)
-{
-	return array(dirEntries(dirName(path), baseName(path), SpanMode.shallow)).length > 0;
-}
-
 void deleteAny(string path)
 {
 	if (exists(path))
@@ -1277,12 +1910,24 @@ void deleteAny(string path)
 		else
 			remove(path);
 	}
-	enforce(!exists(path) && !exists2(path), "Path still exists"); // Windows only marks locked directories for deletion
+
+	// The ugliest hacks, only for the ugliest operating system
+	version (Windows)
+	{
+		/// Alternative way to check for file existence
+		/// Files marked for deletion act as inexistant, but still prevent creation and appear in directory listings
+		bool exists2(string path)
+		{
+			return !dirEntries(dirName(path), baseName(path), SpanMode.shallow).empty;
+		}
+
+		enforce(!exists(path) && !exists2(path), "Path still exists"); // Windows only marks locked directories for deletion
+	}
 }
 
 void safeDelete(string path) { autoRetry({deleteAny(path);}, "delete " ~ path); }
 void safeRename(string src, string dst) { autoRetry({rename(src, dst);}, "rename " ~ src ~ " to " ~ dst); }
-void safeMkdir(string path) { autoRetry({mkdirRecurse(path);}, "mkdir " ~ path); }
+void safeMkdir(in char[] path) { autoRetry({mkdirRecurse(path);}, "mkdir " ~ path); }
 
 void safeReplace(string path, void delegate(string path) creator)
 {
@@ -1302,72 +1947,49 @@ void safeReplace(string path, void delegate(string path) creator)
 }
 
 
-void safeSave(string savedir) { safeReplace(savedir, path => save(nullReduction, path)); }
+void safeSave(Entity root, string savedir) { safeReplace(savedir, path => save(root, path)); }
 
-void saveResult()
+void saveResult(Entity root)
 {
 	if (!noSave)
-		measure!"resultSave"({safeSave(resultDir);});
-}
-
-version(HAVE_AE)
-{
-	// Use faster murmurhash from http://github.com/CyberShadow/ae
-	// when compiled with -version=HAVE_AE
-
-	import ae.utils.digest;
-	import ae.utils.textout;
-
-	alias MH3Digest128 HASH;
-
-	HASH hash(Reduction reduction)
-	{
-		static StringBuffer sb;
-		sb.clear();
-		auto writer = &sb.put!string;
-		dump(root, reduction, writer, writer);
-		return murmurHash3_128(sb.get());
-	}
-
-	alias digestToStringMH3 formatHash;
-}
-else
-{
-	import std.digest.md;
-
-	alias ubyte[16] HASH;
-
-	HASH hash(Reduction reduction)
-	{
-		ubyte[16] digest;
-		MD5 context;
-		context.start();
-		auto writer = cast(void delegate(string))&context.put;
-		dump(root, reduction, writer, writer);
-		return context.finish();
-	}
-
-	alias toHexString formatHash;
+		measure!"resultSave"({safeSave(root, resultDir);});
 }
 
 struct Lookahead
 {
-	Pid pid;
+	Thread thread;
+	shared Pid pid;
 	string testdir;
-	HASH digest;
+	EntityHash digest;
 }
 Lookahead[] lookaheadProcesses;
 
-TestResult[HASH] lookaheadResults;
+TestResult[EntityHash] lookaheadResults;
 
-bool lookaheadPredict() { return false; }
+struct AccumulatingPredictor(double exp)
+{
+	double r = 0.5;
+
+	void put(bool outcome)
+	{
+		r = (1 - exp) * r + exp * outcome;
+	}
+
+	double predict()
+	{
+		return r;
+	}
+}
+// Parameters found through empirical testing (gradient descent)
+alias Predictor = AccumulatingPredictor!(0.01);
+Predictor predictor;
 
 version (Windows)
 	enum nullFileName = "nul";
 else
 	enum nullFileName = "/dev/null";
 
-bool[HASH] cache;
+bool[EntityHash] cache;
 
 struct TestResult
 {
@@ -1404,12 +2026,14 @@ struct TestResult
 	}
 }
 
-TestResult test(Reduction reduction)
+TestResult test(
+	Entity root,            /// New root, with reduction already applied
+	Reduction[] reductions, /// For display purposes only
+)
 {
-	write(reduction, " => "); stdout.flush();
+	writef("%-(%s, %) => ", reductions); stdout.flush();
 
-	HASH digest;
-	measure!"cacheHash"({ digest = hash(reduction); });
+	EntityHash digest = root.hash;
 
 	TestResult ramCached(lazy TestResult fallback)
 	{
@@ -1432,7 +2056,7 @@ TestResult test(Reduction reduction)
 		if (globalCache)
 		{
 			if (!exists(globalCache)) mkdirRecurse(globalCache);
-			string cacheBase = absolutePath(buildPath(globalCache, formatHash(digest))) ~ "-";
+			string cacheBase = absolutePath(buildPath(globalCache, format("%016X", cast(ulong)digest.value))) ~ "-";
 			bool found;
 
 			measure!"globalCache"({ found = exists(cacheBase~"0"); });
@@ -1463,74 +2087,122 @@ TestResult test(Reduction reduction)
 
 			TestResult reap(ref Lookahead process, int status)
 			{
+				scope(success) process = Lookahead.init;
 				safeDelete(process.testdir);
-				process.pid = null;
+				if (process.thread)
+					process.thread.join(/*rethrow:*/true);
 				return lookaheadResults[process.digest] = TestResult(status == 0, TestResult.Source.lookahead, status);
 			}
 
 			foreach (ref process; lookaheadProcesses)
-			{
-				if (process.pid)
+				if (process.thread)
 				{
-					auto waitResult = process.pid.tryWait();
-					if (waitResult.terminated)
-						reap(process, waitResult.status);
+					debug (DETERMINISTIC_LOOKAHEAD)
+					{
+						process.thread.join(/*rethrow:*/true);
+						process.thread = null;
+					}
+
+					auto pid = cast()atomicLoad(process.pid);
+					if (pid)
+					{
+						debug (DETERMINISTIC_LOOKAHEAD)
+							reap(process, pid.wait());
+						else
+						{
+							auto waitResult = pid.tryWait();
+							if (waitResult.terminated)
+								reap(process, waitResult.status);
+						}
+					}
 				}
+
+			static struct PredictedState
+			{
+				double probability;
+				ReductionIterator iter;
+				Predictor predictor;
 			}
+
+			auto initialState = new PredictedState(1.0, iter, predictor);
+			alias PredictionTree = RedBlackTree!(PredictedState*, (a, b) => a.probability > b.probability, true);
+			auto predictionTree = new PredictionTree((&initialState)[0..1]);
 
 			// Start new lookahead jobs
 
-			auto lookaheadIter = iter;
-			if (!lookaheadIter.done)
-				lookaheadIter.next(lookaheadPredict());
+			size_t numSteps;
 
 			foreach (ref process; lookaheadProcesses)
-			{
-				if (!process.pid && !lookaheadIter.done)
+				while (!process.thread && !predictionTree.empty)
 				{
-					auto initialReduction = lookaheadIter.front;
-					bool first = true;
+					auto state = predictionTree.front;
+					predictionTree.removeFront();
 
-					while (true)
+				retryIter:
+					if (state.iter.done)
+						continue;
+					reductionCache.requireSize(lookaheadProcesses.length + ++numSteps);
+					auto reduction = state.iter.front;
+					Entity newRoot;
+					measure!"lookaheadApply"({ newRoot = state.iter.root.applyReduction(reduction); });
+					if (newRoot is state.iter.root)
 					{
-						auto reduction = lookaheadIter.front;
+						state.iter.next(false);
+						goto retryIter; // inapplicable reduction
+					}
 
-						if (!first && reduction == initialReduction)
-							break; // We've looped around using cached results
-						first = false;
+					auto digest = newRoot.hash;
 
-						auto digest = hash(reduction);
-
-						if (digest in cache || digest in lookaheadResults || lookaheadProcesses[].canFind!(p => p.digest == digest))
-						{
-							bool prediction;
-							if (digest in cache)
-								prediction = cache[digest];
-							else
-							if (digest in lookaheadResults)
-								prediction = lookaheadResults[digest].success;
-							else
-								prediction = lookaheadPredict();
-							lookaheadIter.next(prediction);
-							if (lookaheadIter.done)
-								break;
-							continue;
-						}
-
+					double prediction;
+					if (digest in cache || digest in lookaheadResults || lookaheadProcesses[].canFind!(p => p.thread && p.digest == digest))
+					{
+						if (digest in cache)
+							prediction = cache[digest] ? 1 : 0;
+						else
+						if (digest in lookaheadResults)
+							prediction = lookaheadResults[digest].success ? 1 : 0;
+						else
+							prediction = state.predictor.predict();
+					}
+					else
+					{
 						process.digest = digest;
 
 						static int counter;
 						process.testdir = dirSuffix("lookahead.%d".format(counter++));
-						save(reduction, process.testdir);
 
-						auto nul = File(nullFileName, "w+");
-						process.pid = spawnShell(tester, nul, nul, nul, null, Config.none, process.testdir);
+						// Saving and process creation are expensive.
+						// Don't block the main thread, use a worker thread instead.
+						static void runThread(Entity newRoot, ref Lookahead process, string tester)
+						{
+							process.thread = new Thread({
+								save(newRoot, process.testdir);
 
-						lookaheadIter.next(lookaheadPredict());
-						break;
+								auto nul = File(nullFileName, "w+");
+								auto pid = spawnShell(tester, nul, nul, nul, null, Config.none, process.testdir);
+								atomicStore(process.pid, cast(shared)pid);
+							});
+							process.thread.start();
+						}
+						runThread(newRoot, process, tester);
+
+						prediction = state.predictor.predict();
+					}
+
+					foreach (outcome; 0 .. 2)
+					{
+						auto probability = outcome ? prediction : 1 - prediction;
+						if (probability == 0)
+							continue; // no chance
+						probability *= state.probability; // accumulate
+						auto nextState = new PredictedState(probability, state.iter, state.predictor);
+						if (outcome)
+							nextState.iter.root = newRoot;
+						nextState.iter.next(!!outcome);
+						nextState.predictor.put(!!outcome);
+						predictionTree.insert(nextState);
 					}
 				}
-			}
 
 			// Find a result for the current test.
 
@@ -1543,11 +2215,17 @@ TestResult test(Reduction reduction)
 
 			foreach (ref process; lookaheadProcesses)
 			{
-				if (process.pid && process.digest == digest)
+				if (process.thread && process.digest == digest)
 				{
 					// Current test is already being tested in the background, wait for its result.
 
-					auto exitCode = process.pid.wait();
+					// Join the thread first, to guarantee that there is a pid
+					measure!"lookaheadWaitThread"({ process.thread.join(/*rethrow:*/true); });
+					process.thread = null;
+
+					auto pid = cast()atomicLoad(process.pid);
+					int exitCode;
+					measure!"lookaheadWaitProcess"({ exitCode = pid.wait(); });
 
 					auto result = reap(process, exitCode);
 					writeln(result.success ? "Yes" : "No", " (lookahead-wait)");
@@ -1562,7 +2240,7 @@ TestResult test(Reduction reduction)
 	TestResult doTest()
 	{
 		string testdir = dirSuffix("test");
-		measure!"testSave"({save(reduction, testdir);}); scope(exit) measure!"clean"({safeDelete(testdir);});
+		measure!"testSave"({save(root, testdir);}); scope(exit) measure!"clean"({safeDelete(testdir);});
 
 		Pid pid;
 		if (noRedirect)
@@ -1581,23 +2259,31 @@ TestResult test(Reduction reduction)
 	}
 
 	auto result = ramCached(diskCached(lookahead(doTest())));
-	if (trace) saveTrace(reduction, dirSuffix("trace"), result.success);
+	if (trace) saveTrace(root, reductions, dirSuffix("trace"), result.success);
 	return result;
 }
 
-void saveTrace(Reduction reduction, string dir, bool result)
+void saveTrace(Entity root, Reduction[] reductions, string dir, bool result)
 {
 	if (!exists(dir)) mkdir(dir);
 	static size_t count;
-	string countStr = format("%08d-#%08d-%d", count++, reduction.target ? reduction.target.id : 0, result ? 1 : 0);
+	string countStr = format("%08d-%(#%08d-%|%)%d",
+		count++,
+		reductions
+			.map!(reduction => reduction.address ? findEntityEx(root, reduction.address).entity : null)
+			.map!(target => target ? target.id : 0),
+		result ? 1 : 0);
 	auto traceDir = buildPath(dir, countStr);
-	save(reduction, traceDir);
+	save(root, traceDir);
+	if (doDump && result)
+		dumpSet(root, traceDir ~ ".dump");
 }
 
-void applyNoRemoveMagic()
+void applyNoRemoveMagic(Entity root)
 {
-	enum MAGIC_START = "DustMiteNoRemoveStart";
-	enum MAGIC_STOP  = "DustMiteNoRemoveStop";
+	enum MAGIC_PREFIX = "DustMiteNoRemove";
+	enum MAGIC_START = MAGIC_PREFIX ~ "Start";
+	enum MAGIC_STOP  = MAGIC_PREFIX ~ "Stop";
 
 	bool state = false;
 
@@ -1626,16 +2312,16 @@ void applyNoRemoveMagic()
 	scan(root);
 }
 
-void applyNoRemoveRegex(string[] noRemoveStr, string[] reduceOnly)
+void applyNoRemoveRules(Entity root, RemoveRule[] removeRules)
 {
-	auto noRemove = array(map!((string s) { return regex(s, "mg"); })(noRemoveStr));
+	if (!removeRules.length)
+		return;
 
-	void mark(Entity e)
-	{
-		e.noRemove = true;
-		foreach (c; e.children)
-			mark(c);
-	}
+	// By default, for content not covered by any of the specified
+	// rules, do the opposite of the first rule.
+	// I.e., if the default rule is "remove only", then by default
+	// don't remove anything except what's specified by the rule.
+	bool defaultRemove = !removeRules.front.remove;
 
 	auto files = root.isFile ? [root] : root.children;
 
@@ -1643,97 +2329,71 @@ void applyNoRemoveRegex(string[] noRemoveStr, string[] reduceOnly)
 	{
 		assert(f.isFile);
 
-		if
-		(
-			(reduceOnly.length && !reduceOnly.any!(mask => globMatch(f.filename, mask)))
-		||
-			(noRemove.any!(a => !match(f.filename, a).empty))
-		)
+		// Check file name
+		bool removeFile = defaultRemove;
+		foreach (rule; removeRules)
 		{
-			mark(f);
-			root.noRemove = true;
-			continue;
+			if (
+				(rule.shellGlob && f.filename.globMatch(rule.shellGlob))
+			||
+				(rule.regexp !is Regex!char.init && f.filename.match(rule.regexp))
+			)
+				removeFile = rule.remove;
 		}
 
-		immutable(char)*[] starts, ends;
+		auto removeChar = new bool[f.contents.length];
+		removeChar[] = removeFile;
 
-		foreach (r; noRemove)
-			foreach (c; match(f.contents, r))
-			{
-				assert(c.hit.ptr >= f.contents.ptr && c.hit.ptr < f.contents.ptr+f.contents.length);
-				starts ~= c.hit.ptr;
-				ends ~= c.hit.ptr + c.hit.length;
-			}
-
-		starts.sort();
-		ends.sort();
-
-		int noRemoveLevel = 0;
+		foreach (rule; removeRules)
+			if (rule.regexp !is Regex!char.init)
+				foreach (m; f.contents.matchAll(rule.regexp))
+				{
+					auto start = m.hit.ptr - f.contents.ptr;
+					auto end = start + m.hit.length;
+					removeChar[start .. end] = rule.remove;
+				}
 
 		bool scanString(string s)
 		{
 			if (!s.length)
-				return noRemoveLevel > 0;
-
-			auto start = s.ptr;
+				return true;
+			auto start = s.ptr - f.contents.ptr;
 			auto end = start + s.length;
-			assert(start >= f.contents.ptr && end <= f.contents.ptr+f.contents.length);
-
-			while (starts.length && starts[0] < end)
-			{
-				noRemoveLevel++;
-				starts = starts[1..$];
-			}
-			bool result = noRemoveLevel > 0;
-			while (ends.length && ends[0] <= end)
-			{
-				noRemoveLevel--;
-				ends = ends[1..$];
-			}
-			return result;
+			return removeChar[start .. end].all;
 		}
 
 		bool scan(Entity e)
 		{
-			bool result = false;
-			if (scanString(e.head))
-				result = true;
+			bool remove = true;
+			remove &= scanString(e.head);
 			foreach (c; e.children)
-				if (scan(c))
-					result = true;
-			if (scanString(e.tail))
-				result = true;
-			if (result)
+				remove &= scan(c);
+			remove &= scanString(e.tail);
+			if (!remove)
 				e.noRemove = root.noRemove = true;
-			return result;
+			return remove;
 		}
 
 		scan(f);
 	}
 }
 
-void applyNoRemoveDeps()
+void applyNoRemoveDeps(Entity root)
 {
-	static void applyDeps(Entity e)
-	{
-		e.noRemove = true;
-		foreach (d; e.dependencies)
-			applyDeps(d);
-	}
-
-	static void scan(Entity e)
+	static bool isNoRemove(Entity e)
 	{
 		if (e.noRemove)
-			applyDeps(e);
-		foreach (c; e.children)
-			scan(c);
+			return true;
+		foreach (dependent; e.dependents)
+			if (isNoRemove(dependent.entity))
+				return true;
+		return false;
 	}
-
-	scan(root);
 
 	// Propagate upwards
 	static bool fill(Entity e)
 	{
+		e.noRemove |= isNoRemove(e);
 		foreach (c; e.children)
 			e.noRemove |= fill(c);
 		return e.noRemove;
@@ -1742,7 +2402,7 @@ void applyNoRemoveDeps()
 	fill(root);
 }
 
-void loadCoverage(string dir)
+void loadCoverage(Entity root, string dir)
 {
 	void scanFile(Entity f)
 	{
@@ -1809,22 +2469,116 @@ void assignID(Entity e)
 		assignID(c);
 }
 
-void dumpSet(string fn)
+void convertRefs(Entity root)
+{
+	Address*[int] addresses;
+
+	void collectAddresses(Entity e, Address* address)
+	{
+		assert(e.id !in addresses);
+		addresses[e.id] = address;
+
+		assert(address.children.length == 0);
+		foreach (i, c; e.children)
+		{
+			auto childAddress = new Address(address, i, address.depth + 1);
+			address.children ~= childAddress;
+			collectAddresses(c, childAddress);
+		}
+		assert(address.children.length == e.children.length);
+	}
+	collectAddresses(root, &rootAddress);
+
+	void convertRef(ref EntityRef r)
+	{
+		assert(r.entity && !r.address);
+		r.address = addresses[r.entity.id];
+		r.entity = null;
+	}
+
+	void convertRefs(Entity e)
+	{
+		foreach (ref r; e.dependents)
+			convertRef(r);
+		foreach (c; e.children)
+			convertRefs(c);
+	}
+	convertRefs(root);
+}
+
+struct FindResult
+{
+	Entity entity;          /// null if gone
+	const Address* address; /// the "real" (no redirects) address, null if gone
+}
+
+FindResult findEntity(Entity root, const(Address)* addr)
+{
+	auto result = findEntityEx(root, addr);
+	if (result.dead)
+		return FindResult(null, null);
+	return FindResult(result.entity, result.address);
+}
+
+struct FindResultEx
+{
+	Entity entity;          /// never null
+	const Address* address; /// never null
+	bool dead;              /// a dead node has been traversed to get here
+}
+
+static FindResultEx findEntityEx(Entity root, const(Address)* addr)
+{
+	if (!addr.parent) // root
+		return FindResultEx(root, addr, root.dead);
+
+	auto r = findEntityEx(root, addr.parent);
+	auto e = r.entity.children[addr.index];
+	if (e.redirect)
+	{
+		assert(e.dead);
+		return findEntityEx(root, e.redirect); // shed the "dead" flag here
+	}
+
+	addr = r.address.child(addr.index); // apply redirects in parents
+	return FindResultEx(e, addr, r.dead || e.dead); // accumulate the "dead" flag
+}
+
+struct AddressRange
+{
+	const(Address)*address;
+	bool empty() { return !address.parent; }
+	size_t front() { return address.index; }
+	void popFront() { address = address.parent; }
+}
+
+void dumpSet(Entity root, string fn)
 {
 	auto f = File(fn, "wb");
 
 	string printable(string s) { return s is null ? "null" : `"` ~ s.replace("\\", `\\`).replace("\"", `\"`).replace("\r", `\r`).replace("\n", `\n`) ~ `"`; }
 	string printableFN(string s) { return "/*** " ~ s ~ " ***/"; }
 
-	bool[int] dependents;
-	void scanDependents(Entity e)
+	int[][int] dependencies;
+	bool[int] redirects;
+	void scanDependencies(Entity e)
 	{
-		foreach (d; e.dependencies)
-			dependents[d.id] = true;
+		foreach (d; e.dependents)
+		{
+			auto dependent = findEntityEx(root, d.address).entity;
+			if (dependent)
+				dependencies[dependent.id] ~= e.id;
+		}
 		foreach (c; e.children)
-			scanDependents(c);
+			scanDependencies(c);
+		if (e.redirect)
+		{
+			auto target = findEntityEx(root, e.redirect).entity;
+			if (target)
+				redirects[target.id] = true;
+		}
 	}
-	scanDependents(root);
+	scanDependencies(root);
 
 	void print(Entity e, int depth)
 	{
@@ -1832,13 +2586,17 @@ void dumpSet(string fn)
 
 		// if (!fileLevel) { f.writeln(prefix, "[ ... ]"); continue; }
 
-		f.write(prefix);
+		f.write(
+			prefix,
+			"[",
+			e.noRemove ? "!" : "",
+			e.dead ? "X" : "",
+		);
 		if (e.children.length == 0)
 		{
 			f.write(
-				"[",
-				e.noRemove ? "!" : "",
 				" ",
+				e.redirect ? "-> " ~ text(findEntityEx(root, e.redirect).entity.id) ~ " " : "",
 				e.isFile ? e.filename ? printableFN(e.filename) ~ " " : null : e.head ? printable(e.head) ~ " " : null,
 				e.tail ? printable(e.tail) ~ " " : null,
 				e.comment ? "/* " ~ e.comment ~ " */ " : null,
@@ -1847,7 +2605,7 @@ void dumpSet(string fn)
 		}
 		else
 		{
-			f.writeln("[", e.noRemove ? "!" : "", e.comment ? " // " ~ e.comment : null);
+			f.writeln(e.comment ? " // " ~ e.comment : null);
 			if (e.isFile) f.writeln(prefix, "  ", printableFN(e.filename));
 			if (e.head) f.writeln(prefix, "  ", printable(e.head));
 			foreach (c; e.children)
@@ -1855,13 +2613,13 @@ void dumpSet(string fn)
 			if (e.tail) f.writeln(prefix, "  ", printable(e.tail));
 			f.write(prefix, "]");
 		}
-		if (e.id in dependents || trace)
+		if (e.dependents.length || e.id in redirects || trace)
 			f.write(" =", e.id);
-		if (e.dependencies.length)
+		if (e.id in dependencies)
 		{
 			f.write(" =>");
-			foreach (d; e.dependencies)
-				f.write(" ", d.id);
+			foreach (d; dependencies[e.id])
+				f.write(" ", d);
 		}
 		f.writeln();
 	}
@@ -1871,7 +2629,7 @@ void dumpSet(string fn)
 	f.close();
 }
 
-void dumpToHtml(string fn)
+void dumpToHtml(Entity root, string fn)
 {
 	auto buf = appender!string();
 
@@ -1925,9 +2683,18 @@ EOT");
 	std.file.write(fn, buf.data());
 }
 
-void dumpText(string fn, ref Reduction r = nullReduction)
+// void dumpText(string fn, ref Reduction r = nullReduction)
+// {
+// 	auto f = File(fn, "wt");
+// 	dump(root, r, (string) {}, &f.write!string);
+// 	f.close();
+// }
+
+version(testsuite)
+shared static this()
 {
-	auto f = File(fn, "wt");
-	dump(root, r, (string) {}, &f.write!string);
-	f.close();
+	import core.runtime;
+	"../cov".mkdir.collectException();
+	dmd_coverDestPath("../cov");
+	dmd_coverSetMerge(true);
 }
