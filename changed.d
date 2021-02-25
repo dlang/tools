@@ -201,11 +201,11 @@ auto getBugzillaChanges(string revRange)
         switch (type)
         {
             case "regression":
-                type = "regressions";
+                type = "regression fixes";
                 break;
 
             case "blocker", "critical", "major", "normal", "minor", "trivial":
-                type = "bugs";
+                type = "bug fixes";
                 break;
 
             case "enhancement":
@@ -366,7 +366,7 @@ void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
     if (isOutputRange!(Writer, string))
 {
     immutable components = ["DMD Compiler", "Phobos", "Druntime", "dlang.org", "Optlink", "Tools", "Installer"];
-    immutable bugtypes = ["regressions", "bugs", "enhancements"];
+    immutable bugtypes = ["regression fixes", "bug fixes", "enhancements"];
 
     foreach (component; components)
     {
