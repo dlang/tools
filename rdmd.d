@@ -793,7 +793,7 @@ addition to compiler options, rdmd recognizes the following options:
                      (multiple --extra-file allowed)
   --force            force a rebuild even if apparently not necessary
   --help             this message
-  --loop             assume \"foreach (line; stdin.byLine()) { ... }\" for eval
+  --loop=code        like eval, but wraps code in \"foreach (line; stdin.byLine()) { ... }\"
   --main             add a stub main program to the mix (e.g. for unittesting)
   --makedepend       print dependencies in makefile format and exit
                      (needs dmd's option `-of` to be present)
