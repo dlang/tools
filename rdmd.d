@@ -61,7 +61,6 @@ private string compiler = defaultCompiler;
 version(unittest) {} else
 int main(string[] args)
 {
-    //writeln("Invoked with: ", args);
     // Look for the D compiler rdmd invokes automatically in the same directory as rdmd
     // and fall back to using the one in your path otherwise.
     string compilerPath = buildPath(dirName(thisExePath()), defaultCompiler ~ binExt);
