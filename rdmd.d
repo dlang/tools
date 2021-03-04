@@ -134,7 +134,9 @@ int main(string[] args)
     string[] eval;     // set by --eval
     bool makeDepend;
     string makeDepFile;
-    getopt(argsBeforeProgram,
+    try
+    {
+        getopt(argsBeforeProgram,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
             "build-only", &buildOnly,
@@ -154,6 +156,12 @@ int main(string[] args)
             "man", { man(); bailout = true; },
             "tmpdir", &userTempDir,
             "o", &dashOh);
+    } catch (Exception e)
+    {
+        stderr.writeln(helpString);
+        stderr.writeln(e.msg);
+        return 1;
+    }
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
 
