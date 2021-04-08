@@ -25,11 +25,11 @@ int main(string[] args)
 
     if (help) { usage(); return 0; }
 
-    import std.typetuple;
+    import std.meta;
     string user, repo;
     foreach(arg; args[1 .. $])
     {
-        TypeTuple!(user, repo) = resolveRepo(arg);
+        AliasSeq!(user, repo) = resolveRepo(arg);
         enforce(!repo.exists, fmt("output folder '%s' already exists", repo));
         if (clone) cloneRepo(user, repo);
         else fetchMaster(user, repo).unzipTo(repo);
