@@ -17,7 +17,7 @@
 import std.algorithm, std.array, core.stdc.stdlib, std.datetime,
     std.digest.md, std.exception, std.getopt,
     std.parallelism, std.path, std.process, std.range, std.regex,
-    std.stdio, std.string, std.typecons, std.typetuple;
+    std.stdio, std.string, std.typecons;
 
 // Globally import types and functions that don't need to be logged
 import std.file : FileException, DirEntry, SpanMode, thisExePath, tempDir;
