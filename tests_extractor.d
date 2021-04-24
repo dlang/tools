@@ -76,6 +76,29 @@ class TestVisitor : ASTVisitor
         decl.accept(this);
     }
 
+    override void visit(const ConditionalDeclaration decl)
+    {
+        bool skipTrue;
+
+        // Check if it's a version that should be skipped
+        if (auto vcd = decl.compileCondition.versionCondition)
+        {
+            const id = vcd.token.text;
+            skipTrue = config.ignoredVersions.canFind(id);
+        }
+
+        // search if/version block
+        if (!skipTrue)
+        {
+            foreach (d; decl.trueDeclarations)
+                visit(d);
+        }
+
+        // Search else block
+        foreach (d; decl.falseDeclarations)
+            visit(d);
+    }
+
 private:
 
     bool shouldIncludeUnittest(const Declaration decl)
@@ -221,6 +244,7 @@ void parseFileDir(string inputDir, string fileName, string outputDir, VisitorCon
 struct VisitorConfig
 {
     string[] attributes; /// List of attributes to extract;
+    string[] ignoredVersions;   /// List of disabled version conditions
     bool betterCOutput; /// Add custom extern(C) main method for running D's unittests
 }
 
@@ -234,6 +258,7 @@ void main(string[] args)
     string ignoredFilesStr;
     string modulePrefix;
     string attributesStr;
+    string ignVersionsStr;
     VisitorConfig visitorConfig;
 
     auto helpInfo = getopt(args, config.required,
@@ -241,6 +266,7 @@ void main(string[] args)
             "outputdir|o", "Folder to which the extracted test files should be saved (stdout for a single file)", &outputDir,
             "ignore", "Comma-separated list of files to exclude (partial matching is supported)", &ignoredFilesStr,
             "attributes|a", "Comma-separated list of UDAs that the unittest should have", &attributesStr,
+            "undefinedVersions", "Comma-separated list of undefined versions", &ignVersionsStr,
             "betterC", "Add custom extern(C) main method for running D's unittests", &visitorConfig.betterCOutput,
     );
 
@@ -257,6 +283,7 @@ to in the output directory.
     inputDir = inputDir.asNormalizedPath.array;
     Algebraic!(string, File) outputLocation = cast(string) outputDir.asNormalizedPath.array;
     visitorConfig.attributes = attributesStr.split(",");
+    visitorConfig.ignoredVersions = ignVersionsStr.split(",");
 
     if (!exists(outputDir))
         mkdir(outputDir);
