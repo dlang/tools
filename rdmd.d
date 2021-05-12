@@ -17,7 +17,7 @@
 import std.algorithm, std.array, core.stdc.stdlib, std.datetime,
     std.digest.md, std.exception, std.getopt,
     std.parallelism, std.path, std.process, std.range, std.regex,
-    std.stdio, std.string, std.typecons, std.typetuple;
+    std.stdio, std.string, std.typecons;
 
 // Globally import types and functions that don't need to be logged
 import std.file : FileException, DirEntry, SpanMode, thisExePath, tempDir;
@@ -61,7 +61,6 @@ private string compiler = defaultCompiler;
 version(unittest) {} else
 int main(string[] args)
 {
-    //writeln("Invoked with: ", args);
     // Look for the D compiler rdmd invokes automatically in the same directory as rdmd
     // and fall back to using the one in your path otherwise.
     string compilerPath = buildPath(dirName(thisExePath()), defaultCompiler ~ binExt);
@@ -134,7 +133,9 @@ int main(string[] args)
     string[] eval;     // set by --eval
     bool makeDepend;
     string makeDepFile;
-    getopt(argsBeforeProgram,
+    try
+    {
+        getopt(argsBeforeProgram,
             std.getopt.config.caseSensitive,
             std.getopt.config.passThrough,
             "build-only", &buildOnly,
@@ -154,6 +155,12 @@ int main(string[] args)
             "man", { man(); bailout = true; },
             "tmpdir", &userTempDir,
             "o", &dashOh);
+    } catch (Exception e)
+    {
+        stderr.writeln(helpString);
+        stderr.writeln(e.msg);
+        return 1;
+    }
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
 
@@ -785,7 +792,7 @@ addition to compiler options, rdmd recognizes the following options:
                      (multiple --extra-file allowed)
   --force            force a rebuild even if apparently not necessary
   --help             this message
-  --loop             assume \"foreach (line; stdin.byLine()) { ... }\" for eval
+  --loop=code        like eval, but wraps code in \"foreach (line; stdin.byLine()) { ... }\"
   --main             add a stub main program to the mix (e.g. for unittesting)
   --makedepend       print dependencies in makefile format and exit
                      (needs dmd's option `-of` to be present)
