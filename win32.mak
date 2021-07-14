@@ -28,7 +28,7 @@ ZIP=zip32
 # Copy to another directory
 SCP=$(CP)
 
-DFLAGS=-O -release
+DFLAGS=-O -release -m$(MODEL)
 
 GENERATED = generated
 ROOT = $(GENERATED)\windows\32
@@ -39,7 +39,7 @@ TARGETS=	$(ROOT)\dman.exe \
 	$(ROOT)\changed.exe \
 	$(ROOT)\dustmite.exe
 
-MAKEFILES=win32.mak posix.mak
+MAKEFILES=win32.mak win64.mak posix.mak
 
 SRCS=dman.d rdmd.d ddemangle.d
 
