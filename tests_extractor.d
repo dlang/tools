@@ -34,6 +34,7 @@ class TestVisitor : ASTVisitor
     ubyte[] sourceCode;
     string moduleName;
     VisitorConfig config;
+    bool compileOnly;
 
     this(File outFile, ubyte[] sourceCode, VisitorConfig config)
     {
@@ -78,6 +79,9 @@ class TestVisitor : ASTVisitor
 
     override void visit(const ConditionalDeclaration decl)
     {
+        const compileOnlySave = this.compileOnly;
+        scope (exit) this.compileOnly = compileOnlySave;
+
         bool skipTrue;
 
         // Check if it's a version that should be skipped
@@ -85,6 +89,7 @@ class TestVisitor : ASTVisitor
         {
             const id = vcd.token.text;
             skipTrue = config.ignoredVersions.canFind(id);
+            this.compileOnly = this.compileOnly || config.compileOnlyVersions.canFind(id);
         }
 
         // search if/version block
@@ -179,11 +184,14 @@ private:
         }
 
         // write the unittest block
+        const pre = compileOnly ? " if (false) {" : "";
+        const post = compileOnly ? "}" : "";
+
         if (config.betterCOutput)
-            outFile.writef("void unittest_line_%s()\n{\n", line);
+            outFile.writef("void unittest_line_%s()\n{%s\n", line, pre);
         else
-            outFile.write("unittest\n{\n");
-        scope(exit) outFile.writeln("}\n");
+            outFile.writef("unittest\n{%s\n", pre);
+        scope(exit) outFile.writeln(post, "}\n");
 
         // add an import to the current module
         outFile.writefln("    import %s;", moduleName);
@@ -245,6 +253,7 @@ struct VisitorConfig
 {
     string[] attributes; /// List of attributes to extract;
     string[] ignoredVersions;   /// List of disabled version conditions
+    string[] compileOnlyVersions; /// List of version's whose contained unittests should only be compiled (but not run)
     bool betterCOutput; /// Add custom extern(C) main method for running D's unittests
 }
 
@@ -259,6 +268,7 @@ void main(string[] args)
     string modulePrefix;
     string attributesStr;
     string ignVersionsStr;
+    string compileOnlyStr;
     VisitorConfig visitorConfig;
 
     auto helpInfo = getopt(args, config.required,
@@ -267,6 +277,7 @@ void main(string[] args)
             "ignore", "Comma-separated list of files to exclude (partial matching is supported)", &ignoredFilesStr,
             "attributes|a", "Comma-separated list of UDAs that the unittest should have", &attributesStr,
             "undefinedVersions", "Comma-separated list of undefined versions", &ignVersionsStr,
+            "compileOnlyVersions", "Comma-separated list of versions whose tests should only be compiled", &compileOnlyStr,
             "betterC", "Add custom extern(C) main method for running D's unittests", &visitorConfig.betterCOutput,
     );
 
@@ -284,6 +295,7 @@ to in the output directory.
     Algebraic!(string, File) outputLocation = cast(string) outputDir.asNormalizedPath.array;
     visitorConfig.attributes = attributesStr.split(",");
     visitorConfig.ignoredVersions = ignVersionsStr.split(",");
+    visitorConfig.compileOnlyVersions = compileOnlyStr.split(",");
 
     if (!exists(outputDir))
         mkdir(outputDir);
