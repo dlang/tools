@@ -10,9 +10,8 @@ DUB=dub
 WITH_DOC = no
 DOC = ../dlang.org
 
-# Load operating system $(OS) (e.g. linux, osx, ...) and $(MODEL) (e.g. 32, 64) detection Makefile from dmd
-$(shell [ ! -d $(DMD_DIR) ] && git clone --depth=1 https://github.com/dlang/dmd $(DMD_DIR))
-include $(DMD_DIR)/src/osmodel.mak
+# Load operating system $(OS) (e.g. linux, osx, ...) and $(MODEL) (e.g. 32, 64) detection Makefile
+include osmodel.mak
 
 # Build folder for all binaries
 GENERATED = generated
@@ -39,8 +38,8 @@ DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
 		 -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL) $(MODEL_FLAG) -fPIC -preview=dip1000
 DFLAGS += $(WARNINGS)
 
-# Default DUB flags (DUB uses a different architecture format)
-DUBFLAGS = --arch=$(subst 32,x86,$(subst 64,x86_64,$(MODEL)))
+# Default DUB flags
+DUBFLAGS = --arch=$(ARCH)
 
 TOOLS = \
     $(ROOT)/catdoc \
