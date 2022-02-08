@@ -1,0 +1,3 @@
+rdmd now supports specifying the D compiler using the `RDMD_DMD` environment variable
+
+rdmd now uses the `RDMD_DMD` environment variable, if it is present in the environment, to choose the D compiler to use. As with the `--compiler` option, the variable's value must specify the name or path of a compiler with a DMD-like command line syntax, such as `gdmd` or `ldmd2`. The variable overrides the default (which is decided at the time `rdmd` was built), but can still be overridden by the `--compiler` option.

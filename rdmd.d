@@ -64,18 +64,11 @@ else version (LDC)
     private enum defaultCompiler = "ldmd2";
 else
     static assert(false, "Unknown compiler");
-
-private string compiler = defaultCompiler;
+private string compiler = null;
 
 version(unittest) {} else
 int main(string[] args)
 {
-    // Look for the D compiler rdmd invokes automatically in the same directory as rdmd
-    // and fall back to using the one in your path otherwise.
-    string compilerPath = buildPath(dirName(thisExePath()), defaultCompiler ~ binExt);
-    if (Filesystem.existsAsFile(compilerPath))
-        compiler = compilerPath;
-
     if (args.length > 1 && args[1].startsWith("--shebang ", "--shebang="))
     {
         // multiple options wrapped in one
@@ -142,6 +135,7 @@ int main(string[] args)
     string[] eval;     // set by --eval
     bool makeDepend;
     string makeDepFile;
+    
     try
     {
         getopt(argsBeforeProgram,
@@ -172,6 +166,24 @@ int main(string[] args)
     }
     if (bailout) return 0;
     if (dryRun) chatty = true; // dry-run implies chatty
+
+    // If we don't have a known compiler specified by the user,
+    // then we need to look to see if it was specified via an environmental argument.
+    // We need to do this due to rdmd being used as the execution engine for shebang files.
+    // This was originally tested with both $DMD, and $DC variable support.
+    // It was removed due to the current test suites being fragile enough that it broke them.
+    if (!compiler)
+        compiler = environment.get("RDMD_DMD", null);
+    if (!compiler)
+    {
+        compiler = defaultCompiler;
+        
+        // Look for the D compiler rdmd invokes automatically in the same directory as rdmd
+        // and fall back to using the one in your path otherwise.
+        string compilerPath = buildPath(dirName(thisExePath()), compiler ~ binExt);
+        if (Filesystem.existsAsFile(compilerPath))
+            compiler = compilerPath;
+    }
 
     /* Only -of is supported because Make is very susceptible to file names, and
      * it doesn't do a good job resolving them. One option would be to use
