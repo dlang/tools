@@ -47,7 +47,16 @@ immutable string[] defaultExclusions = ["std", "etc", "core"];
 private string[] exclusions = defaultExclusions; // packages that are to be excluded
 private string[] extraFiles = [];
 
-version (DigitalMars)
+// Override compiler at build time
+version (DefaultCompiler_DMD)
+    private enum defaultCompiler = "dmd";
+else version (DefaultCompiler_GDC)
+    private enum defaultCompiler = "gdmd";
+else version (DefaultCompiler_LDC)
+    private enum defaultCompiler = "ldmd2";
+
+// Default to the current host compiler if no default was specified
+else version (DigitalMars)
     private enum defaultCompiler = "dmd";
 else version (GNU)
     private enum defaultCompiler = "gdmd";
