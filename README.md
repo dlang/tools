@@ -3,7 +3,6 @@ D tools
 
 [![GitHub tag](https://img.shields.io/github/tag/dlang/tools.svg?maxAge=86400)](https://github.com/dlang/tools/releases)
 [![Bugzilla Issues](https://img.shields.io/badge/issues-Bugzilla-green.svg)](https://issues.dlang.org/buglist.cgi?component=tools&list_id=220149&product=D&resolution=---)
-[![Travis](https://img.shields.io/travis/dlang/tools/master.svg?logo=travis&style=flat&label=travis)](https://travis-ci.org/dlang/tools)
 [![Buildkite](https://img.shields.io/buildkite/8cc605b3a89338bc41b144efcd5226acfe6b91c844a8a27ad9/master.svg?logo=dependabot&style=flat&label=buildkite)](https://buildkite.com/dlang/tools)
 [![license](https://img.shields.io/github/license/dlang/tools.svg)](https://github.com/dlang/tools/blob/master/LICENSE.txt)
 
