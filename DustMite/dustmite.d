@@ -24,7 +24,7 @@ import std.process;
 import std.random;
 import std.range;
 import std.regex;
-import std.stdio;
+import std.stdio : stdout, stderr, File;
 import std.string;
 import std.typecons;
 
@@ -33,16 +33,23 @@ import splitter;
 alias Splitter = splitter.Splitter;
 
 // Issue 314 workarounds
-alias std.string.join join;
-alias std.string.startsWith startsWith;
+alias join = std.string.join;
+alias startsWith = std.algorithm.searching.startsWith;
 
-string dir, resultDir, tester, globalCache;
-string dirSuffix(string suffix) { return (dir.absolutePath().buildNormalizedPath() ~ "." ~ suffix).relativePath(); }
+string dir, resultDir, tmpDir, tester, globalCache;
+string dirSuffix(string suffix, Flag!q{temp} temp)
+{
+	return (
+		(temp && tmpDir ? tmpDir.buildPath(dir.baseName) : dir)
+		.absolutePath().buildNormalizedPath() ~ "." ~ suffix
+	).relativePath();
+}
 
 size_t maxBreadth;
 size_t origDescendants;
 int tests, maxSteps = -1; bool foundAnything;
 bool noSave, trace, noRedirect, doDump, whiteout;
+RemoveRule[] rejectRules;
 string strategy = "inbreadth";
 
 struct Times { StopWatch total, load, testSave, resultSave, apply, lookaheadApply, lookaheadWaitThread, lookaheadWaitProcess, test, clean, globalCache, misc; }
@@ -140,29 +147,31 @@ struct RemoveRule { Regex!char regexp; string shellGlob; bool remove; }
 
 int main(string[] args)
 {
-	bool force, dumpHtml, showTimes, stripComments, obfuscate, fuzz, keepLength, showHelp, showVersion, noOptimize, inPlace;
+	bool force, dumpHtml, dumpJson, readJson, showTimes, stripComments, obfuscate, fuzz, keepLength, showHelp, showVersion, noOptimize, inPlace;
 	string coverageDir;
 	RemoveRule[] removeRules;
 	string[] splitRules;
 	uint lookaheadCount, tabWidth = 8;
 
-	args = args.filter!(
-		(arg)
-		{
-			if (arg.startsWith("-j"))
+	args = args
+		.filter!((string arg) {
+			if (arg.skipOver("-j"))
 			{
-				arg = arg[2..$];
 				lookaheadCount = arg.length ? arg.to!uint : totalCPUs;
 				return false;
 			}
 			return true;
-		}).array();
+		})
+		// Work around getopt's inability to handle "-" in 2.080.0
+		.map!((string arg) => arg == "-" ? "\0" ~ arg : arg)
+		.array();
 
 	getopt(args,
 		"force", &force,
 		"reduceonly|reduce-only", (string opt, string value) { removeRules ~= RemoveRule(Regex!char.init, value, true); },
 		"remove"                , (string opt, string value) { removeRules ~= RemoveRule(regex(value, "mg"), null, true); },
 		"noremove|no-remove"    , (string opt, string value) { removeRules ~= RemoveRule(regex(value, "mg"), null, false); },
+		"reject"                , (string opt, string value) { rejectRules ~= RemoveRule(regex(value, "mg"), null, true); },
 		"strip-comments", &stripComments,
 		"whiteout|white-out", &whiteout,
 		"coverage", &coverageDir,
@@ -173,6 +182,7 @@ int main(string[] args)
 		"split", &splitRules,
 		"dump", &doDump,
 		"dump-html", &dumpHtml,
+		"dump-json", &dumpJson,
 		"times", &showTimes,
 		"noredirect|no-redirect", &noRedirect,
 		"cache", &globalCache, // for research
@@ -180,11 +190,15 @@ int main(string[] args)
 		"nosave|no-save", &noSave, // for research
 		"nooptimize|no-optimize", &noOptimize, // for research
 		"tab-width", &tabWidth,
+		"temp-dir", &tmpDir,
 		"max-steps", &maxSteps, // for research / benchmarking
 		"i|in-place", &inPlace,
+		"json", &readJson,
 		"h|help", &showHelp,
 		"V|version", &showVersion,
 	);
+	foreach (ref arg; args)
+		arg.skipOver("\0"); // Undo getopt hack
 
 	if (showVersion)
 	{
@@ -195,7 +209,7 @@ int main(string[] args)
 			enum source = import("source");
 		else
 			enum source = "upstream";
-		writeln("DustMite build ", __DATE__, " (", source, "), built with ", __VENDOR__, " ", __VERSION__);
+		stdout.writeln("DustMite build ", __DATE__, " (", source, "), built with ", __VENDOR__, " ", __VERSION__);
 		if (args.length == 1)
 			return 0;
 	}
@@ -204,8 +218,7 @@ int main(string[] args)
 	{
 		stderr.writef(q"EOS
 Usage: %s [OPTION]... PATH TESTER
-PATH should be a directory containing a clean copy of the file-set to reduce.
-A file path can also be specified. NAME.EXT will be treated like NAME/NAME.EXT.
+PATH should contain a clean copy of the file-set to reduce.
 TESTER should be a shell command which returns 0 for a correct reduction,
 and anything else otherwise.
 Supported options:
@@ -215,6 +228,8 @@ Supported options:
   --remove REGEXP    Only reduce blocks covered by REGEXP
                        (may be used multiple times)
   --no-remove REGEXP Do not reduce blocks containing REGEXP
+                       (may be used multiple times)
+  --reject REGEXP    Reject reductions which cause REGEXP to occur in output
                        (may be used multiple times)
   --strip-comments   Attempt to remove comments from source code
   --white-out        Replace deleted text with spaces to preserve line numbers
@@ -227,7 +242,9 @@ Supported options:
   --split MASK:MODE  Parse and reduce files specified by MASK using the given
                        splitter. Can be repeated. MODE must be one of:
                        %-(%s, %)
+  --json             Load PATH as a JSON file (same syntax as --dump-json)
   --no-redirect      Don't redirect stdout/stderr streams of test command
+  --temp-dir         Write and run reduction candidates in this directory
   -j[N]              Use N look-ahead processes (%d by default)
 EOS", args[0], splitterNames, totalCPUs);
 
@@ -244,8 +261,9 @@ EOS");
 Less interesting options:
   -V, --version      Show program version
   --strategy STRAT   Set strategy (careful/lookback/pingpong/indepth/inbreadth)
-  --dump             Dump parsed tree to DIR.dump file
-  --dump-html        Dump parsed tree to DIR.html file
+  --dump             Dump parsed tree to PATH.dump file
+  --dump-html        Dump parsed tree to PATH.html file
+  --dump-json        Dump parsed tree to PATH.json file
   --times            Display verbose spent time breakdown
   --cache DIR        Use DIR as persistent disk cache
                        (in addition to memory cache)
@@ -278,23 +296,34 @@ EOS");
 
 	bool isDotName(string fn) { return fn.startsWith(".") && !(fn=="." || fn==".."); }
 
-	bool suspiciousFilesFound;
-	if (!force && isDir(dir))
+	if (!readJson && !force && dir.exists && dir.isDir())
+	{
+		bool suspiciousFilesFound;
 		foreach (string path; dirEntries(dir, SpanMode.breadth))
 			if (isDotName(baseName(path)) || isDotName(baseName(dirName(path))) || extension(path)==".o" || extension(path)==".obj" || extension(path)==".exe")
 			{
 				stderr.writeln("Warning: Suspicious file found: ", path);
 				suspiciousFilesFound = true;
 			}
-	if (suspiciousFilesFound)
-		stderr.writeln("You should use a clean copy of the source tree.\nIf it was your intention to include this file in the file-set to be reduced,\nyou can use --force to silence this message.");
+		if (suspiciousFilesFound)
+			stderr.writeln("You should use a clean copy of the source tree.\nIf it was your intention to include this file in the file-set to be reduced,\nyou can use --force to silence this message.");
+	}
 
 	ParseRule parseSplitRule(string rule)
 	{
 		auto p = rule.lastIndexOf(':');
-		enforce(p > 0, "Invalid parse rule: " ~ rule);
-		auto pattern = rule[0..p];
-		auto splitterName = rule[p+1..$];
+		string pattern, splitterName;
+		if (p < 0)
+		{
+			pattern = "*";
+			splitterName = rule;
+		}
+		else
+		{
+			enforce(p > 0, "Invalid parse rule: " ~ rule);
+			pattern = rule[0 .. p];
+			splitterName = rule[p + 1 .. $];
+		}
 		auto splitterIndex = splitterNames.countUntil(splitterName);
 		enforce(splitterIndex >= 0, "Unknown splitter: " ~ splitterName);
 		return ParseRule(pattern, cast(Splitter)splitterIndex);
@@ -304,7 +333,10 @@ EOS");
 
 	ParseOptions parseOptions;
 	parseOptions.stripComments = stripComments;
-	parseOptions.mode = obfuscate ? ParseOptions.Mode.words : ParseOptions.Mode.source;
+	parseOptions.mode =
+		readJson ? ParseOptions.Mode.json :
+		obfuscate ? ParseOptions.Mode.words :
+		ParseOptions.Mode.source;
 	parseOptions.rules = splitRules.map!parseSplitRule().array();
 	parseOptions.tabWidth = tabWidth;
 	measure!"load"({root = loadFiles(dir, parseOptions);});
@@ -324,13 +356,15 @@ EOS");
 	resetProgress(root);
 
 	if (doDump)
-		dumpSet(root, dirSuffix("dump"));
+		dumpSet(root, dirSuffix("dump", No.temp));
 	if (dumpHtml)
-		dumpToHtml(root, dirSuffix("html"));
+		dumpToHtml(root, dirSuffix("html", No.temp));
+	if (dumpJson)
+		dumpToJson(root, dirSuffix("json", No.temp));
 
 	if (tester is null)
 	{
-		writeln("No tester specified, exiting");
+		stderr.writeln("No tester specified, exiting");
 		return 0;
 	}
 
@@ -338,10 +372,10 @@ EOS");
 		resultDir = dir;
 	else
 	{
-		resultDir = dirSuffix("reduced");
+		resultDir = dirSuffix("reduced", No.temp);
 		if (resultDir.exists)
 		{
-			writeln("Hint: read https://github.com/CyberShadow/DustMite/wiki#result-directory-already-exists");
+			stderr.writeln("Hint: read https://github.com/CyberShadow/DustMite/wiki#result-directory-already-exists");
 			throw new Exception("Result directory already exists");
 		}
 	}
@@ -355,15 +389,15 @@ EOS");
 			version (Posix)
 			{
 				if (testerFile.exists && (testerFile.getAttributes() & octal!111) == 0)
-					writeln("Hint: test program seems to be a non-executable file, try: chmod +x " ~ testerFile.escapeShellFileName());
+					stderr.writeln("Hint: test program seems to be a non-executable file, try: chmod +x " ~ testerFile.escapeShellFileName());
 			}
 			if (!testerFile.exists && tester.exists)
-				writeln("Hint: test program path should be relative to the source directory, try " ~
+				stderr.writeln("Hint: test program path should be relative to the source directory, try " ~
 					tester.absolutePath.relativePath(dir.absolutePath).escapeShellFileName() ~
 					" instead of " ~ tester.escapeShellFileName());
 			if (!noRedirect)
-				writeln("Hint: use --no-redirect to see test script output");
-			writeln("Hint: read https://github.com/CyberShadow/DustMite/wiki#initial-test-fails");
+				stderr.writeln("Hint: use --no-redirect to see test script output");
+			stderr.writeln("Hint: read https://github.com/CyberShadow/DustMite/wiki#initial-test-fails");
 			throw new Exception("Initial test fails: " ~ nullResult.reason);
 		}
 	}
@@ -397,20 +431,20 @@ EOS");
 		{
 			if (noSave)
 				measure!"resultSave"({safeSave(root, resultDir);});
-			writefln("Done in %s tests and %s; %s version is in %s", tests, duration, resultAdjective, resultDir);
+			stderr.writefln("Done in %s tests and %s; %s version is in %s", tests, duration, resultAdjective, resultDir);
 		}
 		else
 		{
-			writeln("Hint: read https://github.com/CyberShadow/DustMite/wiki#reduced-to-empty-set");
-			writefln("Done in %s tests and %s; %s to empty set", tests, duration, resultAdjective);
+			stderr.writeln("Hint: read https://github.com/CyberShadow/DustMite/wiki#reduced-to-empty-set");
+			stderr.writefln("Done in %s tests and %s; %s to empty set", tests, duration, resultAdjective);
 		}
 	}
 	else
-		writefln("Done in %s tests and %s; no reductions found", tests, duration);
+		stderr.writefln("Done in %s tests and %s; no reductions found", tests, duration);
 
 	if (showTimes)
 		foreach (i, t; times.tupleof)
-			writefln("%s: %s", times.tupleof[i].stringof, times.tupleof[i].peek());
+			stderr.writefln("%s: %s", times.tupleof[i].stringof, times.tupleof[i].peek());
 
 	return 0;
 }
@@ -1202,12 +1236,12 @@ void reduceByStrategy(Strategy strategy)
 
 		if (lastIteration != strategy.getIteration())
 		{
-			writefln("############### ITERATION %d ################", strategy.getIteration());
+			stderr.writefln("############### ITERATION %d ################", strategy.getIteration());
 			lastIteration = strategy.getIteration();
 		}
 		if (lastDepth != strategy.getDepth())
 		{
-			writefln("============= Depth %d =============", strategy.getDepth());
+			stderr.writefln("============= Depth %d =============", strategy.getDepth());
 			lastDepth = strategy.getDepth();
 		}
 		if (lastProgressGeneration != strategy.progressGeneration)
@@ -1331,7 +1365,7 @@ void fuzz(ref Entity root)
 	{
 		import std.math : log2;
 		auto newRoot = root;
-		auto numReductions = uniform(1, cast(int)log2(allAddresses.length), rng);
+		auto numReductions = uniform(1, cast(int)log2(cast(double)allAddresses.length), rng);
 		Reduction[] reductions;
 		foreach (n; 0 .. numReductions)
 		{
@@ -1421,36 +1455,75 @@ static struct FastWriter(Next) /// Accelerates Writer interface by bulking conti
 	~this() { finish(); }
 }
 
+static struct DiskWriter
+{
+	string dir;
+
+	File o;
+	typeof(o.lockingBinaryWriter()) binaryWriter;
+
+	void handleFile(string fn)
+	{
+		finish();
+
+		static Appender!(char[]) pathBuf;
+		pathBuf.clear();
+		pathBuf.put(dir.chainPath(fn));
+		auto path = pathBuf.data;
+		if (!exists(dirName(path)))
+			safeMkdir(dirName(path));
+
+		o.open(cast(string)path, "wb");
+		binaryWriter = o.lockingBinaryWriter;
+	}
+
+	void handleText(string s)
+	{
+		assert(o.isOpen);
+		binaryWriter.put(s);
+	}
+
+	void finish()
+	{
+		if (o.isOpen)
+		{
+			binaryWriter = typeof(binaryWriter).init;
+			o.close();
+			o = File.init; // Avoid crash on Windows
+		}
+	}
+
+	~this() { finish(); }
+}
+
+struct MemoryWriter
+{
+	char[] buf;
+	size_t pos;
+
+	void handleFile(string fn) {}
+
+	void handleText(string s)
+	{
+		auto end = pos + s.length;
+		if (buf.length < end)
+		{
+			buf.length = end;
+			buf.length = buf.capacity;
+		}
+		buf[pos .. end] = s;
+		pos = end;
+	}
+
+	void reset() { pos = 0; }
+	char[] data() { return buf[0 .. pos]; }
+}
+
 void save(Entity root, string savedir)
 {
 	safeDelete(savedir);
 	safeMkdir(savedir);
 
-	static struct DiskWriter
-	{
-		string dir;
-
-		File o;
-		typeof(o.lockingBinaryWriter()) binaryWriter;
-
-		void handleFile(string fn)
-		{
-			static Appender!(char[]) pathBuf;
-			pathBuf.clear();
-			pathBuf.put(dir.chainPath(fn));
-			auto path = pathBuf.data;
-			if (!exists(dirName(path)))
-				safeMkdir(dirName(path));
-
-			o.open(cast(string)path, "wb");
-			binaryWriter = o.lockingBinaryWriter;
-		}
-
-		void handleText(string s)
-		{
-			binaryWriter.put(s);
-		}
-	}
 	FastWriter!DiskWriter writer;
 	writer.next.dir = savedir;
 	dump(root, &writer);
@@ -1518,7 +1591,7 @@ bool tryReduction(ref Entity root, Reduction r)
 	if (newRoot is root)
 	{
 		assert(r.type != Reduction.Type.None);
-		writeln(r, " => N/A");
+		stderr.writeln(r, " => N/A");
 		return false;
 	}
 	if (test(newRoot, [r]).success)
@@ -1894,10 +1967,10 @@ void autoRetry(scope void delegate() fun, lazy const(char)[] operation)
 		}
 		catch (Exception e)
 		{
-			writeln("Error while attempting to " ~ operation ~ ": " ~ e.msg);
+			stderr.writeln("Error while attempting to " ~ operation ~ ": " ~ e.msg);
 			import core.thread;
 			Thread.sleep(dur!"seconds"(1));
-			writeln("Retrying...");
+			stderr.writeln("Retrying...");
 		}
 }
 
@@ -2002,6 +2075,7 @@ struct TestResult
 		lookahead,
 		diskCache,
 		ramCache,
+		reject,
 	}
 	Source source;
 
@@ -2022,6 +2096,8 @@ struct TestResult
 				return "Test result was cached on disk as " ~ (success ? "success" : "failure");
 			case Source.ramCache:
 				return "Test result was cached in memory as " ~ (success ? "success" : "failure");
+			case Source.reject:
+				return "Test result was rejected by a --reject rule";
 		}
 	}
 }
@@ -2031,7 +2107,7 @@ TestResult test(
 	Reduction[] reductions, /// For display purposes only
 )
 {
-	writef("%-(%s, %) => ", reductions); stdout.flush();
+	stderr.writef("%-(%s, %) => ", reductions); stdout.flush();
 
 	EntityHash digest = root.hash;
 
@@ -2041,7 +2117,7 @@ TestResult test(
 		if (cacheResult)
 		{
 			// Note: as far as I can see, a cache hit for a positive reduction is not possible (except, perhaps, for a no-op reduction)
-			writeln(*cacheResult ? "Yes" : "No", " (cached)");
+			stderr.writeln(*cacheResult ? "Yes" : "No", " (cached)");
 			return TestResult(*cacheResult, TestResult.Source.ramCache);
 		}
 		auto result = fallback;
@@ -2062,13 +2138,13 @@ TestResult test(
 			measure!"globalCache"({ found = exists(cacheBase~"0"); });
 			if (found)
 			{
-				writeln("No (disk cache)");
+				stderr.writeln("No (disk cache)");
 				return TestResult(false, TestResult.Source.diskCache);
 			}
 			measure!"globalCache"({ found = exists(cacheBase~"1"); });
 			if (found)
 			{
-				writeln("Yes (disk cache)");
+				stderr.writeln("Yes (disk cache)");
 				return TestResult(true, TestResult.Source.diskCache);
 			}
 			auto result = fallback;
@@ -2169,7 +2245,7 @@ TestResult test(
 						process.digest = digest;
 
 						static int counter;
-						process.testdir = dirSuffix("lookahead.%d".format(counter++));
+						process.testdir = dirSuffix("lookahead.%d".format(counter++), Yes.temp);
 
 						// Saving and process creation are expensive.
 						// Don't block the main thread, use a worker thread instead.
@@ -2209,7 +2285,7 @@ TestResult test(
 			auto plookaheadResult = digest in lookaheadResults;
 			if (plookaheadResult)
 			{
-				writeln(plookaheadResult.success ? "Yes" : "No", " (lookahead)");
+				stderr.writeln(plookaheadResult.success ? "Yes" : "No", " (lookahead)");
 				return *plookaheadResult;
 			}
 
@@ -2228,7 +2304,7 @@ TestResult test(
 					measure!"lookaheadWaitProcess"({ exitCode = pid.wait(); });
 
 					auto result = reap(process, exitCode);
-					writeln(result.success ? "Yes" : "No", " (lookahead-wait)");
+					stderr.writeln(result.success ? "Yes" : "No", " (lookahead-wait)");
 					return result;
 				}
 			}
@@ -2237,29 +2313,78 @@ TestResult test(
 		return fallback;
 	}
 
+	TestResult testReject(lazy TestResult fallback)
+	{
+		if (rejectRules.length)
+		{
+			bool defaultReject = !rejectRules.front.remove;
+
+			bool scan(Entity e)
+			{
+				if (e.isFile)
+				{
+					static MemoryWriter writer;
+					writer.reset();
+					dump(e, &writer);
+
+					static bool[] removeCharBuf;
+					if (removeCharBuf.length < writer.data.length)
+						removeCharBuf.length = writer.data.length;
+					auto removeChar = removeCharBuf[0 .. writer.data.length];
+					removeChar[] = defaultReject;
+
+					foreach (ref rule; rejectRules)
+						if (rule.regexp !is Regex!char.init)
+							foreach (m; writer.data.matchAll(rule.regexp))
+							{
+								auto start = m.hit.ptr - writer.data.ptr;
+								auto end = start + m.hit.length;
+								removeChar[start .. end] = rule.remove;
+							}
+
+					if (removeChar.canFind(true))
+						return true;
+				}
+				else
+					foreach (c; e.children)
+						if (scan(c))
+							return true;
+				return false;
+			}
+
+			if (scan(root))
+			{
+				stderr.writeln("No (rejected)");
+				return TestResult(false, TestResult.Source.reject);
+			}
+		}
+		return fallback;
+	}
+
 	TestResult doTest()
 	{
-		string testdir = dirSuffix("test");
+		string testdir = dirSuffix("test", Yes.temp);
 		measure!"testSave"({save(root, testdir);}); scope(exit) measure!"clean"({safeDelete(testdir);});
 
+		auto nullRead = File(nullFileName, "rb");
 		Pid pid;
 		if (noRedirect)
-			pid = spawnShell(tester, null, Config.none, testdir);
+			pid = spawnShell(tester, nullRead, stdout   , stderr   , null, Config.none, testdir);
 		else
 		{
-			auto nul = File(nullFileName, "w+");
-			pid = spawnShell(tester, nul, nul, nul, null, Config.none, testdir);
+			auto nullWrite = File(nullFileName, "wb");
+			pid = spawnShell(tester, nullRead, nullWrite, nullWrite, null, Config.none, testdir);
 		}
 
 		int status;
 		measure!"test"({status = pid.wait();});
 		auto result = TestResult(status == 0, TestResult.Source.tester, status);
-		writeln(result.success ? "Yes" : "No");
+		stderr.writeln(result.success ? "Yes" : "No");
 		return result;
 	}
 
-	auto result = ramCached(diskCached(lookahead(doTest())));
-	if (trace) saveTrace(root, reductions, dirSuffix("trace"), result.success);
+	auto result = ramCached(diskCached(testReject(lookahead(doTest()))));
+	if (trace) saveTrace(root, reductions, dirSuffix("trace", No.temp), result.success);
 	return result;
 }
 
@@ -2409,7 +2534,7 @@ void loadCoverage(Entity root, string dir)
 		auto fn = buildPath(dir, setExtension(baseName(f.filename), "lst"));
 		if (!exists(fn))
 			return;
-		writeln("Loading coverage file ", fn);
+		stderr.writeln("Loading coverage file ", fn);
 
 		static bool covered(string line)
 		{
@@ -2683,6 +2808,61 @@ EOT");
 	std.file.write(fn, buf.data());
 }
 
+void dumpToJson(Entity root, string fn)
+{
+	import std.json : JSONValue;
+
+	bool[const(Address)*] needLabel;
+
+	void scan(Entity e, const(Address)* addr)
+	{
+		foreach (dependent; e.dependents)
+		{
+			assert(dependent.address);
+			needLabel[dependent.address] = true;
+		}
+		foreach (i, child; e.children)
+			scan(child, addr.child(i));
+	}
+	scan(root, &rootAddress);
+
+	JSONValue toJson(Entity e, const(Address)* addr)
+	{
+		JSONValue[string] o;
+
+		if (e.isFile)
+			o["filename"] = e.filename;
+
+		if (e.head.length)
+			o["head"] = e.head;
+		if (e.children.length)
+			o["children"] = e.children.length.iota.map!(i =>
+				toJson(e.children[i], addr.child(i))
+			).array;
+		if (e.tail.length)
+			o["tail"] = e.tail;
+
+		if (e.noRemove)
+			o["noRemove"] = true;
+
+		if (addr in needLabel)
+			o["label"] = e.id.to!string;
+		if (e.dependents.length)
+			o["dependents"] = e.dependents.map!((ref dependent) =>
+				root.findEntity(dependent.address).entity.id.to!string
+			).array;
+
+		return JSONValue(o);
+	}
+
+	auto jsonDoc = JSONValue([
+		"version" : JSONValue(1),
+		"root" : toJson(root, &rootAddress),
+	]);
+
+	std.file.write(fn, jsonDoc.toPrettyString());
+}
+
 // void dumpText(string fn, ref Reduction r = nullReduction)
 // {
 // 	auto f = File(fn, "wt");
@@ -2694,7 +2874,7 @@ version(testsuite)
 shared static this()
 {
 	import core.runtime;
-	"../cov".mkdir.collectException();
-	dmd_coverDestPath("../cov");
+	"../../cov".mkdir.collectException();
+	dmd_coverDestPath("../../cov");
 	dmd_coverSetMerge(true);
 }

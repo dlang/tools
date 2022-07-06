@@ -13,6 +13,7 @@ import std.file;
 import std.functional;
 import std.path;
 import std.range;
+import std.stdio : File, stdin;
 import std.string;
 import std.traits;
 import std.stdio : stderr;
@@ -133,22 +134,17 @@ private: // Used during parsing only
 	debug string[] comments;  /// Used to debug the splitter
 }
 
-enum Mode
-{
-	source,
-	words,     /// split identifiers, for obfuscation
-}
-
 enum Splitter
 {
 	files,     /// Load entire files only
 	lines,     /// Split by line ends
+	null_,     /// Split by the \0 (NUL) character
 	words,     /// Split by whitespace
 	D,         /// Parse D source code
 	diff,      /// Unified diffs
 	indent,    /// Indentation (Python, YAML...)
 }
-immutable string[] splitterNames = [EnumMembers!Splitter].map!(e => e.text().toLower()).array();
+immutable string[] splitterNames = [EnumMembers!Splitter].map!(e => e.text().toLower().chomp("_")).array();
 
 struct ParseRule
 {
@@ -158,7 +154,12 @@ struct ParseRule
 
 struct ParseOptions
 {
-	enum Mode { source, words }
+	enum Mode
+	{
+		source,
+		words,     /// split identifiers, for obfuscation
+		json,
+	}
 
 	bool stripComments;
 	ParseRule[] rules;
@@ -167,16 +168,10 @@ struct ParseOptions
 }
 
 /// Parse the given file/directory.
-/// For files, modifies path to be the base name for .test / .reduced directories.
+/// For files, modifies `path` to be the base name for .test / .reduced directories.
 Entity loadFiles(ref string path, ParseOptions options)
 {
-	if (isFile(path))
-	{
-		auto filePath = path;
-		path = stripExtension(path);
-		return loadFile(filePath.baseName(), filePath, options);
-	}
-	else
+	if (path.exists && path.isDir)
 	{
 		auto set = new Entity();
 		foreach (string entry; dirEntries(path, SpanMode.breadth).array.sort!((a, b) => a.name < b.name))
@@ -187,6 +182,16 @@ Entity loadFiles(ref string path, ParseOptions options)
 				set.children ~= loadFile(name, entry, options);
 			}
 		return set;
+	}
+	else
+	{
+		auto realPath = path;
+		string name; // For Entity.filename
+		if (path == "-" || path == "/dev/stdin")
+			name = path = "stdin";
+		else
+			name = realPath.baseName();
+		return loadFile(name, realPath, options);
 	}
 }
 
@@ -244,56 +249,74 @@ immutable ParseRule[] defaultRules =
 	{ "*"      , Splitter.files },
 ];
 
+void[] readFile(File f)
+{
+	import std.range.primitives : put;
+	auto result = appender!(ubyte[]);
+	auto size = f.size;
+	if (size <= uint.max)
+		result.reserve(cast(size_t)size);
+	put(result, f.byChunk(64 * 1024));
+	return result.data;
+}
+
 Entity loadFile(string name, string path, ParseOptions options)
 {
 	stderr.writeln("Loading ", path);
+	auto contents = cast(string)readFile(path == "-" ? stdin : File(path, "rb"));
+
+	if (options.mode == ParseOptions.Mode.json)
+		return loadJson(contents);
+
 	auto result = new Entity();
-	result.filename = name.replace(`\`, `/`);
-	result.contents = cast(string)read(path);
+	result.filename = name.replace(dirSeparator, `/`);
+	result.contents = contents;
 
 	auto base = name.baseName();
-	foreach (rule; chain(options.rules, defaultRules))
-		if (base.globMatch(rule.pattern))
+	auto rule = chain(options.rules, defaultRules).find!(rule => base.globMatch(rule.pattern)).front;
+
+	final switch (rule.splitter)
+	{
+		case Splitter.files:
+			result.children = [new Entity(result.contents, null, null)];
+			return result;
+		case Splitter.lines:
+			result.children = parseToLines(result.contents);
+			return result;
+		case Splitter.words:
+			result.children = parseToWords(result.contents);
+			return result;
+		case Splitter.null_:
+			result.children = parseToNull(result.contents);
+			return result;
+		case Splitter.D:
 		{
-			final switch (rule.splitter)
+			if (result.contents.startsWith("Ddoc"))
+				goto case Splitter.files;
+
+			DSplitter splitter;
+			if (options.stripComments)
+				result.contents = splitter.stripComments(result.contents);
+
+			final switch (options.mode)
 			{
-				case Splitter.files:
-					result.children = [new Entity(result.contents, null, null)];
+				case ParseOptions.Mode.json:
+					assert(false);
+				case ParseOptions.Mode.source:
+					result.children = splitter.parse(result.contents);
 					return result;
-				case Splitter.lines:
-					result.children = parseToLines(result.contents);
-					return result;
-				case Splitter.words:
-					result.children = parseToWords(result.contents);
-					return result;
-				case Splitter.D:
-				{
-					if (result.contents.startsWith("Ddoc"))
-						goto case Splitter.files;
-
-					DSplitter splitter;
-					if (options.stripComments)
-						result.contents = splitter.stripComments(result.contents);
-
-					final switch (options.mode)
-					{
-						case ParseOptions.Mode.source:
-							result.children = splitter.parse(result.contents);
-							return result;
-						case ParseOptions.Mode.words:
-							result.children = splitter.parseToWords(result.contents);
-							return result;
-					}
-				}
-				case Splitter.diff:
-					result.children = parseDiff(result.contents);
-					return result;
-				case Splitter.indent:
-					result.children = parseIndent(result.contents, options.tabWidth);
+				case ParseOptions.Mode.words:
+					result.children = splitter.parseToWords(result.contents);
 					return result;
 			}
 		}
-	assert(false); // default * rule should match everything
+		case Splitter.diff:
+			result.children = parseDiff(result.contents);
+			return result;
+		case Splitter.indent:
+			result.children = parseIndent(result.contents, options.tabWidth);
+			return result;
+	}
 }
 
 // *****************************************************************************************************************************************************************************
@@ -1265,6 +1288,7 @@ Entity[] parseSplit(alias fun)(string text)
 
 alias parseToWords = parseSplit!isNotAlphaNum;
 alias parseToLines = parseSplit!isNewline;
+alias parseToNull  = parseSplit!(c => c == '\0');
 
 /// Split s on end~start, preserving end and start on each chunk
 private string[] split2(string end, string start)(string s)
@@ -1355,6 +1379,97 @@ Entity[] parseIndent(string s, uint tabWidth)
 }
 
 private:
+
+Entity loadJson(string contents)
+{
+	import std.json : JSONValue, parseJSON;
+
+	auto jsonDoc = parseJSON(contents);
+	enforce(jsonDoc["version"].integer == 1, "Unknown JSON version");
+
+	// Pass 1: calculate the total size of all data.
+	// --no-remove and some optimizations require that entity strings
+	// are arranged in contiguous memory.
+	size_t totalSize;
+	void scanSize(ref JSONValue v)
+	{
+		if (auto p = "head" in v.object)
+			totalSize += p.str.length;
+		if (auto p = "children" in v.object)
+			p.array.each!scanSize();
+		if (auto p = "tail" in v.object)
+			totalSize += p.str.length;
+	}
+	scanSize(jsonDoc["root"]);
+
+	auto buf = new char[totalSize];
+	size_t pos = 0;
+
+	Entity[string] labeledEntities;
+	JSONValue[][Entity] entityDependents;
+
+	// Pass 2: Create the entity tree
+	Entity parse(ref JSONValue v)
+	{
+		auto e = new Entity;
+
+		if (auto p = "filename" in v.object)
+		{
+			e.filename = p.str.buildNormalizedPath;
+			enforce(e.filename.length &&
+				!e.filename.isAbsolute &&
+				!e.filename.pathSplitter.canFind(`..`),
+				"Invalid filename in JSON file: " ~ p.str);
+		}
+
+		if (auto p = "head" in v.object)
+		{
+			auto end = pos + p.str.length;
+			buf[pos .. end] = p.str;
+			e.head = buf[pos .. end].assumeUnique;
+			pos = end;
+		}
+		if (auto p = "children" in v.object)
+			e.children = p.array.map!parse.array;
+		if (auto p = "tail" in v.object)
+		{
+			auto end = pos + p.str.length;
+			buf[pos .. end] = p.str;
+			e.tail = buf[pos .. end].assumeUnique;
+			pos = end;
+		}
+
+		if (auto p = "noRemove" in v.object)
+			e.noRemove = (){
+				if (*p == JSONValue(true)) return true;
+				if (*p == JSONValue(false)) return false;
+				throw new Exception("noRemove is not a boolean");
+			}();
+
+		if (auto p = "label" in v.object)
+		{
+			enforce(p.str !in labeledEntities, "Duplicate label in JSON file: " ~ p.str);
+			labeledEntities[p.str] = e;
+		}
+		if (auto p = "dependents" in v.object)
+			entityDependents[e] = p.array;
+
+		return e;
+	}
+	auto root = parse(jsonDoc["root"]);
+
+	// Pass 3: Resolve dependents
+	foreach (e, dependents; entityDependents)
+		e.dependents = dependents
+			.map!((ref d) => labeledEntities
+				.get(d.str, null)
+				.enforce("Unknown label in dependents: " ~ d.str)
+				.EntityRef
+			)
+			.array;
+
+	return root;
+}
 
 bool isNewline(char c) { return c == '\r' || c == '\n'; }
 alias isNotAlphaNum = not!isAlphaNum;
