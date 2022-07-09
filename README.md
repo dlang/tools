@@ -1,4 +1,4 @@
-D tools
+D tools (TEST)
 =======
 
 [![GitHub tag](https://img.shields.io/github/tag/dlang/tools.svg?maxAge=86400)](https://github.com/dlang/tools/releases)
