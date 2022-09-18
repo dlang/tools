@@ -840,7 +840,7 @@ import std.stdio, std.algorithm, std.array, std.ascii, std.base64,
     std.random, std.range, std.regex, std.signals, std.socket,
     std.stdint, std.stdio,
     std.string, std.windows.syserror, std.system, std.traits, std.typecons,
-    std.typetuple, std.uni, std.uri, std.utf, std.variant, std.xml, std.zip,
+    std.typetuple, std.uni, std.uri, std.utf, std.variant, std.zip,
     std.zlib;
 ";
 

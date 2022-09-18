@@ -1331,7 +1331,7 @@ void fuzz(ref Entity root)
 	{
 		import std.math : log2;
 		auto newRoot = root;
-		auto numReductions = uniform(1, cast(int)log2(allAddresses.length), rng);
+		auto numReductions = uniform(1, cast(int)log2(cast(double)allAddresses.length), rng);
 		Reduction[] reductions;
 		foreach (n; 0 .. numReductions)
 		{
