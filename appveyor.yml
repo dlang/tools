@@ -16,17 +16,17 @@ build_script:
         {
             $version = $env:DVersion;
             if($version -eq "stable") {
-                $latest = (Invoke-WebRequest "http://downloads.dlang.org/releases/LATEST").toString();
-                $url = "http://downloads.dlang.org/releases/2.x/$($latest)/dmd.$($latest).windows.7z";
+                $latest = (Invoke-WebRequest "https://downloads.dlang.org/releases/LATEST").toString();
+                $url = "https://downloads.dlang.org/releases/2.x/$($latest)/dmd.$($latest).windows.7z";
             }elseif($version -eq "beta") {
-                $latest = (Invoke-WebRequest "http://downloads.dlang.org/pre-releases/LATEST").toString();
+                $latest = (Invoke-WebRequest "https://downloads.dlang.org/pre-releases/LATEST").toString();
                 $latestVersion = $latest.split("-")[0].split("~")[0];
-                $url = "http://downloads.dlang.org/pre-releases/2.x/$($latestVersion)/dmd.$($latest).windows.7z";
+                $url = "https://downloads.dlang.org/pre-releases/2.x/$($latestVersion)/dmd.$($latest).windows.7z";
             }elseif($version -eq "nightly") {
-                $latest = (Invoke-WebRequest "http://downloads.dlang.org/nightlies/dmd-master/LATEST").toString().replace("`n","").replace("`r","");
-                $url = "http://downloads.dlang.org/nightlies/dmd-$($latest)/dmd.master.windows.7z"
+                $latest = (Invoke-WebRequest "https://downloads.dlang.org/nightlies/dmd-master/LATEST").toString().replace("`n","").replace("`r","");
+                $url = "https://downloads.dlang.org/nightlies/dmd-$($latest)/dmd.master.windows.7z"
             }else {
-                $url = "http://downloads.dlang.org/releases/2.x/$($version)/dmd.$($version).windows.7z";
+                $url = "https://downloads.dlang.org/releases/2.x/$($version)/dmd.$($version).windows.7z";
             }
             $env:PATH += ";C:\dmd2\windows\bin;";
             return $url;
