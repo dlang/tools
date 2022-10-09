@@ -139,7 +139,7 @@ auto getIssues(string revRange)
     enum closedRE = ctRegex!(`(?:^fix(?:es)?(?:\s+(?:issues?|bugs?))?\s+(#?\d+(?:[\s,\+&and]+#?\d+)*))`, "i");
 
     auto issues = appender!(int[]);
-    foreach (repo; ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"]
+    foreach (repo; ["dmd", "phobos", "dlang.org", "tools", "installer"]
              .map!(r => buildPath("..", r)))
     {
         auto cmd = ["git", "-C", repo, "fetch", "--tags", "https://github.com/dlang/" ~ repo.baseName,
@@ -433,7 +433,6 @@ Please supply a bugzilla version
     // location of the changelog files
     alias Repo = Tuple!(string, "name", string, "headline", string, "path");
     auto repos = [Repo("dmd", "Compiler changes", null),
-                  Repo("druntime", "Runtime changes", null),
                   Repo("phobos", "Library changes", null),
                   Repo("dlang.org", "Language changes", null),
                   Repo("installer", "Installer changes", null),

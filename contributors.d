@@ -57,7 +57,7 @@ auto findAuthors(string revRange, FindConfig config)
 {
     Appender!(GitAuthor[]) authors;
     int commits;
-    auto repos = ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"];
+    auto repos = ["dmd", "phobos", "dlang.org", "tools", "installer"];
     if (config.showAllContributors)
         repos ~= ["dub", "dub-registry", "dconf.org"];
 
