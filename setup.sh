@@ -6,10 +6,9 @@
 # First run, create a working directory, e.g. /path/to/d/. Then run
 # this script from that directory (the location of the script itself
 # doesn't matter). It will create the following subdirectories:
-# /path/to/d/dmd, /path/to/d/druntime, /path/to/d/phobos,
-# /path/to/d/dlang.org, /path/to/d/tools, and
-# /path/to/d/installer. Then it will fetch all corresponding projects
-# from github and build them fresh.
+# /path/to/d/dmd, /path/to/d/phobos, /path/to/d/dlang.org,
+# /path/to/d/tools, and /path/to/d/installer. Then it will fetch all
+# corresponding projects from github and build them fresh.
 #
 # On an ongoing basis, to update your toolchain from github go again
 # to the same directory (in our example /path/to/d) and run the script
@@ -20,7 +19,7 @@
 set -ueo pipefail
 
 declare -a projects
-projects=(dmd druntime phobos dlang.org tools installer dub)
+projects=(dmd phobos dlang.org tools installer dub)
 # Working directory
 wd=$(pwd)
 # github username
@@ -47,7 +46,7 @@ trap cleanup EXIT
 
 function help() {
     echo "./setup.sh
-Clones and builds dmd, druntime, phobos, dlang.org, tools, installer and dub.
+Clones and builds dmd, phobos, dlang.org, tools, installer and dub.
 
 Additional usage
 
@@ -151,9 +150,8 @@ function installAnew() {
             exit 1
         fi
         if [ -n "${tag}" ] ; then
-            if [ "$project" == "dmd" ] || [ "$project" == "druntime" ] || \
-                [ "$project" == "phobos" ] || [ "$project" == "dlang.org" ] || \
-                [ "$project" == "tools" ] ; then
+            if [ "$project" == "dmd" ] || [ "$project" == "phobos" ] || \
+		[ "$project" == "dlang.org" ] || [ "$project" == "tools" ] ; then
 	            git -C "$wd/$project" checkout "v$tag"
             fi
         fi
@@ -194,7 +192,7 @@ function update() {
 function makeWorld() {
     local BOOTSTRAP=""
     command -v dmd >/dev/null || BOOTSTRAP="AUTO_BOOTSTRAP=1"
-    for repo in dmd druntime phobos ; do
+    for repo in dmd phobos ; do
         # Pass `AUTO_BOOTSTRAP` because of https://issues.dlang.org/show_bug.cgi?id=20727
         "$makecmd" -C "$wd/$repo" -f posix.mak clean $BOOTSTRAP
         "$makecmd" -C "$wd/$repo" -f posix.mak "-j${parallel}" MODEL="$model" BUILD="$build" $BOOTSTRAP

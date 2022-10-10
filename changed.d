@@ -139,7 +139,7 @@ auto getIssues(string revRange)
     enum closedRE = ctRegex!(`(?:^fix(?:es)?(?:\s+(?:issues?|bugs?))?\s+(#?\d+(?:[\s,\+&and]+#?\d+)*))`, "i");
 
     auto issues = appender!(int[]);
-    foreach (repo; ["dmd", "druntime", "phobos", "dlang.org", "tools", "installer"]
+    foreach (repo; ["dmd", "phobos", "dlang.org", "tools", "installer"]
              .map!(r => buildPath("..", r)))
     {
         auto cmd = ["git", "-C", repo, "fetch", "--tags", "https://github.com/dlang/" ~ repo.baseName,
@@ -276,14 +276,16 @@ Params:
 
 Returns: An InputRange of `ChangelogEntry`s
 */
-auto readTextChanges(string changelogDir, string repoName)
+auto readTextChanges(string changelogDir, string repoName, string prefix)
 {
     import std.algorithm.iteration : filter, map;
     import std.file : dirEntries, SpanMode;
+    import std.path : baseName;
     import std.string : endsWith;
 
     return dirEntries(changelogDir, SpanMode.shallow)
             .filter!(a => a.name().endsWith(".dd"))
+            .filter!(a => prefix is null || a.name().baseName.startsWith(prefix))
             .array.sort()
             .map!(a => readChangelog(a, repoName))
             .filter!(a => a.title.length > 0);
@@ -431,17 +433,17 @@ Please supply a bugzilla version
     }
 
     // location of the changelog files
-    alias Repo = Tuple!(string, "name", string, "headline", string, "path");
-    auto repos = [Repo("dmd", "Compiler changes", null),
-                  Repo("druntime", "Runtime changes", null),
-                  Repo("phobos", "Library changes", null),
-                  Repo("dlang.org", "Language changes", null),
-                  Repo("installer", "Installer changes", null),
-                  Repo("tools", "Tools changes", null),
-                  Repo("dub", "Dub changes", null)];
+    alias Repo = Tuple!(string, "name", string, "headline", string, "path", string, "prefix");
+    auto repos = [Repo("dmd", "Compiler changes", "changelog", "dmd."),
+                  Repo("dmd", "Runtime changes", "changelog", "druntime."),
+                  Repo("phobos", "Library changes", "changelog", null),
+                  Repo("dlang.org", "Language changes", "language-changelog", null),
+                  Repo("installer", "Installer changes", "changelog", null),
+                  Repo("tools", "Tools changes", "changelog", null),
+                  Repo("dub", "Dub changes", "changelog", null)];
 
     auto changedRepos = repos
-         .map!(repo => Repo(repo.name, repo.headline, buildPath(__FILE_FULL_PATH__.dirName, "..", repo.name, repo.name == "dlang.org" ? "language-changelog" : "changelog")))
+         .map!(repo => Repo(repo.name, repo.headline, buildPath(__FILE_FULL_PATH__.dirName, "..", repo.name, repo.path), repo.prefix))
          .filter!(r => r.path.exists);
 
     // ensure that all files either end on .dd or .md
@@ -497,7 +499,7 @@ Please supply a bugzilla version
         {
             // search for raw change files
             auto changelogDirs = changedRepos
-                 .map!(r => tuple!("headline", "changes")(r.headline, r.path.readTextChanges(r.name).array))
+                 .map!(r => tuple!("headline", "changes")(r.headline, r.path.readTextChanges(r.name, r.prefix).array))
                  .filter!(r => !r.changes.empty);
 
             // accumulate stats
