@@ -3,7 +3,7 @@ BUILD = release
 DMD = $(DMD_DIR)/generated/$(OS)/$(BUILD)/$(MODEL)/dmd
 CC = gcc
 INSTALL_DIR = ../install
-DRUNTIME_PATH = ../druntime
+DRUNTIME_PATH = ../dmd/druntime
 PHOBOS_PATH = ../phobos
 DUB=dub
 
