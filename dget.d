@@ -110,7 +110,7 @@ ubyte[] download(string url)
 
     auto http = HTTP(url);
     http.method = HTTP.Method.get;
-    http.onReceiveHeader((k, v)
+    http.onReceiveHeader((in k, in v)
     {
         if (k == "content-length")
             contentLength = to!size_t(v);
