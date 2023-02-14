@@ -737,7 +737,7 @@ private string[string] getDependencies(string rootModule, string workDir,
     immutable depsExitCode = run(depsGetter, depsFilename);
     if (depsExitCode)
     {
-        stderr.writefln("Failed: %s", depsGetter);
+        stderr.writefln(`Failed: %-(%s %)`, depsGetter);
         collectException(Filesystem.remove(depsFilename));
         exit(depsExitCode);
     }
