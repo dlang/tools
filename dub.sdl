@@ -72,3 +72,9 @@ subPackage {
   targetType "executable"
   sourceFiles "catdoc.d"
 }
+
+subPackage {
+  name "dustmite"
+  targetType "executable"
+  sourcePaths "DustMite"
+}
