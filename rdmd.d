@@ -27,6 +27,7 @@ version (Posix)
     enum objExt = ".o";
     enum binExt = "";
     enum libExt = ".a";
+    enum dllExt = ".so";
     enum altDirSeparator = "";
 }
 else version (Windows)
@@ -34,6 +35,7 @@ else version (Windows)
     enum objExt = ".obj";
     enum binExt = ".exe";
     enum libExt = ".lib";
+    enum dllExt = ".dll";
     enum altDirSeparator = "/";
 }
 else
@@ -242,10 +244,15 @@ int main(string[] args)
 
     bool obj = compilerFlags.canFind("-c");
     bool lib = compilerFlags.canFind("-lib");
-    string outExt = lib ? libExt : obj ? objExt : binExt;
+    bool dll = compilerFlags.canFind("-shared");
+    string outExt =
+        dll ? dllExt :
+        lib ? libExt :
+        obj ? objExt :
+        binExt;
 
-    // Assume --build-only for -c and -lib.
-    buildOnly |= obj || lib;
+    // Assume --build-only for -c / -lib / -shared.
+    buildOnly |= obj || lib || dll;
 
     // --build-only implies the user would like a binary in the program's directory
     if (buildOnly && !exe.ptr)
@@ -360,7 +367,7 @@ size_t indexOfProgram(string[] args)
     {
         auto arg = args[i];
         if (!arg.startsWith('-', '@') &&
-                !arg.endsWith(".obj", ".o", ".lib", ".a", ".def", ".map", ".res") &&
+                !arg.endsWith(".obj", ".o", ".lib", ".a", ".dll", ".so", ".def", ".map", ".res") &&
                 args[i - 1] != "--eval")
         {
             return i;
