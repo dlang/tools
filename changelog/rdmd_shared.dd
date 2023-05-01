@@ -1,3 +1,3 @@
 rdmd supports `-shared`
 
-rdmd now understands DMD's `-shared` switch, and sets the default output file name appropriately (`.dll` or `so` depending on the platform), in the same way as `-lib`.
+rdmd now understands DMD's `-shared` switch, and sets the default output file name appropriately (`.dll`, `.so`, or `.dylib` depending on the platform), in the same way as `-lib`.

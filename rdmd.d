@@ -27,7 +27,10 @@ version (Posix)
     enum objExt = ".o";
     enum binExt = "";
     enum libExt = ".a";
-    enum dllExt = ".so";
+    version (OSX)
+        enum dllExt = ".dylib";
+    else
+        enum dllExt = ".so";
     enum altDirSeparator = "";
 }
 else version (Windows)
@@ -367,7 +370,7 @@ size_t indexOfProgram(string[] args)
     {
         auto arg = args[i];
         if (!arg.startsWith('-', '@') &&
-                !arg.endsWith(".obj", ".o", ".lib", ".a", ".dll", ".so", ".def", ".map", ".res") &&
+                !arg.endsWith(".obj", ".o", ".lib", ".a", ".dll", ".so", ".dylib", ".def", ".map", ".res") &&
                 args[i - 1] != "--eval")
         {
             return i;
@@ -634,7 +637,7 @@ private string[string] getDependencies(string rootModule, string workDir,
                 string[] names = [libName ~ ".lib"];
             else
             {
-                string[] names = ["lib" ~ libName ~ ".a", "lib" ~ libName ~ ".so"];
+                string[] names = ["lib" ~ libName ~ ".a", "lib" ~ libName ~ ".so", "lib" ~ libName ~ ".dylib"];
                 dirs ~= ["/lib", "/usr/lib"];
             }
             foreach (dir; dirs)
