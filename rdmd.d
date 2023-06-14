@@ -862,8 +862,12 @@ string innerEvalCode(string[] eval)
     import std.string : join, stripRight;
     // assumeSafeAppend just to avoid unnecessary reallocation
     string code = eval.join("\n").stripRight.assumeSafeAppend;
-    if (code.length > 0 && code[$ - 1] != ';')
-        code ~= ';';
+    if (code.length > 1 && code[$ - 2 .. $] == "*/")
+        return code;
+    if (code.length > 0 && (code[$ - 1] == ';' || code[$-1] == '}'))
+        return code;
+
+    code ~= `;`;
     return code;
 }
 
@@ -881,6 +885,10 @@ unittest
            == "writeln(\"Hello!\");  \nwriteln(\"You!\");");
     assert(innerEvalCode([`writeln("Hello!");  `, `writeln("You!"); `])
            == "writeln(\"Hello!\");  \nwriteln(\"You!\");");
+
+    // https://issues.dlang.org/show_bug.cgi?id=23989
+    assert(innerEvalCode(["/* Do nothing */"]) == "/* Do nothing */");
+    assert(innerEvalCode(["for (;;) { int a = 2; }"]) == "for (;;) { int a = 2; }");
 }
 
 /**
