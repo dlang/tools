@@ -2308,7 +2308,7 @@ if (isInputRange!RoR && isInputRange!(ElementType!RoR)
     import std.algorithm.comparison : equal;
     import std.range;
 
-    // Related to issue 8061
+    // Related to https://issues.dlang.org/show_bug.cgi?id=8061
     auto r = joiner([
         inputRangeObject("abc"),
         inputRangeObject("def"),
@@ -2542,10 +2542,10 @@ if (isInputRange!RoR && isInputRange!(ElementType!RoR))
     import std.algorithm.comparison : equal;
     import std.range.interfaces : inputRangeObject;
 
-    // bugzilla 8240
+    // https://issues.dlang.org/show_bug.cgi?id=8240
     assert(equal(joiner([inputRangeObject("")]), ""));
 
-    // issue 8792
+    // https://issues.dlang.org/show_bug.cgi?id=8792
     auto b = [[1], [2], [3]];
     auto jb = joiner(b);
     auto js = jb.save;
