@@ -132,11 +132,13 @@ auto getIssues(string revRange)
     import std.regex : ctRegex, match, splitter;
 
     // Keep in sync with the regex in dlang-bot:
-    // https://github.com/dlang/dlang-bot/blob/master/source/dlangbot/bugzilla.d#L29
+    // https://github.com/dlang/dlang-bot/blob/master/source/dlangbot/bugzilla.d#L24
     // This regex was introduced in https://github.com/dlang/dlang-bot/pull/240
     // and only the first part of the regex is needed (the second part matches
     // issues reference that won't close the issue).
-    enum closedRE = ctRegex!(`(?:^fix(?:es)?(?:\s+(?:issues?|bugs?))?\s+(#?\d+(?:[\s,\+&and]+#?\d+)*))`, "i");
+    // Note: "Bugzilla" is required since https://github.com/dlang/dlang-bot/pull/302;
+    // temporarily both are accepted during a transition period.
+    enum closedRE = ctRegex!(`(?:^fix(?:es)?(?:\s+bugzilla)?(?:\s+(?:issues?|bugs?))?\s+(#?\d+(?:[\s,\+&and]+#?\d+)*))`, "i");
 
     auto issues = appender!(int[]);
     foreach (repo; ["dmd", "phobos", "dlang.org", "tools", "installer"]
