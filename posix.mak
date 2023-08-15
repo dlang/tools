@@ -125,7 +125,7 @@ endif
 
 test_rdmd: $(ROOT)/rdmd_test $(RDMD_TEST_EXECUTABLE)
 	$< $(RDMD_TEST_EXECUTABLE) -m$(MODEL) \
-	   --rdmd-default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
+	   --default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
 	   --test-compilers=$(RDMD_TEST_COMPILERS) \
 	   $(VERBOSE_RDMD_TEST_FLAGS)
 	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d
