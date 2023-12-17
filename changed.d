@@ -42,7 +42,7 @@ module changed;
 
 import std.net.curl, std.conv, std.exception, std.algorithm, std.csv, std.typecons,
     std.stdio, std.datetime, std.array, std.string, std.file, std.format, std.getopt,
-    std.path, std.functional;
+    std.path, std.functional, std.json;
 
 import std.range.primitives, std.traits;
 
@@ -50,6 +50,7 @@ struct BugzillaEntry
 {
     int id;
     string summary;
+    Nullable!int githubId;
 }
 
 struct ChangelogEntry
@@ -126,7 +127,7 @@ string escapeParens(string input)
 }
 
 /** Get a list of all bugzilla issues mentioned in revRange */
-auto getIssues(string revRange)
+int[] getIssues(string revRange)
 {
     import std.process : execute, pipeProcess, Redirect, wait;
     import std.regex : ctRegex, match, splitter;
@@ -155,6 +156,7 @@ auto getIssues(string revRange)
 
         foreach (line; p.stdout.byLine())
         {
+            writeln(line);
             if (auto m = match(line.stripLeft, closedRE))
             {
                 m.captures[1]
@@ -165,16 +167,22 @@ auto getIssues(string revRange)
             }
         }
     }
-    return issues.data.sort().release.uniq;
+    return issues.data.sort().release.uniq.array;
+}
+
+BugzillaEntry[][string][string] getClosedGithubIssues(string revRange)
+{
+    BugzillaEntry[][string][string] entries;
+    return entries;
 }
 
 /** Generate and return the change log as a string. */
-auto getBugzillaChanges(string revRange)
+BugzillaEntry[][string][string] getBugzillaChanges(string revRange)
 {
     // component (e.g. DMD) -> bug type (e.g. regression) -> list of bug entries
     BugzillaEntry[][string][string] entries;
 
-    auto issues = getIssues(revRange);
+    int[] issues = getIssues(revRange);
     // abort prematurely if no issues are found in all git logs
     if (issues.empty)
         return entries;
@@ -222,6 +230,77 @@ auto getBugzillaChanges(string revRange)
         changelogStats.addBugzillaIssue(entry, comp, type);
     }
     return entries;
+}
+
+struct GithubIssue {
+    int number;
+    string title;
+    string body_;
+    DateTime closedAt;
+}
+
+GithubIssue[] getGithubIssues(string repo, DateTime startDate,
+        DateTime endDate)
+{
+    const query = `
+query($repo: String!, $startDate: DateTime!) {
+	repository(owner: "burner", name: $repo) {
+        name
+        id
+        issues(states: CLOSED, first: 100
+            , filterBy: { since: $startDate })
+        {
+            edges {
+                node {
+                    number
+                    title
+                    id
+                    body
+                    closedAt
+                }
+            }
+            pageInfo {
+                endCursor
+                startCursor
+                hasNextPage
+                hasPreviousPage
+            }
+        }
+	}
+}`;
+    JSONValue toSend;
+    toSend["query"] = query;
+    toSend["variables"] = `{ "repo": "%s", "startDate": "%sZ", "endDate": "%sZ" }`
+        .format("graphqld", startDate.toISOExtString(), endDate.toISOExtString());
+    string requestData = toSend.toPrettyString();
+
+    writefln("RD %s", requestData);
+    string ghToken = readText("gh_token").strip();
+    string bearer = format("Bearer %s", ghToken);
+    writefln("'%s' '%s'", ghToken, bearer);
+
+    HTTP http = HTTP("https://api.github.com/graphql");
+    http.addRequestHeader("Authorization", bearer);
+    http.setPostData(requestData, "application/json");
+
+    char[] response;
+    try {
+        http.onReceive = (ubyte[] d) {
+            response = cast(char[])d;
+            return d.length;
+        };
+        http.perform();
+    } catch(Exception e) {
+        throw e;
+    }
+
+    writefln("RS %s", cast(string)response);
+
+    string s = cast(string)response;
+    JSONValue j = parseJSON(s);
+    writeln(j.toPrettyString());
+
+    return [];
 }
 
 /**
@@ -391,6 +470,12 @@ void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
     }
 }
 
+int main(string[] args) {
+    getGithubIssues("phobos", DateTime(2023,1,1), DateTime(2023,12,1));
+    return 0;
+}
+
+__EOF__
 int main(string[] args)
 {
     auto outputFile = "./changelog.dd";
@@ -434,6 +519,8 @@ Please supply a bugzilla version
         writeln("Skipped querying Bugzilla for changes. Please define a revision range e.g ./changed v2.072.2..upstream/stable");
     }
 
+    getGithubIssues("phobos", DateTime(2023,1,1), DateTime(2023,12,1));
+
     // location of the changelog files
     alias Repo = Tuple!(string, "name", string, "headline", string, "path", string, "prefix");
     auto repos = [Repo("dmd", "Compiler changes", "changelog", "dmd."),
@@ -473,7 +560,9 @@ Please supply a bugzilla version
     // Accumulate Bugzilla issues
     typeof(revRange.getBugzillaChanges) bugzillaChanges;
     if (revRange.length)
-        bugzillaChanges = revRange.getBugzillaChanges;
+    {
+        bugzillaChanges = revRange.getBugzillaChanges();
+    }
 
     // Accumulate contributors from the git log
     version(Contributors_Lib)
