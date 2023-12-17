@@ -1,7 +1,6 @@
 DMD_DIR = ../dmd
 BUILD = release
 DMD = $(DMD_DIR)/generated/$(OS)/$(BUILD)/$(MODEL)/dmd
-CC = gcc
 INSTALL_DIR = ../install
 DRUNTIME_PATH = ../dmd/druntime
 PHOBOS_PATH = ../phobos
@@ -12,72 +11,63 @@ DOC = ../dlang.org
 
 # Load operating system $(OS) (e.g. linux, osx, ...) and $(MODEL) (e.g. 32, 64) detection Makefile from dmd
 $(shell [ ! -d $(DMD_DIR) ] && git clone --depth=1 https://github.com/dlang/dmd $(DMD_DIR))
-include $(DMD_DIR)/src/osmodel.mak
+include $(DMD_DIR)/compiler/src/osmodel.mak
+
+ifeq (windows,$(OS))
+    DOTEXE:=.exe
+else
+    DOTEXE:=
+endif
 
 # Build folder for all binaries
 GENERATED = generated
 ROOT = $(GENERATED)/$(OS)/$(MODEL)
 
-# Set DRUNTIME name and full path
-ifeq (,$(findstring win,$(OS)))
-	DRUNTIME = $(DRUNTIME_PATH)/lib/libdruntime-$(OS)$(MODEL).a
-	DRUNTIMESO = $(DRUNTIME_PATH)/lib/libdruntime-$(OS)$(MODEL)so.a
-else
-	DRUNTIME = $(DRUNTIME_PATH)/lib/druntime.lib
-endif
-
-# Set PHOBOS name and full path
-ifeq (,$(findstring win,$(OS)))
-	PHOBOS = $(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL)/libphobos2.a
-	PHOBOSSO = $(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL)/libphobos2.so
-endif
-
-# default to warnings and deprecations as errors, override via e.g. make -f posix.mak WARNINGS=-wi
+# default to warnings and deprecations as errors, override via e.g. make WARNINGS=-wi
 WARNINGS = -w -de
-# default include/link paths, override by setting DFLAGS (e.g. make -f posix.mak DFLAGS=-I/foo)
-DFLAGS = -I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) \
-		 -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL) $(MODEL_FLAG) -fPIC -preview=dip1000
+# default flags, override by setting DFLAGS (e.g. make DFLAGS=-O)
+DFLAGS = $(MODEL_FLAG) $(if $(findstring windows,$(OS)),,-fPIC) -preview=dip1000
 DFLAGS += $(WARNINGS)
 
 # Default DUB flags (DUB uses a different architecture format)
 DUBFLAGS = --arch=$(subst 32,x86,$(subst 64,x86_64,$(MODEL)))
 
 TOOLS = \
-    $(ROOT)/catdoc \
-    $(ROOT)/checkwhitespace \
-    $(ROOT)/contributors \
-    $(ROOT)/ddemangle \
-    $(ROOT)/detab \
-    $(ROOT)/rdmd \
-    $(ROOT)/tolf \
-    $(ROOT)/updatecopyright
+    $(ROOT)/catdoc$(DOTEXE) \
+    $(ROOT)/checkwhitespace$(DOTEXE) \
+    $(ROOT)/contributors$(DOTEXE) \
+    $(ROOT)/ddemangle$(DOTEXE) \
+    $(ROOT)/detab$(DOTEXE) \
+    $(ROOT)/rdmd$(DOTEXE) \
+    $(ROOT)/tolf$(DOTEXE) \
+    $(ROOT)/updatecopyright$(DOTEXE)
 
 CURL_TOOLS = \
-    $(ROOT)/changed \
-    $(ROOT)/dget
+    $(ROOT)/changed$(DOTEXE) \
+    $(ROOT)/dget$(DOTEXE)
 
 DOC_TOOLS = \
-    $(ROOT)/dman
+    $(ROOT)/dman$(DOTEXE)
 
 TEST_TOOLS = \
-    $(ROOT)/rdmd_test
+    $(ROOT)/rdmd_test$(DOTEXE)
 
-all: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
+all: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite$(DOTEXE)
 
-rdmd:      $(ROOT)/rdmd
-ddemangle: $(ROOT)/ddemangle
-catdoc:    $(ROOT)/catdoc
-detab:     $(ROOT)/detab
-tolf:      $(ROOT)/tolf
-dget:      $(ROOT)/dget
-changed:   $(ROOT)/changed
-dman:      $(ROOT)/dman
-dustmite:  $(ROOT)/dustmite
+rdmd:      $(ROOT)/rdmd$(DOTEXE)
+ddemangle: $(ROOT)/ddemangle$(DOTEXE)
+catdoc:    $(ROOT)/catdoc$(DOTEXE)
+detab:     $(ROOT)/detab$(DOTEXE)
+tolf:      $(ROOT)/tolf$(DOTEXE)
+dget:      $(ROOT)/dget$(DOTEXE)
+changed:   $(ROOT)/changed$(DOTEXE)
+dman:      $(ROOT)/dman$(DOTEXE)
+dustmite:  $(ROOT)/dustmite$(DOTEXE)
 
-$(ROOT)/dustmite: DustMite/dustmite.d DustMite/splitter.d DustMite/polyhash.d
+$(ROOT)/dustmite$(DOTEXE): DustMite/dustmite.d DustMite/splitter.d DustMite/polyhash.d
 	$(DMD) $(DFLAGS) -version=Dlang_Tools DustMite/dustmite.d DustMite/splitter.d DustMite/polyhash.d -of$(@)
 
-$(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS) $(TEST_TOOLS): $(ROOT)/%: %.d
+$(TOOLS) $(DOC_TOOLS) $(CURL_TOOLS) $(TEST_TOOLS): $(ROOT)/%$(DOTEXE): %.d
 	$(DMD) $(DFLAGS) -of$(@) $(<)
 
 d-tags.json:
@@ -87,27 +77,27 @@ d-tags.json:
 	@echo "    make -C ../dlang.org -f posix.mak d-tags-prerelease.json && cp ../dlang.org/d-tags-prerelease.json d-tags.json"
 	@exit 1
 
-$(ROOT)/dman: d-tags.json
-$(ROOT)/dman: override DFLAGS += -J.
+$(ROOT)/dman$(DOTEXE): d-tags.json
+$(ROOT)/dman$(DOTEXE): override DFLAGS += -J.
 
-install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite
+install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite$(DOTEXE)
 	mkdir -p $(INSTALL_DIR)/bin
 	cp $^ $(INSTALL_DIR)/bin
 
 clean:
 	rm -rf $(GENERATED)
 
-$(ROOT)/tests_extractor: tests_extractor.d
+$(ROOT)/tests_extractor$(DOTEXE): tests_extractor.d
 	mkdir -p $(ROOT)
 	DFLAGS="$(DFLAGS)" $(DUB) build \
 		   --single $< --force --compiler=$(DMD) $(DUBFLAGS) \
-		   && mv ./tests_extractor $@
+		   && mv ./tests_extractor$(DOTEXE) $@
 
 ################################################################################
 # Build & run tests
 ################################################################################
 
-test_tests_extractor: $(ROOT)/tests_extractor
+test_tests_extractor: $(ROOT)/tests_extractor$(DOTEXE)
 	for file in ascii iteration ; do \
 		$< -i "./test/tests_extractor/$${file}.d" | diff -p - "./test/tests_extractor/$${file}.d.ext"; \
 	done
@@ -115,7 +105,7 @@ test_tests_extractor: $(ROOT)/tests_extractor
 	$< --betterC -i "./test/tests_extractor/betterc.d" | diff -p - "./test/tests_extractor/betterc.d.ext";
 
 RDMD_TEST_COMPILERS = $(DMD)
-RDMD_TEST_EXECUTABLE = $(ROOT)/rdmd
+RDMD_TEST_EXECUTABLE = $(ROOT)/rdmd$(DOTEXE)
 RDMD_TEST_DEFAULT_COMPILER = $(basename $(DMD))
 
 VERBOSE_RDMD_TEST=0
@@ -123,8 +113,8 @@ ifeq ($(VERBOSE_RDMD_TEST), 1)
 	override VERBOSE_RDMD_TEST_FLAGS:=-v
 endif
 
-test_rdmd: $(ROOT)/rdmd_test $(RDMD_TEST_EXECUTABLE)
-	$< $(RDMD_TEST_EXECUTABLE) -m$(MODEL) \
+test_rdmd: $(ROOT)/rdmd_test$(DOTEXE) $(RDMD_TEST_EXECUTABLE)
+	$< $(RDMD_TEST_EXECUTABLE) $(MODEL_FLAG) \
 	   --rdmd-default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
 	   --test-compilers=$(RDMD_TEST_COMPILERS) \
 	   $(VERBOSE_RDMD_TEST_FLAGS)
