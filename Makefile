@@ -97,12 +97,19 @@ $(ROOT)/tests_extractor$(DOTEXE): tests_extractor.d
 # Build & run tests
 ################################################################################
 
+ifeq (windows,$(OS))
+    # for some reason, --strip-trailing-cr isn't enough - need to dos2unix stdin
+    DIFF := dos2unix | diff --strip-trailing-cr
+else
+    DIFF := diff
+endif
+
 test_tests_extractor: $(ROOT)/tests_extractor$(DOTEXE)
 	for file in ascii iteration ; do \
-		$< -i "./test/tests_extractor/$${file}.d" | diff --strip-trailing-cr -p - "./test/tests_extractor/$${file}.d.ext"; \
+		$< -i "./test/tests_extractor/$${file}.d" | $(DIFF) -u -p - "./test/tests_extractor/$${file}.d.ext"; \
 	done
-	$< -a betterc -i "./test/tests_extractor/attributes.d" | diff --strip-trailing-cr -p - "./test/tests_extractor/attributes.d.ext";
-	$< --betterC -i "./test/tests_extractor/betterc.d" | diff --strip-trailing-cr -p - "./test/tests_extractor/betterc.d.ext";
+	$< -a betterc -i "./test/tests_extractor/attributes.d" | $(DIFF) -u -p - "./test/tests_extractor/attributes.d.ext";
+	$< --betterC -i "./test/tests_extractor/betterc.d" | $(DIFF) -u -p - "./test/tests_extractor/betterc.d.ext";
 
 RDMD_TEST_COMPILERS = $(DMD)
 RDMD_TEST_EXECUTABLE = $(ROOT)/rdmd$(DOTEXE)
@@ -113,6 +120,10 @@ ifeq ($(VERBOSE_RDMD_TEST), 1)
 	override VERBOSE_RDMD_TEST_FLAGS:=-v
 endif
 
+ifeq (osx,$(OS))
+# /tmp is a symlink on Mac, and rdmd_test.d doesn't like it
+test_rdmd: export TMPDIR=$(shell cd /tmp && pwd -P)
+endif
 test_rdmd: $(ROOT)/rdmd_test$(DOTEXE) $(RDMD_TEST_EXECUTABLE)
 	$< $(RDMD_TEST_EXECUTABLE) $(MODEL_FLAG) \
 	   --rdmd-default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
