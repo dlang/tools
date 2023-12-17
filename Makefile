@@ -99,10 +99,10 @@ $(ROOT)/tests_extractor$(DOTEXE): tests_extractor.d
 
 test_tests_extractor: $(ROOT)/tests_extractor$(DOTEXE)
 	for file in ascii iteration ; do \
-		$< -i "./test/tests_extractor/$${file}.d" | diff -p - "./test/tests_extractor/$${file}.d.ext"; \
+		$< -i "./test/tests_extractor/$${file}.d" | diff --strip-trailing-cr -p - "./test/tests_extractor/$${file}.d.ext"; \
 	done
-	$< -a betterc -i "./test/tests_extractor/attributes.d" | diff -p - "./test/tests_extractor/attributes.d.ext";
-	$< --betterC -i "./test/tests_extractor/betterc.d" | diff -p - "./test/tests_extractor/betterc.d.ext";
+	$< -a betterc -i "./test/tests_extractor/attributes.d" | diff --strip-trailing-cr -p - "./test/tests_extractor/attributes.d.ext";
+	$< --betterC -i "./test/tests_extractor/betterc.d" | diff --strip-trailing-cr -p - "./test/tests_extractor/betterc.d.ext";
 
 RDMD_TEST_COMPILERS = $(DMD)
 RDMD_TEST_EXECUTABLE = $(ROOT)/rdmd$(DOTEXE)

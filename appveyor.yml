@@ -65,7 +65,6 @@ test_script:
  - echo %DC%
  - echo %PATH%
  - '%DC% --version'
- - make -f win32.mak DFLAGS=-g rdmd dustmite ddemangle changed
- - make -f win32.mak DFLAGS=-g test
- - make -f win64.mak DFLAGS=-g rdmd dustmite ddemangle changed
- - make -f win64.mak DFLAGS=-g test
+ - choco install make
+ - make -j3 DMD=%DC% "DFLAGS=-m%MODEL% -g" rdmd dustmite ddemangle changed
+ - make -j3 DMD=%DC% "DFLAGS=-m%MODEL% -g" test
