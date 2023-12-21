@@ -38,7 +38,7 @@ Building
 On a Posix system all tools can be built with:
 
 ```
-make -f posix.mak all
+make all
 ```
 
 Using DUB as a build tool

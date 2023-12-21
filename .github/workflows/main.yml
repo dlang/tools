@@ -1,0 +1,38 @@
+name: Main
+on:
+  - pull_request # without merge conflicts
+  - push # branch or tag
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  main:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ macos-latest, ubuntu-latest, windows-latest ]
+        dc: [ dmd-latest, ldc-latest ]
+    name: ${{ matrix.os }}, ${{ matrix.dc }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      DMD: ${{ startsWith(matrix.dc, 'ldc') && 'ldmd2' || 'dmd' }}
+      N: ${{ startsWith(matrix.os, 'macos') && '3' || '2' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v1.3.0
+        with:
+          compiler: ${{ matrix.dc }}
+      - name: Build
+        shell: bash
+        run: make -j$N DMD=$DMD
+      - name: Test
+        shell: bash
+        run: make -j$N DMD=$DMD test
+      - name: 'Windows: Build and test with MODEL=32'
+        if: runner.os == 'Windows'
+        shell: bash
+        run: make -j$N DMD=$DMD MODEL=32 all test
