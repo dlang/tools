@@ -431,7 +431,7 @@ void runTests(string rdmdApp, string compiler, string model)
 
         res = execute(rdmdArgs ~ [forceSrc.baseName()]);
         enforce(res.status == 0, res.output);
-        enforce(!res.output.canFind("compile_force_src"));
+        enforce(!res.output.canFind("compile_force_src"), res.output);
     }
 
     auto conflictDir = forceSrc.setExtension(".dir");
@@ -684,11 +684,11 @@ void runFallbackTest(string rdmdApp, string buildCompiler, string model)
        if an explicit --compiler flag is not provided, rdmd should
        search its own binary path first when looking for the default
        compiler (determined by the compiler used to build it) */
-    string localDMD = buildPath(tempDir(), baseName(buildCompiler).setExtension(binExt));
+    string localDMD = buildPath(dirName(rdmdApp), baseName(buildCompiler).setExtension(binExt));
     std.file.write(localDMD, ""); // An empty file avoids the "Not a valid 16-bit application" pop-up on Windows
     scope(exit) std.file.remove(localDMD);
 
     auto res = execute(rdmdApp ~ [modelSwitch(model), "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
     enforce(res.status == 1, res.output);
-    enforce(res.output.canFind(format(`spawn [%(%s%),`, localDMD.only)), localDMD ~ " would not have been executed");
+    enforce(res.output.canFind(format(`spawn [%(%s%),`, localDMD.only)), localDMD ~ " would not have been executed. Output:\n" ~ res.output);
 }
