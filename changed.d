@@ -48,7 +48,7 @@ import std.range.primitives, std.traits;
 
 struct BugzillaEntry
 {
-    int id;
+    Nullable!int id;
     string summary;
     Nullable!int githubId;
 }
@@ -126,8 +126,13 @@ string escapeParens(string input)
     return input.translate(parenToMacro);
 }
 
+struct GitIssues {
+    int[] bugzillaIssueIds;
+    int[] githubIssueIds;
+}
+
 /** Get a list of all bugzilla issues mentioned in revRange */
-int[] getIssues(string revRange)
+GitIssues getIssues(string revRange)
 {
     import std.process : execute, pipeProcess, Redirect, wait;
     import std.regex : ctRegex, match, splitter;
@@ -139,9 +144,11 @@ int[] getIssues(string revRange)
     // issues reference that won't close the issue).
     // Note: "Bugzilla" is required since https://github.com/dlang/dlang-bot/pull/302;
     // temporarily both are accepted during a transition period.
-    enum closedRE = ctRegex!(`(?:^fix(?:es)?(?:\s+bugzilla)?(?:\s+(?:issues?|bugs?))?\s+(#?\d+(?:[\s,\+&and]+#?\d+)*))`, "i");
+    enum closedREBZ = ctRegex!(`(?:^fix(?:es)?(?:\s+bugzilla)?(?:\s+(?:issues?|bugs?))?\s+(#?\d+(?:[\s,\+&and]+#?\d+)*))`, "i");
+    enum closedREGH = ctRegex!(`(?:^fix(?:es)?(?:\s+github)?(?:\s+(?:issues?|bugs?))?\s+(#?\d+(?:[\s,\+&and]+#?\d+)*))`, "i");
 
-    auto issues = appender!(int[]);
+    auto issuesBZ = appender!(int[]);
+    auto issuesGH = appender!(int[]);
     foreach (repo; ["dmd", "phobos", "dlang.org", "tools", "installer"]
              .map!(r => buildPath("..", r)))
     {
@@ -157,37 +164,42 @@ int[] getIssues(string revRange)
         foreach (line; p.stdout.byLine())
         {
             writeln(line);
-            if (auto m = match(line.stripLeft, closedRE))
+            if (auto m = match(line.stripLeft, closedREBZ))
             {
                 m.captures[1]
                     .splitter(ctRegex!`[^\d]+`)
                     .filter!(b => b.length)
                     .map!(to!int)
-                    .copy(issues);
+                    .copy(issuesBZ);
+            }
+            if (auto m = match(line.stripLeft, closedREGH))
+            {
+                m.captures[1]
+                    .splitter(ctRegex!`[^\d]+`)
+                    .filter!(b => b.length)
+                    .map!(to!int)
+                    .copy(issuesGH);
             }
         }
     }
-    return issues.data.sort().release.uniq.array;
-}
-
-BugzillaEntry[][string][string] getClosedGithubIssues(string revRange)
-{
-    BugzillaEntry[][string][string] entries;
-    return entries;
+    return GitIssues(issuesBZ.data.sort().release.uniq.array
+            ,issuesGH.data.sort().release.uniq.array);
 }
 
 /** Generate and return the change log as a string. */
-BugzillaEntry[][string][string] getBugzillaChanges(string revRange)
+BugzillaEntry[][string /*type */][string /*comp*/] getBugzillaChanges(string revRange)
 {
     // component (e.g. DMD) -> bug type (e.g. regression) -> list of bug entries
     BugzillaEntry[][string][string] entries;
 
-    int[] issues = getIssues(revRange);
+    GitIssues issues = getIssues(revRange);
     // abort prematurely if no issues are found in all git logs
-    if (issues.empty)
+    if (issues.bugzillaIssueIds.empty)
+    {
         return entries;
+    }
 
-    auto req = generateRequest(templateRequest, issues);
+    auto req = generateRequest(templateRequest, issues.bugzillaIssueIds);
     debug stderr.writeln(req);  // write text
     auto data = req.get;
 
@@ -225,7 +237,7 @@ BugzillaEntry[][string][string] getBugzillaChanges(string revRange)
             default: assert(0, type);
         }
 
-        auto entry = BugzillaEntry(fields[0], fields[3].idup);
+        auto entry = BugzillaEntry(fields[0].nullable(), fields[3].idup);
         entries[comp][type] ~= entry;
         changelogStats.addBugzillaIssue(entry, comp, type);
     }
@@ -236,71 +248,180 @@ struct GithubIssue {
     int number;
     string title;
     string body_;
+    string type;
     DateTime closedAt;
+    Nullable!int bugzillaId;
 }
 
-GithubIssue[] getGithubIssues(string repo, DateTime startDate,
-        DateTime endDate)
+Nullable!int getBugzillaId(string body_) {
+    string prefix = "### Transfered from https://issues.dlang.org/show_bug.cgi?id=";
+    ptrdiff_t pIdx = body_.indexOf(prefix);
+    Nullable!int ret;
+    if(pIdx != -1) {
+        ptrdiff_t newLine = body_.indexOf("\n", pIdx + prefix.length);
+        if(newLine != -1) {
+            ret = body_[pIdx + prefix.length .. newLine].to!int();
+        }
+    }
+    return ret;
+}
+
+GithubIssue[][string /*type*/ ][string /*comp*/] getGithubIssuesRest(const DateTime startDate,
+        const DateTime endDate, const string bearer)
 {
-    const query = `
-query($repo: String!, $startDate: DateTime!) {
-	repository(owner: "burner", name: $repo) {
-        name
-        id
-        issues(states: CLOSED, first: 100
-            , filterBy: { since: $startDate })
-        {
-            edges {
-                node {
-                    number
-                    title
-                    id
-                    body
-                    closedAt
-                }
-            }
-            pageInfo {
-                endCursor
-                startCursor
-                hasNextPage
-                hasPreviousPage
+    GithubIssue[][string][string] ret;
+    string[2][] comps =
+        [ [ "dlang.org", "dlang.org"]
+        , [ "dmd", "DMD Compiler"]
+        , [ "druntime", "Druntime"]
+        , [ "phobos", "Phobos"]
+        , [ "tools", "Tools"]
+        , [ "dub", "Dub"]
+        , [ "visuald", "VisualD"]
+        ];
+    foreach(it; comps) {
+        GithubIssue[][string /* type */] tmp;
+        GithubIssue[] ghi = getGithubIssuesRest("dlang", it[0], startDate,
+                endDate, bearer);
+        foreach(jt; ghi) {
+            GithubIssue[]* p = jt.type in tmp;
+            if(p !is null) {
+                (*p) ~= jt;
+            } else {
+                tmp[jt.type] = [jt];
             }
         }
-	}
-}`;
-    JSONValue toSend;
-    toSend["query"] = query;
-    toSend["variables"] = `{ "repo": "%s", "startDate": "%sZ", "endDate": "%sZ" }`
-        .format("graphqld", startDate.toISOExtString(), endDate.toISOExtString());
-    string requestData = toSend.toPrettyString();
-
-    writefln("RD %s", requestData);
-    string ghToken = readText("gh_token").strip();
-    string bearer = format("Bearer %s", ghToken);
-    writefln("'%s' '%s'", ghToken, bearer);
-
-    HTTP http = HTTP("https://api.github.com/graphql");
-    http.addRequestHeader("Authorization", bearer);
-    http.setPostData(requestData, "application/json");
-
-    char[] response;
-    try {
-        http.onReceive = (ubyte[] d) {
-            response = cast(char[])d;
-            return d.length;
-        };
-        http.perform();
-    } catch(Exception e) {
-        throw e;
+        ret[it[1]] = tmp;
     }
+    return ret;
+}
 
-    writefln("RS %s", cast(string)response);
+/**
+Get closed issues of a github project
 
-    string s = cast(string)response;
-    JSONValue j = parseJSON(s);
-    writeln(j.toPrettyString());
+Params:
+    project = almost always the dlang github project
+    repo = the name of the repo to get the closed issues for
+    endDate = the cutoff date for closed issues
+    bearer = the classic github bearer token
+*/
+GithubIssue[] getGithubIssuesRest(const string project, const string repo
+        , const DateTime startDate, const DateTime endDate, const string bearer)
+{
+    GithubIssue[] ret;
+    foreach(page; 1 .. 100) { // 1000 issues per release should be enough
+        string req = ("https://api.github.com/repos/%s/%s/issues?per_page=100"
+            ~"&state=closed&since=%s&page=%s")
+            .format(project, repo, endDate.toISOExtString() ~ "Z", page);
 
-    return [];
+        writeln(req);
+        HTTP http = HTTP(req);
+        http.addRequestHeader("Accept", "application/vnd.github+json");
+        http.addRequestHeader("X-GitHub-Api-Version", "2022-11-28");
+        http.addRequestHeader("Authorization", bearer);
+
+        char[] response;
+        try {
+            http.onReceive = (ubyte[] d) {
+                response ~= cast(char[])d;
+                return d.length;
+            };
+            http.perform();
+        } catch(Exception e) {
+            throw e;
+        }
+
+        string s = cast(string)response;
+        writeln(s);
+        JSONValue j = parseJSON(s);
+        enforce(j.type == JSONType.array, j.toPrettyString()
+                ~ "\nMust be an array");
+        JSONValue[] arr = j.arrayNoRef();
+        if(arr.empty) {
+            break;
+        }
+        foreach(it; arr) {
+            GithubIssue tmp;
+            {
+                JSONValue* mem = "number" in it;
+                enforce(mem !is null, it.toPrettyString()
+                        ~ "\nmust contain 'number'");
+                enforce((*mem).type == JSONType.integer, (*mem).toPrettyString()
+                        ~ "\n'number' must be an integer");
+                tmp.number = (*mem).get!int();
+            }
+            {
+                JSONValue* mem = "title" in it;
+                enforce(mem !is null, it.toPrettyString()
+                        ~ "\nmust contain 'title'");
+                enforce((*mem).type == JSONType.string, (*mem).toPrettyString()
+                        ~ "\n'title' must be an string");
+                tmp.title = (*mem).get!string();
+            }
+            {
+                JSONValue* mem = "body" in it;
+                enforce(mem !is null, it.toPrettyString()
+                        ~ "\nmust contain 'body'");
+                if((*mem).type == JSONType.string) {
+                    tmp.body_ = (*mem).get!string();
+                    // get the possible bugzilla id
+                    tmp.bugzillaId = getBugzillaId(tmp.body_);
+                }
+            }
+            {
+                JSONValue* mem = "closed_at" in it;
+                enforce(mem !is null, it.toPrettyString()
+                        ~ "\nmust contain 'closed_at'");
+                enforce((*mem).type == JSONType.string, (*mem).toPrettyString()
+                        ~ "\n'closed_at' must be an string");
+                string d = (*mem).get!string();
+                d = d.endsWith("Z")
+                    ? d[0 .. $ - 1]
+                    : d;
+                tmp.closedAt = DateTime.fromISOExtString(d);
+            }
+            {
+                JSONValue* mem = "labels" in it;
+                tmp.type = "bug fixes";
+                if(mem !is null) {
+                    enforce(mem !is null, it.toPrettyString()
+                            ~ "\nmust contain 'labels'");
+                    enforce((*mem).type == JSONType.array, (*mem).toPrettyString()
+                            ~ "\n'labels' must be an string");
+                    foreach(l; (*mem).arrayNoRef()) {
+                        enforce(l.type == JSONType.object, l.toPrettyString()
+                                ~ "\nmust be an object");
+                        JSONValue* lbl = "name" in l;
+                        enforce(lbl !is null, it.toPrettyString()
+                                ~ "\nmust contain 'name'");
+                        enforce((*lbl).type == JSONType.string, (*lbl).toPrettyString()
+                                ~ "\n'name' must be an string");
+                        string n = (*lbl).get!string();
+                        switch (n)
+                        {
+                            case "regression":
+                                tmp.type = "regression fixes";
+                                break;
+
+                            case "blocker", "critical", "major", "normal", "minor", "trivial":
+                                tmp.type = "bug fixes";
+                                break;
+
+                            case "enhancement":
+                                tmp.type = "enhancements";
+                                break;
+                            default:
+                        }
+                    }
+                }
+            }
+            ret ~= tmp;
+        }
+        if(arr.length < 100) {
+            break;
+        }
+    }
+    return ret;
 }
 
 /**
@@ -438,6 +559,13 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
     }
 }
 
+bool less(ref BugzillaEntry a, ref BugzillaEntry b) {
+    if(!a.id.isNull() && !b.id.isNull()) {
+        return a.id.get() < b.id.get();
+    }
+    return false;
+}
+
 /**
 Writes the fixed issued from Bugzilla in the ddoc format as a single list.
 
@@ -459,7 +587,7 @@ void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
             if (auto bugs = bugtype in *comp)
             {
                 w.formattedWrite("$(BUGSTITLE_BUGZILLA %s %s,\n\n", component, bugtype);
-                foreach (bug; sort!"a.id < b.id"(*bugs))
+                foreach (bug; sort!less(*bugs))
                 {
                     w.formattedWrite("$(LI $(BUGZILLA %s): %s)\n",
                                         bug.id, bug.summary.escapeParens());
@@ -470,12 +598,15 @@ void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
     }
 }
 
+/*
 int main(string[] args) {
-    getGithubIssues("phobos", DateTime(2023,1,1), DateTime(2023,12,1));
+    GithubIssue[][string][string] ghIssues = getGithubIssuesRest(DateTime(2023,1,1), DateTime(2023,12,1)
+            , readText("gh_token").strip());
+    writefln("%s", ghIssues);
     return 0;
 }
+*/
 
-__EOF__
 int main(string[] args)
 {
     auto outputFile = "./changelog.dd";
@@ -519,8 +650,6 @@ Please supply a bugzilla version
         writeln("Skipped querying Bugzilla for changes. Please define a revision range e.g ./changed v2.072.2..upstream/stable");
     }
 
-    getGithubIssues("phobos", DateTime(2023,1,1), DateTime(2023,12,1));
-
     // location of the changelog files
     alias Repo = Tuple!(string, "name", string, "headline", string, "path", string, "prefix");
     auto repos = [Repo("dmd", "Compiler changes", "changelog", "dmd."),
@@ -558,7 +687,8 @@ Please supply a bugzilla version
     w.put("$(CHANGELOG_NAV_INJECT)\n\n");
 
     // Accumulate Bugzilla issues
-    typeof(revRange.getBugzillaChanges) bugzillaChanges;
+    //typeof(revRange.getBugzillaChanges) bugzillaChanges;
+    BugzillaEntry[][string][string] bugzillaChanges;
     if (revRange.length)
     {
         bugzillaChanges = revRange.getBugzillaChanges();
