@@ -619,12 +619,14 @@ int main(string[] args)
     string previousVersion = "Previous version";
     bool hideTextChanges = false;
     string revRange;
+    string githubClassicTokenFileName;
 
     auto helpInformation = getopt(
         args,
         std.getopt.config.passThrough,
         "output|o", &outputFile,
         "date", &nextVersionDate,
+        "ghToken|t", &githubClassicTokenFileName,
         "version", &nextVersionString,
         "prev-version", &previousVersion, // this can automatically be detected
         "no-text", &hideTextChanges);
