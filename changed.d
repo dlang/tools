@@ -42,7 +42,7 @@ module changed;
 
 import std.net.curl, std.conv, std.exception, std.algorithm, std.csv, std.typecons,
     std.stdio, std.datetime, std.array, std.string, std.file, std.format, std.getopt,
-    std.path, std.functional, std.json;
+    std.path, std.functional, std.json, std.process;
 
 import std.range.primitives, std.traits;
 
@@ -126,6 +126,31 @@ string escapeParens(string input)
     return input.translate(parenToMacro);
 }
 
+Nullable!DateTime getFirstDateTime(string revRange) {
+    DateTime[] all;
+
+    foreach (repo; ["dmd", "phobos", "dlang.org", "tools", "installer"]
+             .map!(r => buildPath("..", r)))
+    {
+        auto cmd = ["git", "log", "--no-patch", "--no-notes"
+            , "--date=format-local:%Y-%m-%dT%H:%M:%S", "--pretty=%cd"
+            , revRange];
+        auto p = pipeProcess(cmd, Redirect.stdout);
+        all ~= p.stdout.byLine()
+            .map!((char[] l) {
+                auto r = DateTime.fromISOExtString(l);
+                return r;
+            })
+            .array;
+    }
+
+    all.sort();
+
+    return all.empty
+        ? Nullable!(DateTime).init
+        : all.front.nullable;
+}
+
 struct GitIssues {
     int[] bugzillaIssueIds;
     int[] githubIssueIds;
@@ -134,7 +159,6 @@ struct GitIssues {
 /** Get a list of all bugzilla issues mentioned in revRange */
 GitIssues getIssues(string revRange)
 {
-    import std.process : execute, pipeProcess, Redirect, wait;
     import std.regex : ctRegex, match, splitter;
 
     // Keep in sync with the regex in dlang-bot:
@@ -163,7 +187,6 @@ GitIssues getIssues(string revRange)
 
         foreach (line; p.stdout.byLine())
         {
-            writeln(line);
             if (auto m = match(line.stripLeft, closedREBZ))
             {
                 m.captures[1]
@@ -312,9 +335,8 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
     foreach(page; 1 .. 100) { // 1000 issues per release should be enough
         string req = ("https://api.github.com/repos/%s/%s/issues?per_page=100"
             ~"&state=closed&since=%s&page=%s")
-            .format(project, repo, endDate.toISOExtString() ~ "Z", page);
+            .format(project, repo, startDate.toISOExtString() ~ "Z", page);
 
-        writeln(req);
         HTTP http = HTTP(req);
         http.addRequestHeader("Accept", "application/vnd.github+json");
         http.addRequestHeader("X-GitHub-Api-Version", "2022-11-28");
@@ -332,7 +354,6 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
         }
 
         string s = cast(string)response;
-        writeln(s);
         JSONValue j = parseJSON(s);
         enforce(j.type == JSONType.array, j.toPrettyString()
                 ~ "\nMust be an array");
@@ -612,7 +633,7 @@ int main(string[] args)
     auto outputFile = "./changelog.dd";
     auto nextVersionString = "LATEST";
 
-    auto currDate = Clock.currTime();
+    SysTime currDate = Clock.currTime();
     auto nextVersionDate = "%s %02d, %04d"
         .format(currDate.month.to!string.capitalize, currDate.day, currDate.year);
 
@@ -638,6 +659,10 @@ Please supply a bugzilla version
 ./changed.d "v2.071.2..upstream/stable"`.defaultGetoptPrinter(helpInformation.options);
     }
 
+    assert(exists(githubClassicTokenFileName), format("No file with name '%s' exists"
+            , githubClassicTokenFileName));
+    const string githubToken = readText(githubClassicTokenFileName).strip();
+
     if (args.length >= 2)
     {
         revRange = args[1];
@@ -651,6 +676,7 @@ Please supply a bugzilla version
     {
         writeln("Skipped querying Bugzilla for changes. Please define a revision range e.g ./changed v2.072.2..upstream/stable");
     }
+
 
     // location of the changelog files
     alias Repo = Tuple!(string, "name", string, "headline", string, "path", string, "prefix");
@@ -691,10 +717,20 @@ Please supply a bugzilla version
     // Accumulate Bugzilla issues
     //typeof(revRange.getBugzillaChanges) bugzillaChanges;
     BugzillaEntry[][string][string] bugzillaChanges;
-    if (revRange.length)
+    if (revRange.length >= 0)
     {
-        bugzillaChanges = revRange.getBugzillaChanges();
+        bugzillaChanges = getBugzillaChanges(revRange);
     }
+
+    Nullable!(DateTime) firstDate = getFirstDateTime(revRange);
+    enforce(!firstDate.isNull(), "Couldn't find a date from the revRange");
+    GithubIssue[][string][string] githubChanges;
+    if (revRange.length >= 0)
+    {
+        githubChanges = getGithubIssuesRest(firstDate.get(), cast(DateTime)currDate
+                , githubToken);
+    }
+    writeln(githubChanges);
 
     // Accumulate contributors from the git log
     version(Contributors_Lib)
