@@ -53,6 +53,25 @@ struct BugzillaEntry
     Nullable!int githubId;
 }
 
+struct GithubIssue {
+    int number;
+    string title;
+    string body_;
+    string type;
+    DateTime closedAt;
+    Nullable!int bugzillaId;
+
+    @property string summary() const
+    {
+        return this.title;
+    }
+
+    @property int id() const
+    {
+        return this.number;
+    }
+}
+
 struct ChangelogEntry
 {
     string title; // the first line (can't contain links)
@@ -265,15 +284,6 @@ BugzillaEntry[][string /*type */][string /*comp*/] getBugzillaChanges(string rev
         changelogStats.addBugzillaIssue(entry, comp, type);
     }
     return entries;
-}
-
-struct GithubIssue {
-    int number;
-    string title;
-    string body_;
-    string type;
-    DateTime closedAt;
-    Nullable!int bugzillaId;
 }
 
 Nullable!int getBugzillaId(string body_) {
@@ -580,11 +590,19 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
     }
 }
 
-bool less(ref BugzillaEntry a, ref BugzillaEntry b) {
+bool lessImpl(ref BugzillaEntry a, ref BugzillaEntry b) {
     if(!a.id.isNull() && !b.id.isNull()) {
         return a.id.get() < b.id.get();
     }
     return false;
+}
+
+bool lessImpl(ref GithubIssue a, ref GithubIssue b) {
+    return a.number < b.number;
+}
+
+bool less(T)(ref T a, ref T b) {
+    return lessImpl(a, b);
 }
 
 /**
@@ -605,15 +623,18 @@ void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
         if (auto comp = component in entries)
         {
             foreach (bugtype; bugtypes)
-            if (auto bugs = bugtype in *comp)
             {
-                w.formattedWrite("$(BUGSTITLE_BUGZILLA %s %s,\n\n", component, bugtype);
-                foreach (bug; sort!less(*bugs))
+                if (auto bugs = bugtype in *comp)
                 {
-                    w.formattedWrite("$(LI $(BUGZILLA %s): %s)\n",
-                                        bug.id, bug.summary.escapeParens());
+                    w.formattedWrite("$(BUGSTITLE_BUGZILLA %s %s,\n\n", component, bugtype);
+                    alias lessFunc = less!(ElementEncodingType!(typeof(*bugs)));
+                    foreach (bug; sort!lessFunc(*bugs))
+                    {
+                        w.formattedWrite("$(LI $(BUGZILLA %s): %s)\n",
+                                            bug.id, bug.summary.escapeParens());
+                    }
+                    w.put(")\n");
                 }
-                w.put(")\n");
             }
         }
     }
@@ -730,7 +751,6 @@ Please supply a bugzilla version
         githubChanges = getGithubIssuesRest(firstDate.get(), cast(DateTime)currDate
                 , githubToken);
     }
-    writeln(githubChanges);
 
     // Accumulate contributors from the git log
     version(Contributors_Lib)
@@ -804,7 +824,13 @@ Please supply a bugzilla version
 
         // print the entire changelog history
         if (revRange.length)
+        {
             bugzillaChanges.writeBugzillaChanges(w);
+        }
+        if (revRange.length)
+        {
+            githubChanges.writeBugzillaChanges(w);
+        }
     }
 
     version(Contributors_Lib)
