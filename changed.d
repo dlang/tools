@@ -53,7 +53,8 @@ struct BugzillaEntry
     Nullable!int githubId;
 }
 
-struct GithubIssue {
+struct GithubIssue
+{
     int number;
     string title;
     string body_;
@@ -145,7 +146,8 @@ string escapeParens(string input)
     return input.translate(parenToMacro);
 }
 
-Nullable!DateTime getFirstDateTime(string revRange) {
+Nullable!DateTime getFirstDateTime(string revRange)
+{
     DateTime[] all;
 
     foreach (repo; ["dmd", "phobos", "dlang.org", "tools", "installer"]
@@ -170,7 +172,8 @@ Nullable!DateTime getFirstDateTime(string revRange) {
         : all.front.nullable;
 }
 
-struct GitIssues {
+struct GitIssues
+{
     int[] bugzillaIssueIds;
     int[] githubIssueIds;
 }
@@ -286,13 +289,16 @@ BugzillaEntry[][string /*type */][string /*comp*/] getBugzillaChanges(string rev
     return entries;
 }
 
-Nullable!int getBugzillaId(string body_) {
+Nullable!int getBugzillaId(string body_)
+{
     string prefix = "### Transfered from https://issues.dlang.org/show_bug.cgi?id=";
     ptrdiff_t pIdx = body_.indexOf(prefix);
     Nullable!int ret;
-    if(pIdx != -1) {
+    if (pIdx != -1)
+    {
         ptrdiff_t newLine = body_.indexOf("\n", pIdx + prefix.length);
-        if(newLine != -1) {
+        if (newLine != -1)
+        {
             ret = body_[pIdx + prefix.length .. newLine].to!int();
         }
     }
@@ -312,15 +318,20 @@ GithubIssue[][string /*type*/ ][string /*comp*/] getGithubIssuesRest(const DateT
         , [ "dub", "Dub"]
         , [ "visuald", "VisualD"]
         ];
-    foreach(it; comps) {
+    foreach (it; comps)
+    {
         GithubIssue[][string /* type */] tmp;
         GithubIssue[] ghi = getGithubIssuesRest("dlang", it[0], startDate,
                 endDate, bearer);
-        foreach(jt; ghi) {
+        foreach (jt; ghi)
+        {
             GithubIssue[]* p = jt.type in tmp;
-            if(p !is null) {
+            if (p !is null)
+            {
                 (*p) ~= jt;
-            } else {
+            }
+            else
+            {
                 tmp[jt.type] = [jt];
             }
         }
@@ -342,7 +353,8 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
         , const DateTime startDate, const DateTime endDate, const string bearer)
 {
     GithubIssue[] ret;
-    foreach(page; 1 .. 100) { // 1000 issues per release should be enough
+    foreach (page; 1 .. 100)
+    { // 1000 issues per release should be enough
         string req = ("https://api.github.com/repos/%s/%s/issues?per_page=100"
             ~"&state=closed&since=%s&page=%s")
             .format(project, repo, startDate.toISOExtString() ~ "Z", page);
@@ -353,13 +365,17 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
         http.addRequestHeader("Authorization", bearer);
 
         char[] response;
-        try {
-            http.onReceive = (ubyte[] d) {
+        try
+        {
+            http.onReceive = (ubyte[] d)
+            {
                 response ~= cast(char[])d;
                 return d.length;
             };
             http.perform();
-        } catch(Exception e) {
+        }
+        catch(Exception e)
+        {
             throw e;
         }
 
@@ -368,10 +384,12 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
         enforce(j.type == JSONType.array, j.toPrettyString()
                 ~ "\nMust be an array");
         JSONValue[] arr = j.arrayNoRef();
-        if(arr.empty) {
+        if (arr.empty)
+        {
             break;
         }
-        foreach(it; arr) {
+        foreach (it; arr)
+        {
             GithubIssue tmp;
             {
                 JSONValue* mem = "number" in it;
@@ -393,7 +411,8 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
                 JSONValue* mem = "body" in it;
                 enforce(mem !is null, it.toPrettyString()
                         ~ "\nmust contain 'body'");
-                if((*mem).type == JSONType.string) {
+                if ((*mem).type == JSONType.string)
+                {
                     tmp.body_ = (*mem).get!string();
                     // get the possible bugzilla id
                     tmp.bugzillaId = getBugzillaId(tmp.body_);
@@ -414,12 +433,14 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
             {
                 JSONValue* mem = "labels" in it;
                 tmp.type = "bug fixes";
-                if(mem !is null) {
+                if (mem !is null)
+                {
                     enforce(mem !is null, it.toPrettyString()
                             ~ "\nmust contain 'labels'");
                     enforce((*mem).type == JSONType.array, (*mem).toPrettyString()
                             ~ "\n'labels' must be an string");
-                    foreach(l; (*mem).arrayNoRef()) {
+                    foreach (l; (*mem).arrayNoRef())
+                    {
                         enforce(l.type == JSONType.object, l.toPrettyString()
                                 ~ "\nmust be an object");
                         JSONValue* lbl = "name" in l;
@@ -448,7 +469,8 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
             }
             ret ~= tmp;
         }
-        if(arr.length < 100) {
+        if (arr.length < 100)
+        {
             break;
         }
     }
@@ -537,7 +559,7 @@ void writeTextChangesHeader(Entries, Writer)(Entries changes, Writer w, string h
     // write the overview titles
     w.formattedWrite("$(BUGSTITLE_TEXT_HEADER %s,\n\n", headline);
     scope(exit) w.put("\n)\n\n");
-    foreach(change; changes)
+    foreach (change; changes)
     {
         w.formattedWrite("$(LI $(RELATIVE_LINK2 %s,%s))\n", change.basename, change.title);
     }
@@ -554,7 +576,7 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
 {
     w.formattedWrite("$(BUGSTITLE_TEXT_BODY %s,\n\n", headline);
     scope(exit) w.put("\n)\n\n");
-    foreach(change; changes)
+    foreach (change; changes)
     {
         w.formattedWrite("$(LI $(LNAME2 %s,%s)\n", change.basename, change.title);
         w.formattedWrite("$(CHANGELOG_SOURCE_FILE %s, %s)\n", change.repo, change.filePath);
@@ -590,18 +612,22 @@ void writeTextChangesBody(Entries, Writer)(Entries changes, Writer w, string hea
     }
 }
 
-bool lessImpl(ref BugzillaEntry a, ref BugzillaEntry b) {
-    if(!a.id.isNull() && !b.id.isNull()) {
+bool lessImpl(ref BugzillaEntry a, ref BugzillaEntry b)
+{
+    if (!a.id.isNull() && !b.id.isNull())
+    {
         return a.id.get() < b.id.get();
     }
     return false;
 }
 
-bool lessImpl(ref GithubIssue a, ref GithubIssue b) {
+bool lessImpl(ref GithubIssue a, ref GithubIssue b)
+{
     return a.number < b.number;
 }
 
-bool less(T)(ref T a, ref T b) {
+bool less(T)(ref T a, ref T b)
+{
     return lessImpl(a, b);
 }
 
@@ -639,15 +665,6 @@ void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
         }
     }
 }
-
-/*
-int main(string[] args) {
-    GithubIssue[][string][string] ghIssues = getGithubIssuesRest(DateTime(2023,1,1), DateTime(2023,12,1)
-            , readText("gh_token").strip());
-    writefln("%s", ghIssues);
-    return 0;
-}
-*/
 
 int main(string[] args)
 {
