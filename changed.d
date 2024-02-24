@@ -392,7 +392,7 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
         {
             GithubIssue tmp;
             {
-                JSONValue* mem = "number" in it;
+                const(JSONValue)* mem = "number" in it;
                 enforce(mem !is null, it.toPrettyString()
                         ~ "\nmust contain 'number'");
                 enforce((*mem).type == JSONType.integer, (*mem).toPrettyString()
@@ -400,7 +400,7 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
                 tmp.number = (*mem).get!int();
             }
             {
-                JSONValue* mem = "title" in it;
+                const(JSONValue)* mem = "title" in it;
                 enforce(mem !is null, it.toPrettyString()
                         ~ "\nmust contain 'title'");
                 enforce((*mem).type == JSONType.string, (*mem).toPrettyString()
@@ -408,7 +408,7 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
                 tmp.title = (*mem).get!string();
             }
             {
-                JSONValue* mem = "body" in it;
+                const(JSONValue)* mem = "body" in it;
                 enforce(mem !is null, it.toPrettyString()
                         ~ "\nmust contain 'body'");
                 if ((*mem).type == JSONType.string)
@@ -419,7 +419,7 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
                 }
             }
             {
-                JSONValue* mem = "closed_at" in it;
+                const(JSONValue)* mem = "closed_at" in it;
                 enforce(mem !is null, it.toPrettyString()
                         ~ "\nmust contain 'closed_at'");
                 enforce((*mem).type == JSONType.string, (*mem).toPrettyString()
@@ -431,7 +431,7 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
                 tmp.closedAt = DateTime.fromISOExtString(d);
             }
             {
-                JSONValue* mem = "labels" in it;
+                const(JSONValue)* mem = "labels" in it;
                 tmp.type = "bug fixes";
                 if (mem !is null)
                 {
@@ -443,7 +443,7 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
                     {
                         enforce(l.type == JSONType.object, l.toPrettyString()
                                 ~ "\nmust be an object");
-                        JSONValue* lbl = "name" in l;
+                        const(JSONValue)* lbl = "name" in l;
                         enforce(lbl !is null, it.toPrettyString()
                                 ~ "\nmust contain 'name'");
                         enforce((*lbl).type == JSONType.string, (*lbl).toPrettyString()
