@@ -805,33 +805,34 @@ private @property string helpString()
 {
     return
 "rdmd build " ~ thisVersion ~ "
-Usage: rdmd [RDMD AND DMD OPTIONS]... program [PROGRAM OPTIONS]...
-Builds (with dependents) and runs a D program.
-Example: rdmd -release myprog --myprogparm 5
+Usage: rdmd [RDMD AND DMD OPTIONS...] program [PROGRAM OPTIONS...]
+Builds a D program with its dependencies and runs it.
+Example: rdmd -release myprog --myprogparameter 5
 
-Any option to be passed to the compiler must occur before the program name. In
-addition to compiler options, rdmd recognizes the following options:
+Any option to be passed to the compiler must occur before the program name.
+In addition to compiler options, rdmd recognizes the following options:
   --build-only       just build the executable, don't run it
   --chatty           write compiler commands to stdout before executing them
   --compiler=comp    use the specified compiler (e.g. gdmd) instead of %s
   --dry-run          do not compile, just show what commands would be run
                       (implies --chatty)
-  --eval=code        evaluate code as in perl -e (multiple --eval allowed)
-  --exclude=package  exclude a package from the build (multiple --exclude allowed)
+  --eval=code        evaluate code, similar to perl -e (multiple allowed)
+  --exclude=package  exclude a package from the build (multiple allowed)
   --include=package  negate --exclude or a standard package (%-(%s, %))
   --extra-file=file  include an extra source or object in the compilation
-                     (multiple --extra-file allowed)
+                      (multiple allowed)
   --force            force a rebuild even if apparently not necessary
-  --help             this message
-  --loop=code        like eval, but wraps code in \"foreach (line; stdin.byLine()) { ... }\"
+  --help             show this message
+  --loop=code        --eval, but wraps code in:
+                      foreach (line; stdin.byLine()) { ... }
   --main             add a stub main program to the mix (e.g. for unittesting)
   --makedepend       print dependencies in makefile format and exit
-                     (needs dmd's option `-of` to be present)
+                      (needs dmd's option `-of` to be present)
   --makedepfile=file print dependencies in makefile format to file and continue
-                     (needs dmd's option `-of` to be present)
-  --man              open web browser on manual page
-  --shebang          rdmd is in a shebang line (put as first argument)
-  --tmpdir           set an alternative temporary directory
+                      (needs dmd's option `-of` to be present)
+  --man              open rdmd's manual in a web browser
+  --shebang          rdmd is in a shebang line (use as first argument)
+  --tmpdir           set an alternative temporary directory to cache compiled code
 ".format(defaultCompiler, defaultExclusions);
 }
 
