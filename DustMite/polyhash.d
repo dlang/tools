@@ -151,6 +151,11 @@ if (isUnsigned!T)
 		return value == operand;
 	}
 
+	bool opEquals(ModQ other) const
+	{
+	    return this == other.value;
+	}
+
 	void opOpAssign(string op : "+")(typeof(this) operand)
 	{
 		T result = this.value;
@@ -170,6 +175,11 @@ if (isUnsigned!T)
 	// Ensure this type is supported whet it is instantiated,
 	// instead of when the operator overloads are
 	private static void check() { typeof(this) m; m *= typeof(this)(0); }
+
+	size_t toHash() const
+	{
+	    return hashOf(value);
+	}
 }
 
 unittest
