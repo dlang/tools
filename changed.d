@@ -631,6 +631,11 @@ bool less(T)(ref T a, ref T b)
     return lessImpl(a, b);
 }
 
+enum BugzillaOrGithub {
+    bugzilla,
+    github
+}
+
 /**
 Writes the fixed issued from Bugzilla in the ddoc format as a single list.
 
@@ -638,11 +643,23 @@ Params:
     changes = parsed InputRange of changelog information
     w = Output range to use
 */
-void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
+void writeBugzillaChanges(Entries, Writer)(BugzillaOrGithub bog, Entries entries, Writer w)
     if (isOutputRange!(Writer, string))
 {
     immutable components = ["DMD Compiler", "Phobos", "Druntime", "dlang.org", "Optlink", "Tools", "Installer"];
     immutable bugtypes = ["regression fixes", "bug fixes", "enhancements"];
+    const string macroTitle = () {
+        final switch(bog) {
+            case BugzillaOrGithub.bugzilla: return "BUGSTITLE_BUGZILLA";
+            case BugzillaOrGithub.github: return "BUGSTITLE_GITHUB";
+        }
+    }();
+    const string macroLi = () {
+        final switch(bog) {
+            case BugzillaOrGithub.bugzilla: return "BUGZILLA";
+            case BugzillaOrGithub.github: return "GITHUB";
+        }
+    }();
 
     foreach (component; components)
     {
@@ -652,11 +669,11 @@ void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
             {
                 if (auto bugs = bugtype in *comp)
                 {
-                    w.formattedWrite("$(BUGSTITLE_BUGZILLA %s %s,\n\n", component, bugtype);
+                    w.formattedWrite("$(%s %s %s,\n\n", macroTitle, component, bugtype);
                     alias lessFunc = less!(ElementEncodingType!(typeof(*bugs)));
                     foreach (bug; sort!lessFunc(*bugs))
                     {
-                        w.formattedWrite("$(LI $(BUGZILLA %s): %s)\n",
+                        w.formattedWrite("$(LI $(%s %s): %s)\n", macroLi,
                                             bug.id, bug.summary.escapeParens());
                     }
                     w.put(")\n");
@@ -842,11 +859,11 @@ Please supply a bugzilla version
         // print the entire changelog history
         if (revRange.length)
         {
-            bugzillaChanges.writeBugzillaChanges(w);
+            writeBugzillaChanges(BugzillaOrGithub.bugzilla, bugzillaChanges, w);
         }
         if (revRange.length)
         {
-            githubChanges.writeBugzillaChanges(w);
+            writeBugzillaChanges(BugzillaOrGithub.github, githubChanges, w);
         }
     }
 
