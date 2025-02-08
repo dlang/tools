@@ -355,9 +355,21 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
     GithubIssue[] ret;
     foreach (page; 1 .. 100)
     { // 1000 issues per release should be enough
-        string req = ("https://api.github.com/repos/%s/%s/issues?per_page=100"
+        string req = ("https://api.github.com/repos/%s/%s/issues?per_page=100&since=%s"
             ~"&state=closed&since=%s&page=%s")
-            .format(project, repo, startDate.toISOExtString() ~ "Z", page);
+            .format(project, repo,
+                    () {
+                        switch(repo) {
+                            case "dmd": return "2024-12-01T12:00:00Z";
+                            case "phobos": return "2024-12-01T12:00:00Z";
+                            case "tools": return "2001-01-01T00:00:00Z";
+                            case "dub": return "2001-01-01T00:00:00Z";
+                            case "visuald": return "2023-10-18T00:00:00Z";
+                            case "installer": return "2001-01-01T00:00:00Z";
+                            default: return "2001-01-01T00:00:00Z";
+                        }
+                    }()
+                    , startDate.toISOExtString() ~ "Z", page);
 
         HTTP http = HTTP(req);
         http.addRequestHeader("Accept", "application/vnd.github+json");
@@ -391,6 +403,12 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
         foreach (it; arr)
         {
             GithubIssue tmp;
+            // Issues and pull request are both returned by the github api
+            // the changelog only contains closed issues so we need to skip
+            // PRs
+            if("pull_request" in it && it["pull_request"].type != JSONType.null_) {
+                continue;
+            }
             {
                 const(JSONValue)* mem = "number" in it;
                 enforce(mem !is null, it.toPrettyString()
