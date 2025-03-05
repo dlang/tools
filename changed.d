@@ -732,9 +732,11 @@ Please supply a bugzilla version
 ./changed.d "v2.071.2..upstream/stable"`.defaultGetoptPrinter(helpInformation.options);
     }
 
-    assert(exists(githubClassicTokenFileName), format("No file with name '%s' exists"
-            , githubClassicTokenFileName));
-    const string githubToken = readText(githubClassicTokenFileName).strip();
+    if (githubClassicTokenFileName.empty)
+    {
+        writeln("Skipped querying GitHub for changes. Please provide an access token e.g ./changed -t token-file");
+        writeln("To create a new token, visit https://github.com/settings/tokens/new");
+    }
 
     if (args.length >= 2)
     {
