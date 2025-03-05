@@ -790,16 +790,19 @@ Please supply a bugzilla version
     w.put("$(CHANGELOG_NAV_INJECT)\n\n");
 
     // Accumulate Bugzilla issues
-    //typeof(revRange.getBugzillaChanges) bugzillaChanges;
     BugzillaEntry[][string][string] bugzillaChanges;
-    if (revRange.length >= 0)
+    if (!revRange.empty)
     {
         bugzillaChanges = getBugzillaChanges(revRange);
     }
 
     GithubIssue[][string][string] githubChanges;
-    if (revRange.length >= 0)
+    if (!revRange.empty && !githubClassicTokenFileName.empty)
     {
+        enforce(exists(githubClassicTokenFileName), format("No file with name '%s' exists"
+                , githubClassicTokenFileName));
+        const string githubToken = readText(githubClassicTokenFileName).strip();
+
         Nullable!(DateTime) firstDate = getFirstDateTime(revRange);
         enforce(!firstDate.isNull(), "Couldn't find a date from the revRange");
         githubChanges = getGithubIssuesRest(firstDate.get(), cast(DateTime)currDate
