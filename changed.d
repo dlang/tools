@@ -827,8 +827,10 @@ Please supply a bugzilla version
 
         Nullable!(DateTime) firstDate = getFirstDateTime(revRange);
         enforce(!firstDate.isNull(), "Couldn't find a date from the revRange");
-        githubChanges = getGithubIssuesRest(firstDate.get(), cast(DateTime)currDate
-                , githubToken);
+        Nullable!(DateTime) endDate = getEndDateTime(nextVersionDate);
+        enforce(!endDate.isNull(), "Couldn't parse the next version date string");
+
+        githubChanges = getGithubIssuesRest(firstDate.get(), endDate.get(), githubToken);
     }
 
     // Accumulate contributors from the git log
