@@ -296,7 +296,7 @@ Nullable!int getBugzillaId(string body_)
     Nullable!int ret;
     if (pIdx != -1)
     {
-        ptrdiff_t newLine = body_.indexOf("\n", pIdx + prefix.length);
+        ptrdiff_t newLine = body_.indexOfAny("\n\r", pIdx + prefix.length);
         if (newLine != -1)
         {
             ret = body_[pIdx + prefix.length .. newLine].to!int();
