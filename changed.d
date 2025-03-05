@@ -795,11 +795,11 @@ Please supply a bugzilla version
         bugzillaChanges = getBugzillaChanges(revRange);
     }
 
-    Nullable!(DateTime) firstDate = getFirstDateTime(revRange);
-    enforce(!firstDate.isNull(), "Couldn't find a date from the revRange");
     GithubIssue[][string][string] githubChanges;
     if (revRange.length >= 0)
     {
+        Nullable!(DateTime) firstDate = getFirstDateTime(revRange);
+        enforce(!firstDate.isNull(), "Couldn't find a date from the revRange");
         githubChanges = getGithubIssuesRest(firstDate.get(), cast(DateTime)currDate
                 , githubToken);
     }
