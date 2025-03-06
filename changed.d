@@ -175,7 +175,7 @@ Nullable!DateTime getFirstDateTime(string revRange)
 struct GitIssues
 {
     int[] bugzillaIssueIds;
-    int[] githubIssueIds;
+    int[][string] githubIssueIds;
 }
 
 /** Get a list of all bugzilla issues mentioned in revRange */
@@ -194,7 +194,7 @@ GitIssues getIssues(string revRange)
     enum closedREGH = ctRegex!(`(?:^fix(?:es)?(?:\s+github)?(?:\s+(?:issues?|bugs?))?\s+(#?\d+(?:[\s,\+&and]+#?\d+)*))`, "i");
 
     auto issuesBZ = appender!(int[]);
-    auto issuesGH = appender!(int[]);
+    int[][string] issuesGH;
     foreach (repo; ["dmd", "phobos", "dlang.org", "tools", "installer"]
              .map!(r => buildPath("..", r)))
     {
@@ -207,6 +207,7 @@ GitIssues getIssues(string revRange)
         p = pipeProcess(cmd, Redirect.stdout);
         scope(exit) enforce(wait(p.pid) == 0, "Failed to execute '%(%s %)'.".format(cmd));
 
+        auto matchesGH = appender!(int[]);
         foreach (line; p.stdout.byLine())
         {
             if (auto m = match(line.stripLeft, closedREBZ))
@@ -223,12 +224,12 @@ GitIssues getIssues(string revRange)
                     .splitter(ctRegex!`[^\d]+`)
                     .filter!(b => b.length)
                     .map!(to!int)
-                    .copy(issuesGH);
+                    .copy(matchesGH);
             }
         }
+        issuesGH[repo[3..$]] = matchesGH.data.sort().release.uniq.array;
     }
-    return GitIssues(issuesBZ.data.sort().release.uniq.array
-            ,issuesGH.data.sort().release.uniq.array);
+    return GitIssues(issuesBZ.data.sort().release.uniq.array, issuesGH);
 }
 
 /** Generate and return the change log as a string. */
@@ -305,26 +306,39 @@ Nullable!int getBugzillaId(string body_)
     return ret;
 }
 
-GithubIssue[][string /*type*/ ][string /*comp*/] getGithubIssuesRest(const DateTime startDate,
-        const DateTime endDate, const string bearer)
+GithubIssue[][string /*type*/ ][string /*comp*/] getGithubIssuesRest(string revRange,
+        const DateTime startDate, const DateTime endDate, const string bearer)
 {
+    import std.algorithm.searching : canFind;
+
     GithubIssue[][string][string] ret;
     string[2][] comps =
         [ [ "dlang.org", "dlang.org"]
         , [ "dmd", "DMD Compiler"]
-        , [ "druntime", "Druntime"]
+      //, [ "druntime", "Druntime"] // Archived
         , [ "phobos", "Phobos"]
         , [ "tools", "Tools"]
-        , [ "dub", "Dub"]
-        , [ "visuald", "VisualD"]
+      //, [ "dub", "Dub"]           // ???: Not searched in getIssues
+      //, [ "visuald", "VisualD"]   // ???:
+        , [ "installer", "Installer"]
         ];
+    GitIssues issues = getIssues(revRange);
     foreach (it; comps)
     {
+        // abort prematurely if no issues are found in all git logs
+        string project = it[0];
+        if (project !in issues.githubIssueIds || issues.githubIssueIds[project].empty)
+            continue;
+
         GithubIssue[][string /* type */] tmp;
-        GithubIssue[] ghi = getGithubIssuesRest("dlang", it[0], startDate,
+        GithubIssue[] ghi = getGithubIssuesRest("dlang", project, startDate,
                 endDate, bearer);
         foreach (jt; ghi)
         {
+            // ignore if closed issue does not have a git log reference
+            if (!issues.githubIssueIds[project].canFind(jt.id))
+                continue;
+
             GithubIssue[]* p = jt.type in tmp;
             if (p !is null)
             {
@@ -805,7 +819,7 @@ Please supply a bugzilla version
 
         Nullable!(DateTime) firstDate = getFirstDateTime(revRange);
         enforce(!firstDate.isNull(), "Couldn't find a date from the revRange");
-        githubChanges = getGithubIssuesRest(firstDate.get(), cast(DateTime)currDate
+        githubChanges = getGithubIssuesRest(revRange, firstDate.get(), cast(DateTime)currDate
                 , githubToken);
     }
 
