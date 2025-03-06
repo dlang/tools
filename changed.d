@@ -172,28 +172,6 @@ Nullable!DateTime getFirstDateTime(string revRange)
         : all.front.nullable;
 }
 
-Nullable!DateTime getEndDateTime(string nextVersionDate)
-{
-    // Input format: "MMM DD, YYYY"
-    if (nextVersionDate.length != 12 ||
-        nextVersionDate[3] != ' ' ||
-        nextVersionDate[6] != ',' || nextVersionDate[7] != ' ')
-    {
-        return Nullable!(DateTime).init;
-    }
-
-    // Converted format: YYYY-MMM-DD
-    string simpleString;
-    simpleString ~= nextVersionDate[8..12];
-    simpleString ~= "-";
-    simpleString ~= nextVersionDate[0..3];
-    simpleString ~= "-";
-    simpleString ~= nextVersionDate[4..6];
-    auto endDate = Date.fromSimpleString(simpleString);
-
-    return DateTime(endDate).nullable;
-}
-
 struct GitIssues
 {
     int[] bugzillaIssueIds;
