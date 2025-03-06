@@ -312,6 +312,7 @@ GithubIssue[][string /*type*/ ][string /*comp*/] getGithubIssuesRest(string revR
     import std.algorithm.searching : canFind;
 
     GithubIssue[][string][string] ret;
+    // Keep this list of comps in sync with the switch statement in writeBugzillaChanges
     string[2][] comps =
         [ [ "dlang.org", "dlang.org"]
         , [ "dmd", "DMD Compiler"]
@@ -686,12 +687,21 @@ void writeBugzillaChanges(Entries, Writer)(BugzillaOrGithub bog, Entries entries
             case BugzillaOrGithub.github: return "BUGSTITLE_GITHUB";
         }
     }();
-    const string macroLi = () {
+    const macroLi = (string component) {
         final switch(bog) {
-            case BugzillaOrGithub.bugzilla: return "BUGZILLA";
-            case BugzillaOrGithub.github: return "GITHUB";
+            case BugzillaOrGithub.bugzilla:
+                return "BUGZILLA";
+            case BugzillaOrGithub.github:
+                final switch (component)
+                {
+                    case "dlang.org": return "DLANGORGGITHUB";
+                    case "DMD Compiler": return "DMDGITHUB";
+                    case "Phobos": return "PHOBOSGITHUB";
+                    case "Tools": return "TOOLSGITHUB";
+                    case "Installer": return "INSTALLERGITHUB";
+                }
         }
-    }();
+    };
 
     foreach (component; components)
     {
@@ -705,7 +715,7 @@ void writeBugzillaChanges(Entries, Writer)(BugzillaOrGithub bog, Entries entries
                     alias lessFunc = less!(ElementEncodingType!(typeof(*bugs)));
                     foreach (bug; sort!lessFunc(*bugs))
                     {
-                        w.formattedWrite("$(LI $(%s %s): %s)\n", macroLi,
+                        w.formattedWrite("$(LI $(%s %s): %s)\n", macroLi(component),
                                             bug.id, bug.summary.escapeParens());
                     }
                     w.put(")\n");
