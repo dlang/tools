@@ -9,6 +9,10 @@ DUB=dub
 WITH_DOC = no
 DOC = ../dlang.org
 
+ifneq (,$(findstring gdmd,$(notdir $(DMD))))
+DC_IS_GDC=1
+endif
+
 # Load operating system $(OS) (e.g. linux, osx, ...) and $(MODEL) (e.g. 32, 64) detection Makefile from dmd
 $(shell [ ! -d $(DMD_DIR) ] && git clone --depth=1 https://github.com/dlang/dmd $(DMD_DIR))
 include $(DMD_DIR)/compiler/src/osmodel.mak
@@ -52,7 +56,12 @@ DOC_TOOLS = \
 TEST_TOOLS = \
     $(ROOT)/rdmd_test$(DOTEXE)
 
-all: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite$(DOTEXE)
+all = $(TOOLS) $(CURL_TOOLS)
+ifndef DC_IS_GDC
+# dustmite fails to build with gdc: https://github.com/dlang/tools/pull/476
+all += $(ROOT)/dustmite$(DOTEXE)
+endif
+all: $(all)
 
 rdmd:      $(ROOT)/rdmd$(DOTEXE)
 ddemangle: $(ROOT)/ddemangle$(DOTEXE)
@@ -87,6 +96,7 @@ install: $(TOOLS) $(CURL_TOOLS) $(ROOT)/dustmite$(DOTEXE)
 clean:
 	rm -rf $(GENERATED)
 
+$(ROOT)/tests_extractor$(DOTEXE): override DFLAGS += -allinst # For gdmd
 $(ROOT)/tests_extractor$(DOTEXE): tests_extractor.d
 	mkdir -p $(ROOT)
 	DFLAGS="$(DFLAGS)" $(DUB) build \
@@ -124,12 +134,22 @@ ifeq (osx,$(OS))
 # /tmp is a symlink on Mac, and rdmd_test.d doesn't like it
 test_rdmd: export TMPDIR=$(shell cd /tmp && pwd -P)
 endif
-test_rdmd: $(ROOT)/rdmd_test$(DOTEXE) $(RDMD_TEST_EXECUTABLE)
+
+all_rdmd_tests = ut
+ifndef DC_IS_GDC
+# rdmd_test.d fails with gdmd, see: https://github.com/dlang/tools/pull/469
+all_rdmd_tests += it
+endif
+test_rdmd: $(all_rdmd_tests:%=test_rdmd_%)
+
+test_rdmd_ut: rdmd.d
+	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d
+
+test_rdmd_it: $(ROOT)/rdmd_test$(DOTEXE) $(RDMD_TEST_EXECUTABLE)
 	$< $(RDMD_TEST_EXECUTABLE) $(MODEL_FLAG) \
 	   --rdmd-default-compiler=$(RDMD_TEST_DEFAULT_COMPILER) \
 	   --test-compilers=$(RDMD_TEST_COMPILERS) \
 	   $(VERBOSE_RDMD_TEST_FLAGS)
-	$(DMD) $(DFLAGS) -unittest -main -run rdmd.d
 
 test: test_tests_extractor test_rdmd
 
@@ -137,6 +157,6 @@ ifeq ($(WITH_DOC),yes)
 all install: $(DOC_TOOLS)
 endif
 
-.PHONY: all install clean
+.PHONY: all install clean test_rdmd test_rdmd_ut test_rdmd_it
 
 .DELETE_ON_ERROR: # GNU Make directive (delete output files on error)
