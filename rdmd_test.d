@@ -140,12 +140,12 @@ void runCompilerAgnosticTests(string rdmdApp, string defaultCompiler, string mod
     /* Test help string output when no arguments passed. */
     auto res = execute([rdmdApp]);
     enforce(res.status == 1, res.output);
-    enforce(res.output.canFind("Usage: rdmd [RDMD AND DMD OPTIONS]... program [PROGRAM OPTIONS]..."));
+    enforce(res.output.canFind("Usage: rdmd [RDMD AND DMD OPTIONS...] program [PROGRAM OPTIONS...]"));
 
     /* Test --help. */
     res = execute([rdmdApp, "--help"]);
     enforce(res.status == 0, res.output);
-    enforce(res.output.canFind("Usage: rdmd [RDMD AND DMD OPTIONS]... program [PROGRAM OPTIONS]..."));
+    enforce(res.output.canFind("Usage: rdmd [RDMD AND DMD OPTIONS...] program [PROGRAM OPTIONS...]"));
 
     string helpText = res.output;
 
