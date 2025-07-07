@@ -140,7 +140,7 @@ int main(string[] args)
     string[] eval;     // set by --eval
     bool makeDepend;
     string makeDepFile;
-    
+
     try
     {
         getopt(argsBeforeProgram,
@@ -182,7 +182,7 @@ int main(string[] args)
     if (!compiler)
     {
         compiler = defaultCompiler;
-        
+
         // Look for the D compiler rdmd invokes automatically in the same directory as rdmd
         // and fall back to using the one in your path otherwise.
         string compilerPath = buildPath(dirName(thisExePath()), compiler ~ binExt);
@@ -576,7 +576,7 @@ private int rebuild(string root, string fullExe,
 // Run a program optionally writing the command line first
 // If "replace" is true and the OS supports it, replace the current process.
 
-private int run(string[] args, string output = null, bool replace = false)
+private int run(string[] args, string output = null, bool replace = false, bool captureStderr = false)
 {
     import std.conv;
     yap(replace ? "exec " : "spawn ", args.text);
@@ -599,7 +599,7 @@ private int run(string[] args, string output = null, bool replace = false)
         outputFile = File(output, "wb");
     else
         outputFile = stdout;
-    auto process = spawnProcess(args, stdin, outputFile);
+    auto process = spawnProcess(args, stdin, outputFile, captureStderr ? outputFile : stderr);
     return process.wait();
 }
 
@@ -744,7 +744,9 @@ private string[string] getDependencies(string rootModule, string workDir,
         collectException(Filesystem.remove(depsFilename));
     }
 
-    immutable depsExitCode = run(depsGetter, depsFilename);
+    // gdc prints -v on stderr, ldc2 and dmd use stdout
+    immutable depsExitCode = run(depsGetter, depsFilename,
+                                 /*replace=*/false, /*captureStderr=*/true);
     if (depsExitCode)
     {
         stderr.writefln("Failed: %s", depsGetter);
