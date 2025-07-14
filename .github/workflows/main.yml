@@ -17,6 +17,8 @@ jobs:
       matrix:
         os: [ macos-latest, ubuntu-latest, windows-latest ]
         dc: [ dmd-latest, ldc-latest ]
+        include:
+          - { os: ubuntu-latest, dc: gdc-14 }
     name: ${{ matrix.os }}, ${{ matrix.dc }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
@@ -28,6 +30,7 @@ jobs:
         uses: dlang-community/setup-dlang@v2
         with:
           compiler: ${{ matrix.dc }}
+          dub: latest
       # rdmd_test.d needs this
       - name: Set DMD to its basename without extension
         run: |
