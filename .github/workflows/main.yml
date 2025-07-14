@@ -9,6 +9,9 @@ concurrency:
 
 jobs:
   main:
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -18,21 +21,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     env:
-      DMD: ${{ startsWith(matrix.dc, 'ldc') && 'ldmd2' || 'dmd' }}
       N: ${{ startsWith(matrix.os, 'macos') && '3' || '2' }}
     steps:
       - uses: actions/checkout@v4
       - name: Install D compiler
-        uses: dlang-community/setup-dlang@v1.3.0
+        uses: dlang-community/setup-dlang@v2
         with:
           compiler: ${{ matrix.dc }}
+      # rdmd_test.d needs this
+      - name: Set DMD to its basename without extension
+        run: |
+          val=$(basename "${DMD}")
+          val=${val%.*}
+          tee -a ${GITHUB_ENV} <<<"DMD=${val}"
       - name: Build
-        shell: bash
         run: make -j$N DMD=$DMD
       - name: Test
-        shell: bash
         run: make -j$N DMD=$DMD test
       - name: 'Windows: Build and test with MODEL=32'
         if: runner.os == 'Windows'
-        shell: bash
         run: make -j$N DMD=$DMD MODEL=32 all test
