@@ -8,7 +8,7 @@ targetType "none"
 subPackage {
   name "tests_extractor"
   targetType "executable"
-  dependency "libdparse" version="~>0.10.12"
+  dependency "libdparse" version="~>0.25.1"
   sourceFiles "tests_extractor.d"
 }
 
