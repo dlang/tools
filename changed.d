@@ -367,37 +367,37 @@ Params:
 GithubIssue[] getGithubIssuesRest(const string project, const string repo
         , const DateTime startDate, const DateTime endDate, const string bearer)
 {
-    GithubIssue[] ret;
-    foreach (page; 1 .. 100)
-    { // 1000 issues per release should be enough
-        string req = ("https://api.github.com/repos/%s/%s/issues?per_page=100&since=%s"
-            ~"&state=closed&since=%s&page=%s")
-            .format(project, repo,
-                    () {
-                        switch(repo) {
-                            case "dmd": return "2024-12-01T12:00:00Z";
-                            case "phobos": return "2024-12-01T12:00:00Z";
-                            case "tools": return "2001-01-01T00:00:00Z";
-                            case "dub": return "2001-01-01T00:00:00Z";
-                            case "visuald": return "2023-10-18T00:00:00Z";
-                            case "installer": return "2001-01-01T00:00:00Z";
-                            default: return "2001-01-01T00:00:00Z";
-                        }
-                    }()
-                    , startDate.toISOExtString() ~ "Z", page);
+    import std.regex : ctRegex, matchFirst;
 
-        HTTP http = HTTP(req);
+    GithubIssue[] ret;
+    // Initial URL for first request
+    string nextUrl = ("https://api.github.com/repos/%s/%s/issues?per_page=100"
+        ~"&state=closed&since=%s")
+        .format(project, repo, startDate.toISOExtString() ~ "Z");
+
+    foreach (_; 0 .. 100)
+    { // 1000 issues per release should be enough
+        if (nextUrl.empty)
+            break;
+
+        HTTP http = HTTP(nextUrl);
         http.addRequestHeader("Accept", "application/vnd.github+json");
         http.addRequestHeader("X-GitHub-Api-Version", "2022-11-28");
         http.addRequestHeader("Authorization", bearer);
 
         char[] response;
+        string linkHeader;
         try
         {
             http.onReceive = (ubyte[] d)
             {
                 response ~= cast(char[])d;
                 return d.length;
+            };
+            http.onReceiveHeader = (const(char)[] key, const(char)[] value)
+            {
+                if (key == "link")
+                    linkHeader = value.idup;
             };
             http.perform();
         }
@@ -502,9 +502,18 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
             }
             ret ~= tmp;
         }
-        if (arr.length < 100)
+
+        // Parse Link header for cursor-based pagination
+        // Format: <url>; rel="next", <url>; rel="last"
+        nextUrl = null;
+        if (!linkHeader.empty)
         {
-            break;
+            enum linkRe = ctRegex!`<([^>]+)>;\s*rel="next"`;
+            auto m = matchFirst(linkHeader, linkRe);
+            if (!m.empty)
+            {
+                nextUrl = m[1];
+            }
         }
     }
     return ret;
@@ -664,11 +673,6 @@ bool less(T)(ref T a, ref T b)
     return lessImpl(a, b);
 }
 
-enum BugzillaOrGithub {
-    bugzilla,
-    github
-}
-
 /**
 Writes the fixed issued from Bugzilla in the ddoc format as a single list.
 
@@ -676,30 +680,19 @@ Params:
     changes = parsed InputRange of changelog information
     w = Output range to use
 */
-void writeBugzillaChanges(Entries, Writer)(BugzillaOrGithub bog, Entries entries, Writer w)
+void writeBugzillaChanges(Entries, Writer)(Entries entries, Writer w)
     if (isOutputRange!(Writer, string))
 {
     immutable components = ["DMD Compiler", "Phobos", "Druntime", "dlang.org", "Optlink", "Tools", "Installer"];
     immutable bugtypes = ["regression fixes", "bug fixes", "enhancements"];
-    const string macroTitle = () {
-        final switch(bog) {
-            case BugzillaOrGithub.bugzilla: return "BUGSTITLE_BUGZILLA";
-            case BugzillaOrGithub.github: return "BUGSTITLE_GITHUB";
-        }
-    }();
     const macroLi = (string component) {
-        final switch(bog) {
-            case BugzillaOrGithub.bugzilla:
-                return "BUGZILLA";
-            case BugzillaOrGithub.github:
-                final switch (component)
-                {
-                    case "dlang.org": return "DLANGORGGITHUB";
-                    case "DMD Compiler": return "DMDGITHUB";
-                    case "Phobos": return "PHOBOSGITHUB";
-                    case "Tools": return "TOOLSGITHUB";
-                    case "Installer": return "INSTALLERGITHUB";
-                }
+        final switch (component)
+        {
+            case "dlang.org": return "DLANGORGGITHUB";
+            case "DMD Compiler": return "DMDGITHUB";
+            case "Phobos": return "PHOBOSGITHUB";
+            case "Tools": return "TOOLSGITHUB";
+            case "Installer": return "INSTALLERGITHUB";
         }
     };
 
@@ -711,7 +704,7 @@ void writeBugzillaChanges(Entries, Writer)(BugzillaOrGithub bog, Entries entries
             {
                 if (auto bugs = bugtype in *comp)
                 {
-                    w.formattedWrite("$(%s %s %s,\n\n", macroTitle, component, bugtype);
+                    w.formattedWrite("$(BUGSTITLE_GITHUB %s %s,\n\n", component, bugtype);
                     alias lessFunc = less!(ElementEncodingType!(typeof(*bugs)));
                     foreach (bug; sort!lessFunc(*bugs))
                     {
@@ -813,13 +806,6 @@ Please supply a bugzilla version
     w.put("Ddoc\n\n");
     w.put("$(CHANGELOG_NAV_INJECT)\n\n");
 
-    // Accumulate Bugzilla issues
-    BugzillaEntry[][string][string] bugzillaChanges;
-    if (!revRange.empty)
-    {
-        bugzillaChanges = getBugzillaChanges(revRange);
-    }
-
     GithubIssue[][string][string] githubChanges;
     if (!revRange.empty && !githubClassicTokenFileName.empty)
     {
@@ -903,14 +889,9 @@ Please supply a bugzilla version
                 w.put("$(CHANGELOG_SEP_NO_TEXT_BUGZILLA)\n\n");
         }
 
-        // print the entire changelog history
         if (revRange.length)
         {
-            writeBugzillaChanges(BugzillaOrGithub.bugzilla, bugzillaChanges, w);
-        }
-        if (revRange.length)
-        {
-            writeBugzillaChanges(BugzillaOrGithub.github, githubChanges, w);
+            writeBugzillaChanges(githubChanges, w);
         }
     }
 
