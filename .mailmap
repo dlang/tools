@@ -1,6 +1,8 @@
 # See https://github.com/git/git/blob/master/Documentation/mailmap.txt
 # This file is sorted with:
 # (head -n3 .mailmap && tail -n+4 .mailmap | sort -f) > .mailmap.tmp && mv .mailmap.tmp .mailmap
+Abul Hossain Khan <abulkhan19175@gmail.com>
+Abul Hossain Khan <abulkhan19175@gmail.com> <140191921+abulgit@users.noreply.github.com>
 Adam D. Ruppe <destructionator@gmail.com>
 adil <adil@stockopedia.co.uk>
 adil <adil@stockopedia.co.uk> <adil@adil-ThinkCentre-A85>
@@ -34,11 +36,15 @@ David Herberth <admin@dav1d.de>
 David Simcha <dsimcha@gmail.com>
 David Simcha <dsimcha@gmail.com> <dsimcha@.(none)>
 Denis Shelomovskij <verylonglogin.reg@gmail.com>
+Dennis Korpel <dkorpel@gmail.com> <dennis@sarc.nl>
+Dennis Korpel <dkorpel@gmail.com> <dkorpel@users.noreply.github.com>
 Dmitry Ds<ds.dlang@gmail.com>
 Don Clugston <dclugston@googlemail.com>
 Don Clugston <dclugston@googlemail.com> <emailsdontbelong@inarepository.com>
 Ed McCardell <edmccard@hotmail.com>
 emstoudenmire <miles.stoudenmire@gmail.com>
+Eugene 'Vindex' Stulin <92019484+vindexbit@users.noreply.github.com>
+Final Evilution <finalevilution@gmail.com> <56522074+FinalEvilution@users.noreply.github.com>
 Hara Kenji <k.hara.pg+dev@gmail.com> <k.hara.pg@gmail.com>
 humdedum <humdedum@icloud.com>
 Héctor Barreras Almarcha <hbaelx@gmail.com>
@@ -102,6 +108,8 @@ Roy Margalit <54061433+rymrg@users.noreply.github.com>
 Ryan Roden-Corrent <ryan@rcorre.net>
 Safety0ff <safety0ff.dev@gmail.com>
 Safety0ff <safety0ff.dev@gmail.com> <safety0ff@users.sourceforge.net>
+Sergii Kuzko <gorsing444@gmail.com>
+Sergii Kuzko <gorsing444@gmail.com> <skuzko@ibagroup.eu>
 shoo <zan77137@nifty.com> <zan77137@nifty.com>
 shove <shove@163.com>
 Sik <sik@PC-82.ik.local>
