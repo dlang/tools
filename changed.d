@@ -153,7 +153,7 @@ Nullable!DateTime getFirstDateTime(string revRange)
     foreach (repo; ["dmd", "phobos", "dlang.org", "tools", "installer"]
              .map!(r => buildPath("..", r)))
     {
-        auto cmd = ["git", "log", "--no-patch", "--no-notes"
+        auto cmd = ["git", "-C", repo, "log", "--no-patch", "--no-notes"
             , "--date=format-local:%Y-%m-%dT%H:%M:%S", "--pretty=%cd"
             , revRange];
         auto p = pipeProcess(cmd, Redirect.stdout);
