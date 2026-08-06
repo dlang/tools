@@ -146,6 +146,34 @@ string escapeParens(string input)
     return input.translate(parenToMacro);
 }
 
+/**
+Get the date of the previous release, which is the start of the revision range
+
+This is more reliable than the date of the oldest commit in the range, because
+merging in an unrelated history (like the spec sources) drags in commits that
+are years older than the previous release.
+*/
+Nullable!DateTime getPreviousReleaseDateTime(string revRange)
+{
+    auto parts = revRange.split("..");
+    if (parts.length < 2 || parts[0].empty)
+        return Nullable!(DateTime).init;
+
+    foreach (repo; ["dmd", "phobos", "dlang.org", "tools", "installer"]
+             .map!(r => buildPath("..", r)))
+    {
+        auto cmd = ["git", "-C", repo, "log", "-1", "--no-patch", "--no-notes"
+            , "--date=format-local:%Y-%m-%dT%H:%M:%S", "--pretty=%cd"
+            , parts[0]];
+        auto p = pipeProcess(cmd, Redirect.stdout);
+        auto lines = p.stdout.byLineCopy.map!strip.filter!(l => !l.empty).array;
+        if (wait(p.pid) != 0 || lines.empty)
+            continue;
+        return DateTime.fromISOExtString(lines.front).nullable;
+    }
+    return Nullable!(DateTime).init;
+}
+
 Nullable!DateTime getFirstDateTime(string revRange)
 {
     DateTime[] all;
@@ -309,8 +337,6 @@ Nullable!int getBugzillaId(string body_)
 GithubIssue[][string /*type*/ ][string /*comp*/] getGithubIssuesRest(string revRange,
         const DateTime startDate, const DateTime endDate, const string bearer)
 {
-    import std.algorithm.searching : canFind;
-
     GithubIssue[][string][string] ret;
     // Keep this list of comps in sync with the switch statement in writeBugzillaChanges
     string[2][] comps =
@@ -332,14 +358,10 @@ GithubIssue[][string /*type*/ ][string /*comp*/] getGithubIssuesRest(string revR
             continue;
 
         GithubIssue[][string /* type */] tmp;
-        GithubIssue[] ghi = getGithubIssuesRest("dlang", project, startDate,
-                endDate, bearer);
+        GithubIssue[] ghi = getGithubIssuesRest("dlang", project,
+                issues.githubIssueIds[project], startDate, endDate, bearer);
         foreach (jt; ghi)
         {
-            // ignore if closed issue does not have a git log reference
-            if (!issues.githubIssueIds[project].canFind(jt.id))
-                continue;
-
             GithubIssue[]* p = jt.type in tmp;
             if (p !is null)
             {
@@ -356,66 +378,59 @@ GithubIssue[][string /*type*/ ][string /*comp*/] getGithubIssuesRest(string revR
 }
 
 /**
-Get closed issues of a github project
+Get the closed issues of a github project that are referenced in the git log
+
+Only issues closed in the `[startDate, endDate]` window are returned, so that
+stale references to unrelated issues with the same number don't end up in the
+changelog.
 
 Params:
     project = almost always the dlang github project
     repo = the name of the repo to get the closed issues for
+    numbers = the issue numbers referenced by the commits of the release
+    startDate = issues closed before this date are not part of this release
     endDate = the cutoff date for closed issues
     bearer = the classic github bearer token
 */
 GithubIssue[] getGithubIssuesRest(const string project, const string repo
-        , const DateTime startDate, const DateTime endDate, const string bearer)
+        , const int[] numbers, const DateTime startDate, const DateTime endDate
+        , const string bearer)
 {
-    import std.regex : ctRegex, matchFirst;
-
     GithubIssue[] ret;
-    // Initial URL for first request
-    string nextUrl = ("https://api.github.com/repos/%s/%s/issues?per_page=100"
-        ~"&state=closed&since=%s")
-        .format(project, repo, startDate.toISOExtString() ~ "Z");
 
-    foreach (_; 0 .. 100)
-    { // 1000 issues per release should be enough
-        if (nextUrl.empty)
-            break;
+    foreach (number; numbers)
+    {
+        string url = "https://api.github.com/repos/%s/%s/issues/%d"
+            .format(project, repo, number);
 
-        HTTP http = HTTP(nextUrl);
+        HTTP http = HTTP(url);
         http.addRequestHeader("Accept", "application/vnd.github+json");
         http.addRequestHeader("X-GitHub-Api-Version", "2022-11-28");
         http.addRequestHeader("Authorization", bearer);
 
         char[] response;
-        string linkHeader;
-        try
+        int statusCode;
+        http.onReceive = (ubyte[] d)
         {
-            http.onReceive = (ubyte[] d)
-            {
-                response ~= cast(char[])d;
-                return d.length;
-            };
-            http.onReceiveHeader = (const(char)[] key, const(char)[] value)
-            {
-                if (key == "link")
-                    linkHeader = value.idup;
-            };
-            http.perform();
-        }
-        catch(Exception e)
+            response ~= cast(char[])d;
+            return d.length;
+        };
+        http.onReceiveStatusLine = (HTTP.StatusLine line)
         {
-            throw e;
-        }
+            statusCode = line.code;
+        };
+        http.perform();
 
-        string s = cast(string)response;
-        JSONValue j = parseJSON(s);
-        enforce(j.type == JSONType.array, j.toPrettyString()
-                ~ "\nMust be an array");
-        JSONValue[] arr = j.arrayNoRef();
-        if (arr.empty)
-        {
-            break;
-        }
-        foreach (it; arr)
+        // referenced issues may live in another repository
+        if (statusCode == 404 || statusCode == 410)
+            continue;
+        enforce(statusCode == 200, "%s returned status %d:\n%s"
+                .format(url, statusCode, cast(string)response));
+
+        JSONValue it = parseJSON(cast(string)response);
+        enforce(it.type == JSONType.object, it.toPrettyString()
+                ~ "\nMust be an object");
+
         {
             GithubIssue tmp;
             // Issues and pull request are both returned by the github api
@@ -455,13 +470,16 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
                 const(JSONValue)* mem = "closed_at" in it;
                 enforce(mem !is null, it.toPrettyString()
                         ~ "\nmust contain 'closed_at'");
-                enforce((*mem).type == JSONType.string, (*mem).toPrettyString()
-                        ~ "\n'closed_at' must be an string");
+                // still open, so not part of this release
+                if ((*mem).type != JSONType.string)
+                    continue;
                 string d = (*mem).get!string();
                 d = d.endsWith("Z")
                     ? d[0 .. $ - 1]
                     : d;
                 tmp.closedAt = DateTime.fromISOExtString(d);
+                if (tmp.closedAt < startDate || tmp.closedAt > endDate)
+                    continue;
             }
             {
                 const(JSONValue)* mem = "labels" in it;
@@ -501,19 +519,6 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
                 }
             }
             ret ~= tmp;
-        }
-
-        // Parse Link header for cursor-based pagination
-        // Format: <url>; rel="next", <url>; rel="last"
-        nextUrl = null;
-        if (!linkHeader.empty)
-        {
-            enum linkRe = ctRegex!`<([^>]+)>;\s*rel="next"`;
-            auto m = matchFirst(linkHeader, linkRe);
-            if (!m.empty)
-            {
-                nextUrl = m[1];
-            }
         }
     }
     return ret;
@@ -813,7 +818,9 @@ Please supply a bugzilla version
                 , githubClassicTokenFileName));
         const string githubToken = readText(githubClassicTokenFileName).strip();
 
-        Nullable!(DateTime) firstDate = getFirstDateTime(revRange);
+        Nullable!(DateTime) firstDate = getPreviousReleaseDateTime(revRange);
+        if (firstDate.isNull())
+            firstDate = getFirstDateTime(revRange);
         enforce(!firstDate.isNull(), "Couldn't find a date from the revRange");
         githubChanges = getGithubIssuesRest(revRange, firstDate.get(), cast(DateTime)currDate
                 , githubToken);
