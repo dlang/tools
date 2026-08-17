@@ -406,7 +406,7 @@ GithubIssue[] getGithubIssuesRest(const string project, const string repo
         HTTP http = HTTP(url);
         http.addRequestHeader("Accept", "application/vnd.github+json");
         http.addRequestHeader("X-GitHub-Api-Version", "2022-11-28");
-        http.addRequestHeader("Authorization", bearer);
+        http.addRequestHeader("Authorization", bearer.startsWith("Bearer ") ? bearer : "Bearer " ~ bearer);
 
         char[] response;
         int statusCode;
@@ -864,12 +864,16 @@ Please supply a bugzilla version
                 with(changelogStats)
                 {
                     auto changelog = changelogEntries > 0 ? "%d major change%s and".format(changelogEntries, changelogEntries > 1 ? "s" : "") : "";
-                    w.put("$(VER) comes with {changelogEntries} {bugzillaIssues} fixed Bugzilla issue{bugzillaIssuesPlural}.
+                    size_t githubIssues;
+                    foreach (repo; githubChanges)
+                        foreach (issues; repo)
+                            githubIssues += issues.length;
+                    w.put("$(VER) comes with {changelogEntries} {githubIssues} fixed GitHub issue{githubIssuesPlural}.
         A huge thanks goes to the
         $(LINK2 #contributors, {nrContributors} contributor{nrContributorsPlural})
         who made $(VER) possible."
-                        .replace("{bugzillaIssues}", bugzillaIssues.text)
-                        .replace("{bugzillaIssuesPlural}", bugzillaIssues != 1 ? "s" : "")
+                        .replace("{githubIssues}", githubIssues.text)
+                        .replace("{githubIssuesPlural}", githubIssues != 1 ? "s" : "")
                         .replace("{changelogEntries}", changelog)
                         .replace("{nrContributors}", contributors.text)
                         .replace("{nrContributorsPlural}", contributors != 1 ? "s" : "")

@@ -10,3 +10,4 @@ GNUmakefile
 /tests_extractor
 /dtools_*
 /dub.selections.json
+/token.txt
