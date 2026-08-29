@@ -646,6 +646,27 @@ SHELL = %s
             enforce(std.file.read(textOutput) == "hello world\n");
         }
     }
+
+    // https://issues.dlang.org/show_bug.cgi?id=18423
+    // rdmd ignores changes in DFLAGS
+    {
+        string srcName = tempDir().buildPath("force_rebuild_dflags.d");
+        std.file.write(srcName, `void main() { import std.stdio; version(Foo) {"foo".writeln;} else { "bar".writeln; }}`);
+
+        res = execute(rdmdArgs ~ [srcName]);
+        assert(res.status == 0, res.output);
+        assert(res.output.canFind("bar"));
+
+        environment["DFLAGS"] = "-version=Foo";
+        res = execute(rdmdArgs ~ [srcName]);
+        assert(res.status == 0, res.output);
+        assert(res.output.canFind("foo"), res.output);
+
+        environment.remove("DFLAGS");
+        res = execute(rdmdArgs ~ [srcName]);
+        assert(res.status == 0, res.output);
+        assert(res.output.canFind("bar"));
+    }
 }
 
 void runConcurrencyTest(string rdmdApp, string compiler, string model)
