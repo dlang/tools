@@ -58,7 +58,7 @@ int main(string[] args)
     auto helpInfo = getopt(args,
         "rdmd-default-compiler", "[REQUIRED] default D compiler used by rdmd executable", &defaultCompiler,
         "concurrency", "whether to perform the concurrency test cases", &concurrencyTest,
-        "m|model", "architecture to run the tests for [32 or 64]", &model,
+        "m|model", "architecture to run the tests for [32 or 64], can be set to an empty string", &model,
         "test-compilers", "comma-separated list of D compilers to test with rdmd", &testCompilerList,
         "v|verbose", "verbose output", &verbose,
     );
@@ -125,7 +125,13 @@ int main(string[] args)
 
 string compilerSwitch(string compiler) { return "--compiler=" ~ compiler; }
 
-string modelSwitch(string model) { return "-m" ~ model; }
+// Return a compiler argument to build for a given model.
+// If model is empty return an empty array.
+string[] modelSwitch(string model) {
+    if (model == "")
+        return [];
+    return ["-m" ~ model];
+}
 
 auto execute(T...)(T args)
 {
@@ -182,7 +188,7 @@ void runCompilerAgnosticTests(string rdmdApp, string defaultCompiler, string mod
 
 auto rdmdArguments(string rdmdApp, string compiler, string model)
 {
-    return [rdmdApp, compilerSwitch(compiler), modelSwitch(model)];
+    return [rdmdApp, compilerSwitch(compiler)] ~  modelSwitch(model);
 }
 
 void runTests(string rdmdApp, string compiler, string model)
@@ -267,7 +273,7 @@ void runTests(string rdmdApp, string compiler, string model)
     std.file.write(subModSrc, "module dsubpack.submod; void foo() { }");
 
     // build an object file out of the dependency
-    res = execute([compiler, modelSwitch(model), "-c", "-of" ~ subModObj, subModSrc]);
+    res = execute([compiler] ~ modelSwitch(model) ~ ["-c", "-of" ~ subModObj, subModSrc]);
     enforce(res.status == 0, res.output);
 
     string subModUser = tempDir().buildPath("subModUser_.d");
@@ -461,7 +467,7 @@ void runTests(string rdmdApp, string compiler, string model)
         .filter!exists
         .front;
 
-    res = execute([rdmdApp, "--compiler=" ~ fullCompilerPath, modelSwitch(model), forceSrc]);
+    res = execute([rdmdApp, "--compiler=" ~ fullCompilerPath] ~ modelSwitch(model) ~ [forceSrc]);
     enforce(res.status == 0, res.output ~ "\nCan't run with --compiler=" ~ fullCompilerPath);
 
     // Create an empty temporary directory and clean it up when exiting scope
@@ -688,7 +694,7 @@ void runFallbackTest(string rdmdApp, string buildCompiler, string model)
     std.file.write(localDMD, ""); // An empty file avoids the "Not a valid 16-bit application" pop-up on Windows
     scope(exit) std.file.remove(localDMD);
 
-    auto res = execute(rdmdApp ~ [modelSwitch(model), "--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
+    auto res = execute(rdmdApp ~ modelSwitch(model) ~ ["--force", "--chatty", "--eval=writeln(`Compiler found.`);"]);
     enforce(res.status == 1, res.output);
     enforce(res.output.canFind(format(`spawn [%(%s%),`, localDMD.only)), localDMD ~ " would not have been executed. Output:\n" ~ res.output);
 }
